@@ -14,6 +14,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import sys
 import time
 from dataclasses import dataclass, field
@@ -431,6 +432,11 @@ class Agent:
 
         self._publish_plan()
         self._dash(thought=thought, plan=self._plan_text(), doing=self.busy.describe() if self.busy else "")
+        if (self.busy or self.queue) and not self.addressed:
+            # Things that woke us while we were thinking (the hour, an old job's result) wait in the inbox
+            # until the plan is done; otherwise the agent takes another turn right after starting a plan.
+            # (14% of the turns were like that, each one delaying the other agents' turns on the model.)
+            self.wake.clear()
 
     def _parse_actions(self, raw: list[dict[str, Any]], obs: dict[str, Any]) -> tuple[list[Action], list[str]]:
         actions: list[Action] = []
@@ -450,6 +456,9 @@ class Agent:
             args: dict[str, Any] = {}
             target = _blank_if_none(item.get("target"))
             thing = _blank_if_none(item.get("item"))
+            # Models sometimes put the count into the item: "Parsnip Seeds n:5", "Parsnip Seeds x5".
+            if (m := re.fullmatch(r"(.*?)[\s,]+(?:n\s*[:=]\s*|x\s*)(\d+)", thing)) and not item.get("n"):
+                thing, item = m.group(1), {**item, "n": int(m.group(2))}
             has_xy = isinstance(item.get("x"), int) and isinstance(item.get("y"), int)
             missing = [f for f in spec.needs if not {"target": target, "item": thing, "xy": has_xy}[f]]
             if missing:
