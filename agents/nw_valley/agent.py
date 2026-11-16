@@ -110,6 +110,12 @@ MIN_SAY_GAP_SECONDS = 90.0
 DEBUG_TOKENS = bool(os.environ.get("NV_DEBUG_TOKENS"))
 
 
+def _blank_if_none(value: Any) -> str:
+    """The action list says "(none = all ...)"; models then write "none", ":none:" or "all" literally."""
+    text = str(value or "").strip()
+    return "" if text.strip(":*_ ").lower() in ("none", "all", "everything", "any", "nothing", "null", "here") else text
+
+
 @dataclass
 class Action:
     cmd: str
@@ -271,10 +277,11 @@ class Agent:
             return
         if ev["ok"]:
             self.last_failure = None
+            # Always report it, also mid-plan: e.g. "harvest: Nothing is ready" explains why the "ship" after it fails.
+            self.inbox.append(f"Done {ev['action']}: {ev['summary']}")
             if self.queue:
                 asyncio.create_task(self._start_next())
                 return
-            self.inbox.append(f"Done {ev['action']}: {ev['summary']}")
         else:
             failure = f"{ev['action']}: {ev['summary']}"
             note = " (This failed the same way last time - do something different!)" if failure == self.last_failure else ""
@@ -343,6 +350,7 @@ class Agent:
         events = "\n".join(f"- {e}" for e in self.inbox) or "- nothing new"
         self.inbox.clear()
         busy = bool(self.busy or self.queue)
+        running = self.busy  # the job running when the prompt was made
         plan_note = ""
         if busy:
             plan_note = (f"\nYou're busy with your plan: {self._plan_text()}. Keep going: leave 'actions' empty "
@@ -386,10 +394,17 @@ class Agent:
         if actions:
             if any(a.cmd == "sleep" for a in actions):  # nothing after going to bed makes sense
                 actions = actions[: next(i for i, a in enumerate(actions) if a.cmd == "sleep") + 1]
-            self.queue = actions
             self.print(self.name, "plan", " -> ".join(a.describe() for a in actions))
-            # Starting a job cancels the running one in the game; that job's job_done is ignored (id mismatch).
-            await self._start_next()
+            if running is not None and actions[0] == running:
+                # Asked mid-job, models tend to repeat the running action rather than leave 'actions' empty.
+                # That means "keep going" (restarting it would lose progress, or redo a finished walk).
+                self.queue = actions[1:]
+                if self.busy is None:  # it finished while we were thinking
+                    await self._start_next()
+            else:
+                self.queue = actions
+                # Starting a job cancels the running one in the game; that job's job_done is ignored (id mismatch).
+                await self._start_next()
         elif not busy and not self.queue:
             self.idle_turns += 1
             # Nudge once right away; after that, wait for the idle timer instead of spinning.
@@ -419,8 +434,8 @@ class Agent:
             if spec is None:
                 continue
             args: dict[str, Any] = {}
-            target = (item.get("target") or "").strip()
-            thing = (item.get("item") or "").strip()
+            target = _blank_if_none(item.get("target"))
+            thing = _blank_if_none(item.get("item"))
             has_xy = isinstance(item.get("x"), int) and isinstance(item.get("y"), int)
             missing = [f for f in spec.needs if not {"target": target, "item": thing, "xy": has_xy}[f]]
             if missing:

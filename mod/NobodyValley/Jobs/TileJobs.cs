@@ -35,6 +35,11 @@ internal static class TileJobs
             yield return MoreJobs.TalkTo(job, npc.Name, null);
             yield break;
         }
+        if (loc.terrainFeatures.TryGetValue(new Vector2(tile.X, tile.Y), out var tf) && tf is HoeDirt { crop: not null })
+        {
+            yield return Harvest(job, tile); // crops and wild spring onions
+            yield break;
+        }
         var walk = new StepResult();
         yield return Steps.WalkAdjacent(tile, walk);
         if (!walk.Ok)

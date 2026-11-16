@@ -37,9 +37,8 @@ internal static class MoreJobs
             if (Me.freeSpotsInInventory() == 0)
                 throw new JobFailed("your inventory is full");
             var here = Me.TilePoint;
-            Vector2? next = loc.objects.Pairs
-                .Where(p => p.Value.IsSpawnedObject && p.Value.isForage() && !skipped.Contains(p.Key))
-                .Select(p => p.Key)
+            Vector2? next = ForageTiles(loc)
+                .Where(t => !skipped.Contains(t))
                 .OrderBy(t => Steps.Dist(Steps.ToPoint(t), here))
                 .Cast<Vector2?>()
                 .FirstOrDefault();
@@ -47,7 +46,8 @@ internal static class MoreJobs
                 break;
 
             var tile = next.Value;
-            string name = loc.objects[tile].DisplayName;
+            string name = loc.objects.TryGetValue(tile, out var obj) ? obj.DisplayName
+                : loc.terrainFeatures.TryGetValue(tile, out var tf) && tf is HoeDirt { crop: { } crop } ? Observer.CropName(crop) : "forage";
             var walk = new StepResult();
             yield return Steps.WalkAdjacent(Steps.ToPoint(tile), walk);
             if (!walk.Ok)
@@ -56,9 +56,12 @@ internal static class MoreJobs
                 continue;
             }
             EquipTool(); // don't accidentally "use" a held item on it
-            loc.checkAction(new xTile.Dimensions.Location((int)tile.X, (int)tile.Y), Game1.viewport, Me);
+            if (loc.terrainFeatures.TryGetValue(tile, out var onion) && onion is HoeDirt)
+                onion.performUseAction(tile); // a wild spring onion
+            else
+                loc.checkAction(new xTile.Dimensions.Location((int)tile.X, (int)tile.Y), Game1.viewport, Me);
             yield return Wait.Ticks(20);
-            if (loc.objects.ContainsKey(tile))
+            if (ForageTiles(loc).Contains(tile))
             {
                 skipped.Add(tile);
                 continue;
@@ -68,12 +71,19 @@ internal static class MoreJobs
             job.Summary = "Foraged " + string.Join(", ", found.Select(f => $"{f.Value} {f.Key}"));
         }
         job.Summary = picked == 0
-            ? $"Found nothing to forage in {Observer.LocationName(loc)} (try the Forest, Mountain or Beach)."
+            ? $"Found nothing to forage in {Observer.LocationName(loc)}" + (loc.IsOutdoors && loc is not Farm ? " (it's been picked clean today; try another place)." : " (try the Forest, Mountain or Beach).")
             : job.Summary + $" in {Observer.LocationName(loc)}.";
     }
 
-    public static int ForageCount(GameLocation? loc) =>
-        loc?.objects.Values.Count(o => o.IsSpawnedObject && o.isForage()) ?? 0;
+    public static int ForageCount(GameLocation? loc) => loc == null ? 0 : ForageTiles(loc).Count();
+
+    /// <summary>Forage items lying around, and wild spring onions (which the game implements as crops).</summary>
+    public static IEnumerable<Vector2> ForageTiles(GameLocation loc) =>
+        loc.objects.Pairs.Where(p => p.Value.IsSpawnedObject && p.Value.isForage()).Select(p => p.Key)
+            .Concat(loc.terrainFeatures.Pairs.Where(p => p.Value is HoeDirt d && IsWildOnion(d)).Select(p => p.Key));
+
+    public static bool IsWildOnion(HoeDirt d) =>
+        d.crop is { forageCrop.Value: true } crop && crop.whichForageCrop.Value == Crop.forageCrop_springOnionID && d.readyForHarvest();
 
     // ================================================================ chop trees
 

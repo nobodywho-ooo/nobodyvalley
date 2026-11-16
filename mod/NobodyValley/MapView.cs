@@ -142,6 +142,7 @@ internal static class MapView
                 case FruitTree:
                     return 'T';
                 case HoeDirt dirt:
+                    if (Jobs.MoreJobs.IsWildOnion(dirt)) { note("forage", p); return 'f'; }
                     if (dirt.crop == null)
                     {
                         note("empty tilled soil", p);
