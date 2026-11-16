@@ -104,7 +104,16 @@ wait_in_game host
 i=1
 for f in "${FARMHANDS[@]}"; do
     launch "$f" NOBODYVALLEY_JOIN="$f" NOBODYVALLEY_WINDOW="$(window_for $i)"
-    wait_in_game "$f" || true
+    if ! wait_in_game "$f"; then
+        # Occasionally a client gets stuck waiting for the farmhand list; a fresh process fixes it.
+        echo "Restarting $f's instance..."
+        for pid in $(pgrep -x StardewModdingAPI || true); do
+            if ps eww "$pid" | grep -q "NOBODYVALLEY_JOIN=$f"; then kill "$pid"; fi
+        done
+        sleep 2
+        launch "$f" NOBODYVALLEY_JOIN="$f" NOBODYVALLEY_WINDOW="$(window_for $i)"
+        wait_in_game "$f" || true
+    fi
     i=$((i + 1))
 done
 echo "Everyone's in."

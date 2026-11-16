@@ -78,7 +78,7 @@ class GameConnection:
                     fut.set_exception(ConnectionError("game connection closed"))
 
 
-async def discover(base_port: int = 8765, count: int = 8) -> list[GameConnection]:
+async def discover(base_port: int = 8765, count: int = 8, skip: set[int] | None = None) -> list[GameConnection]:
     """Connect to every running game instance (each binds the first free port from base_port)."""
 
     async def try_port(port: int) -> GameConnection | None:
@@ -89,5 +89,6 @@ async def discover(base_port: int = 8765, count: int = 8) -> list[GameConnection
         except (OSError, asyncio.TimeoutError):
             return None
 
-    results = await asyncio.gather(*(try_port(p) for p in range(base_port, base_port + count)))
+    ports = [p for p in range(base_port, base_port + count) if p not in (skip or set())]
+    results = await asyncio.gather(*(try_port(p) for p in ports))
     return [c for c in results if c is not None]

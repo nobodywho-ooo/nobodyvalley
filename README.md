@@ -77,7 +77,7 @@ other players see the swings.
 | `talk_to {target, item?}` | Walk to a villager and talk (or give `item` as a gift). Reports their actual dialogue and your friendship |
 | `say {text}`, `emote {emote}` | Multiplayer chat message; emote above the head |
 | `stop` | Cancel the current job |
-| `debug_state`, `debug_set_time {time}`, `debug_give {item, count}`, `screenshot` | Debugging aids |
+| `debug_state`, `debug_set_time {time}`, `debug_give {item, count}`, `debug_menu {kind}`, `debug_terrain {target?}`, `screenshot` | Debugging aids |
 
 Job commands reply right away with a `job_id`. A `job_done` event (`ok`, `summary`) follows when
 the job finishes. Other events: `chat` (a message from another player), `time` (every in-game
@@ -90,7 +90,8 @@ tile and can see e.g. "Albert: watering the crops".
 Environment variables let a launcher skip the title screen and place the window:
 `NOBODYVALLEY_HOST=<save>` (host in co-op), `NOBODYVALLEY_JOIN=<farmhand name>`,
 `NOBODYVALLEY_LOAD=<save>` (single-player) and `NOBODYVALLEY_WINDOW=x,y,w,h` (screen points). The
-mod also clicks through the overnight menus (shipping summary, level-ups) and skippable cutscenes.
+mod also clicks through blocking screens (cutscenes, shipping summary, level-ups, letters, dialogue
+pages), after showing each for `MenuDisplaySeconds` (default 5) so spectators can see them.
 
 ### The agents (`agents/`, Python)
 

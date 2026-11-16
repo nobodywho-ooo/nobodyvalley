@@ -196,6 +196,21 @@ internal sealed class ModEntry : Mod
                 };
             }
 
+            case "debug_menu":
+            {
+                // Testing aid: open a blocking screen, to check that it gets dismissed.
+                var kind = Str("kind") ?? "levelup";
+                Game1.activeClickableMenu = kind switch
+                {
+                    "levelup" => new StardewValley.Menus.LevelUpMenu(2, 1), // foraging level 1
+                    "profession" => new StardewValley.Menus.LevelUpMenu(2, 5), // foraging level 5: pick a profession
+                    "letter" => new StardewValley.Menus.LetterViewerMenu("Dear farmer,^this is a test letter.^   -NobodyValley"),
+                    "dialogue" => new StardewValley.Menus.DialogueBox("This is a test dialogue.#$b#It has two pages."),
+                    _ => throw new CommandException("kind must be levelup, profession, letter or dialogue"),
+                };
+                return new JObject { ["opened"] = kind };
+            }
+
             case "debug_give":
             {
                 // Testing aid: add an item (by display name or id) to the inventory.

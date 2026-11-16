@@ -14,7 +14,7 @@ from nobodywho import Model
 
 from . import prompts
 from .agent import Agent, Team
-from .bridge import discover
+from .bridge import GameConnection, discover
 from .dashboard import Dashboard
 
 DEFAULT_MODEL = "huggingface:unsloth/Qwen3.5-9B-GGUF/Qwen3.5-9B-Q4_K_M.gguf"
@@ -75,14 +75,31 @@ async def amain(args: argparse.Namespace) -> None:
 
     personas = load_personas(args.personas)
     team = Team()
-    agents: list[Agent] = []
-    for i, conn in enumerate(conns):
+    running: dict[int, asyncio.Task[None]] = {}
+
+    async def start_agent(conn: GameConnection) -> None:
         hello = await conn.request("hello")
         name = (hello.get("farmer") or "").lower()
-        persona = personas.get(name) or prompts.DEFAULT_PERSONAS[i % len(prompts.DEFAULT_PERSONAS)]
-        agents.append(Agent(conn, model, persona, args.n_ctx, printer, team=team, start_delay=i * 4.0, dashboard=dashboard))
+        # Instances bind ports in launch order (host first), so the port picks a stable default role.
+        index = conn.port - args.base_port
+        persona = personas.get(name) or prompts.DEFAULT_PERSONAS[index % len(prompts.DEFAULT_PERSONAS)]
+        agent = Agent(conn, model, persona, args.n_ctx, printer, team=team, start_delay=min(index, 4) * 4.0, dashboard=dashboard)
+        running[conn.port] = asyncio.create_task(agent.run())
 
-    await asyncio.gather(*(a.run() for a in agents))
+    for conn in conns:
+        await start_agent(conn)
+
+    # Keep an eye out for instances that join (or come back) later.
+    while True:
+        await asyncio.sleep(10)
+        for port, task in list(running.items()):
+            if task.done():
+                if not task.cancelled() and task.exception():
+                    printer("main", "info", f"agent on port {port} stopped: {task.exception()!r}")
+                del running[port]
+        for conn in await discover(args.base_port, args.max_instances, skip=set(running)):
+            printer("main", "info", f"new game instance on port {conn.port}")
+            await start_agent(conn)
 
 
 def main() -> None:
