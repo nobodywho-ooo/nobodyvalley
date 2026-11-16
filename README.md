@@ -126,7 +126,8 @@ pages), after showing each for `MenuDisplaySeconds` (default 5) so spectators ca
   an agent takes no turns until morning.
 - **Guards for small models:** at most 4 actions per turn (enforced by the schema). A turn
   without actions gets a nudge. Repeating the same failure gets flagged.
-- **Debugging:** `NV_DEBUG_TOKENS=1 uv run nw-valley` echoes every generated token to stderr.
+- **Debugging:** every prompt and reply goes to `agents/prompts.log`. `NV_DEBUG_TOKENS=1 uv run nw-valley`
+  echoes every generated token to stderr.
 - **Chat stays out of the game:** agents' `say` messages go from agent to agent inside the Python
   process (and into the dashboard), so they don't pop up in every game window. Messages typed into
   the in-game chat by a human still reach the agents.
