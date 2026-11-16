@@ -36,7 +36,7 @@ internal sealed class ModEntry : Mod
         server = new BridgeServer(Monitor);
         server.Start(Config.BasePort, Config.PortRange);
         jobs = new JobRunner(Monitor, OnJobFinished);
-        janitor = new MenuJanitor(helper, Monitor);
+        janitor = new MenuJanitor(helper, Monitor, () => (int)(Config.MenuDisplaySeconds * 60));
         autoStart = new AutoStart(helper, Monitor);
 
         new Harmony(ModManifest.UniqueID).PatchAll(typeof(ModEntry).Assembly);
@@ -172,6 +172,27 @@ internal sealed class ModEntry : Mod
                     ["fade"] = Game1.fadeToBlack,
                     ["paused"] = Game1.paused,
                     ["freeze"] = p.freezePause,
+                };
+            }
+
+            case "debug_terrain":
+            {
+                // Testing aid: which "Type" values the Back layer of a location uses (path preferences).
+                var loc = Navigation.GetLocation(Str("target") ?? Game1.player.currentLocation.NameOrUniqueName)
+                    ?? throw new CommandException("unknown location");
+                var layer = loc.map.Layers[0];
+                var counts = new Dictionary<string, int>();
+                for (int x = 0; x < layer.LayerWidth; x++)
+                for (int y = 0; y < layer.LayerHeight; y++)
+                {
+                    var type = loc.doesTileHaveProperty(x, y, "Type", "Back") ?? "(none)";
+                    counts[type] = counts.GetValueOrDefault(type) + 1;
+                }
+                var p = Game1.player.TilePoint;
+                return new JObject
+                {
+                    ["types"] = JObject.FromObject(counts),
+                    ["here"] = Game1.player.currentLocation.doesTileHaveProperty(p.X, p.Y, "Type", "Back"),
                 };
             }
 

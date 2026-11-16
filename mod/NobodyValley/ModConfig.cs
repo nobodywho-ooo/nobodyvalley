@@ -24,6 +24,9 @@ internal sealed class ModConfig
     /// </summary>
     public float? UiScale { get; set; } = 0.6f;
 
-    /// <summary>Automatically dismiss end-of-day menus (shipping summary, level ups) and skippable cutscenes.</summary>
+    /// <summary>Automatically dismiss end-of-day menus (shipping summary, level ups), dialogue and cutscenes.</summary>
     public bool AutoDismissMenus { get; set; } = true;
+
+    /// <summary>How long such a screen stays up before it's dismissed (so spectators can see it).</summary>
+    public float MenuDisplaySeconds { get; set; } = 5f;
 }

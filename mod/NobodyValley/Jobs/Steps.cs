@@ -30,7 +30,12 @@ internal static class Steps
             yield break;
         }
 
-        var pc = new PathFindController(p, loc, tile, facing);
+        // Prefer our own path-loving pathfinder; fall back to the game's.
+        PathFindController pc;
+        if (Pathing.FindPath(loc, p.TilePoint, tile, p) is { } path)
+            pc = new PathFindController(path, loc, p, tile) { finalFacingDirection = facing };
+        else
+            pc = new PathFindController(p, loc, tile, facing);
         if (pc.pathToEndPoint == null || pc.pathToEndPoint.Count == 0)
         {
             r.Fail($"no path to {tile.X},{tile.Y}");
