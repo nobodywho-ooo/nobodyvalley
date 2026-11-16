@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 # Default (personality, job) pairs, by game instance order (host first). personas.toml can override them.
@@ -73,7 +74,8 @@ MAP_LEGEND = (
 USEFUL_RECIPES = {"Scarecrow", "Chest", "Basic Fertilizer", "Speed-Gro", "Sprinkler", "Quality Sprinkler", "Bee House", "Furnace"}
 
 
-def format_observation(obs: dict[str, Any]) -> str:
+def format_observation(obs: dict[str, Any], taken: set[str] | None = None) -> str:
+    """The observation as prompt text. `taken`: "x,y" tiles that teammates here will work on (left out of the lists)."""
     me, world, farm = obs["me"], obs["world"], obs["farm"]
     lines = [
         f"[{world['date']}, {world['time']}, {world['weather']}]"
@@ -88,7 +90,6 @@ def format_observation(obs: dict[str, Any]) -> str:
                 None,
                 [
                     f"crops: {', '.join(farm['crops'])}" if farm["crops"] else "no crops yet",
-                    f"the crops are around {farm['crops_around']}" if farm.get("crops_around") else None,
                     f"{farm['crops_needing_water']} need water" if farm["crops_needing_water"] else None,
                     f"{farm['empty_tilled_soil']} empty tilled tiles" if farm["empty_tilled_soil"] else None,
                     f"{farm['dead_crops']} dead crops" if farm["dead_crops"] else None,
@@ -127,13 +128,25 @@ def format_observation(obs: dict[str, Any]) -> str:
         lines.append(f"You're on mine level {obs['mine_level']}. Rocks hide the ladder down (L); monsters (!) attack.")
     if m := obs.get("map"):
         lines.append(f"Map around you (you're @ at {m['you']}):\n{m['grid']}")
-        if m.get("nearby"):
-            lines.append("Nearest: " + "; ".join(f"{k}: {v}" for k, v in m["nearby"].items()) + ".")
+        raw = m.get("nearby", {})
+        nearby = {k: v for k, v in ((k, _drop_tiles(v, taken or set())) for k, v in raw.items()) if v}
+        if nearby:
+            dropped = any(nearby.get(k) != v for k, v in raw.items())
+            lines.append("Nearest: " + "; ".join(f"{k}: {v}" for k, v in nearby.items()) + "."
+                         + (" (Tiles the others here are about to work on are left out.)" if dropped else ""))
     if me.get("location_id") != "Farm":
         # Otherwise agents waking up in their cabin pick crop coordinates off the cabin's map.
         lines.append("You're not on the farm, so the map and coordinates above are of this place, not the farm. "
                      "Farm work without x,y (e.g. water, harvest n) walks to the farm by itself.")
     return "\n".join(lines)
+
+
+def _drop_tiles(coords: str, taken: set[str]) -> str:
+    """Remove taken tiles from a list like "63,17 65,17" (lists with names, like exits, are left alone)."""
+    parts = coords.split(" ")
+    if not taken or not all(re.fullmatch(r"\d+,\d+", p) for p in parts):
+        return coords
+    return " ".join(p for p in parts if p not in taken)
 
 
 def merge_chests(chests: list[str]) -> str:

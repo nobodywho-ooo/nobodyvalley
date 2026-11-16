@@ -142,6 +142,18 @@ class Team:
     def others(self, me: str) -> str:
         return "; ".join(f"{name}: {plan}" for name, plan in self.plans.items() if name != me and plan)
 
+    def taken_tiles(self, me: str, obs: dict[str, Any]) -> set[str]:
+        """"x,y" tiles that teammates in the same place are working on or plan to (so we leave them alone)."""
+        here = obs.get("me", {}).get("location")
+        same_place = {o["name"] for o in obs.get("others", []) if o.get("location") == here}
+        tiles = set()
+        for name, agent in self.members.items():
+            if name != me and name in same_place:
+                for a in ([agent.busy] if agent.busy else []) + agent.queue:
+                    if "x" in a.args:
+                        tiles.add(f"{a.args['x']},{a.args['y']}")
+        return tiles
+
     def say(self, speaker: str, text: str) -> None:
         for name, agent in self.members.items():
             if name != speaker:
@@ -357,7 +369,7 @@ class Agent:
                          "(you can still say something), unless you really need to change plans.")
         team_note = f"\nWhat the others plan: {t}." if (t := self.team.others(self.name)) else ""
         speak_note = "" if may_speak else "\nYou spoke recently, so leave 'say' empty this turn."
-        prompt = (f"What happened:\n{events}\n\n{prompts.format_observation(obs)}{team_note}{plan_note}{speak_note}\n\n"
+        prompt = (f"What happened:\n{events}\n\n{prompts.format_observation(obs, self.team.taken_tiles(self.name, obs))}{team_note}{plan_note}{speak_note}\n\n"
                   f"Your job: {prompts.persona_parts(self._persona())[1]}. What do you do?")
 
         t0 = time.monotonic()

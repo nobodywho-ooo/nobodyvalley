@@ -67,11 +67,16 @@ internal static class TileJobs
             throw new JobFailed($"there's nothing to {verb} at {tile.X},{tile.Y}");
         if (loc.resourceClumps.Any(c => c.occupiesTile(tile.X, tile.Y)))
             throw new JobFailed($"the {what} at {tile.X},{tile.Y} is too big for your basic tools");
+        if (PlayerState.OthersClaims().Contains(v))
+            throw new JobFailed($"someone else is already working on the {what} at {tile.X},{tile.Y}");
+        PlayerState.SetClaim(v);
 
         var walk = new StepResult();
         yield return Steps.WalkAdjacent(tile, walk);
         if (!walk.Ok)
             throw new JobFailed(walk.Error ?? $"can't reach {tile.X},{tile.Y}");
+        if (Describe(loc, v) == null)
+            throw new JobFailed($"the {what} at {tile.X},{tile.Y} is gone - someone else got to it first");
 
         for (int swing = 0; swing < 40; swing++)
         {
