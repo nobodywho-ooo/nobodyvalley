@@ -25,6 +25,12 @@ PAGE = """<!doctype html>
   .name { font-weight: 600; color: var(--c); }
   .meta { color: #999; font-size: 11px; float: right; }
   .doing { margin-top: 3px; }
+  .llm { color: #f6c86b; font-size: 11px; margin-left: 6px; }
+  .llm.waiting { color: #999; }
+  .spin { display: inline-block; width: 9px; height: 9px; margin-right: 4px; vertical-align: -1px;
+          border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%;
+          animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
   .thought { margin-top: 3px; color: #cfcfe8; font-style: italic; }
   .plan { margin-top: 3px; color: #9fd3a8; font-size: 12px; }
   .result { margin-top: 3px; color: #aaa; font-size: 12px; }
@@ -50,8 +56,11 @@ async function refresh() {
   const color = n => colors[names.indexOf(n) % colors.length];
   document.getElementById("agents").innerHTML = names.map(n => {
     const a = s.agents[n];
+    // The panels are re-rendered every poll; a negative delay keeps the spinner turning smoothly across that.
+    const llm = a.llm ? `<span class="llm ${a.llm}"><span class="spin" style="animation-delay:-${(Date.now() % 800) / 1000}s"></span>` +
+      `${a.llm === "waiting" ? "waiting for the model" : "thinking"} ${Math.max(0, Math.floor(s.now - a.llm_since))}s</span>` : "";
     return `<div class="agent" style="--c:${color(n)}">
-      <span class="name">${esc(n)}</span><span class="meta">${esc(a.where)}</span>
+      <span class="name">${esc(n)}</span>${llm}<span class="meta">${esc(a.where)}</span>
       <div class="doing">${esc(a.doing || "idle")}</div>
       ${a.thought ? `<div class="thought">"${esc(a.thought)}"</div>` : ""}
       ${a.plan ? `<div class="plan">Plan: ${esc(a.plan)}</div>` : ""}
@@ -62,7 +71,7 @@ async function refresh() {
     `<div><span class="t">${esc(m.time)}</span><span class="who" style="color:${color(m.from)}">${esc(m.from)}:</span> ${esc(m.text)}</div>`
   ).join("") || "<div style='color:#777'>(quiet)</div>";
 }
-refresh(); setInterval(refresh, 1000);
+refresh(); setInterval(refresh, 500);
 </script>
 </body></html>
 """
@@ -105,7 +114,8 @@ class Dashboard:
 
     def state(self) -> dict[str, Any]:
         with self.lock:
-            return {"agents": dict(self.agents), "chat": list(self.chat), "world": self.world}
+            return {"agents": {n: dict(a) for n, a in self.agents.items()}, "chat": list(self.chat),
+                    "world": self.world, "now": time.time()}
 
     # ---------------------------------------------------------------- serving
 

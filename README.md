@@ -32,7 +32,8 @@ Configure it with `NV_SAVE`, `NV_FARMHANDS` and `NV_DISPLAY` (see the top of the
 kills the instances.
 
 The agents also serve a live dashboard at http://127.0.0.1:8780. It has one panel per agent (what
-it's doing, its latest thought, its plan, the last result) and the chat log. The launcher opens it
+it's doing, its latest thought, its plan, the last result) and the chat log. A spinner shows when an agent
+is waiting for the shared model ("waiting for the model" while other agents' turns are ahead of it, then "thinking"). The launcher opens it
 as a borderless Chrome window in a column to the right of the games, 360 points wide
 (`NV_DASHBOARD_WIDTH`), or on another display with `NV_DASHBOARD_DISPLAY=1`.
 

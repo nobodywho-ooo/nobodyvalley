@@ -450,10 +450,6 @@ class Agent:
                     errors.append(f"Skipped buy: the shops are closed right now ({world.get('time')}). They're open 9am-5pm "
                                   "(Pierre's not on Wednesdays). Do something else until then.")
                 continue
-            if cmd == "craft" and thing.lower() == "chest" and len(obs.get("chests") or []) >= 2:
-                errors.append(f"Skipped craft Chest: the farm already has {len(obs['chests'])} chests, with lots of room. "
-                              "Use store/take with those.")
-                continue
             if cmd == "till" and not has_xy and empty_tilled >= MAX_EMPTY_TILLED:
                 if not any("enough tilled" in e for e in errors):
                     errors.append(f"Skipped till: there are already {empty_tilled} empty tilled tiles waiting for seeds. "
@@ -477,13 +473,21 @@ class Agent:
     async def _ask(self, prompt: str) -> str:
         """ask().completed(), optionally echoing tokens (NV_DEBUG_TOKENS=1)."""
         assert self.chat is not None
-        stream = self.chat.ask(prompt)
-        parts: list[str] = []
-        while (token := await stream.next_token()) is not None:
-            parts.append(token)
-            if DEBUG_TOKENS:
-                print(f"[{self.name}] {token!r}", file=sys.stderr, flush=True)
-        return "".join(parts)
+        # Shown as a spinner on the dashboard. The agents share one model, so a request may first wait
+        # for the others' turns ("waiting") before its first token arrives ("thinking").
+        self._dash(llm="waiting", llm_since=time.time())
+        try:
+            stream = self.chat.ask(prompt)
+            parts: list[str] = []
+            while (token := await stream.next_token()) is not None:
+                if not parts:
+                    self._dash(llm="thinking")
+                parts.append(token)
+                if DEBUG_TOKENS:
+                    print(f"[{self.name}] {token!r}", file=sys.stderr, flush=True)
+            return "".join(parts)
+        finally:
+            self._dash(llm=None, llm_since=None)
 
     def _dash(self, **fields: Any) -> None:
         if self.dashboard:

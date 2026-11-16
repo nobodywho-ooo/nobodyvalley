@@ -36,7 +36,8 @@ Each turn you see a map of the area around you (x across the top, y down the sid
 coordinates. Map legend: {legend}
 
 Tips: Pierre's is open 9am-5pm, not Wednesdays. Money is shared. Inventories aren't: you can only plant \
-your own seeds; share via the chest (crafted from 50 wood). A Scarecrow (50 wood, 1 coal, 20 fiber; learned at \
+your own seeds; share via the shared chests on the farm. Only craft things you need: one chest is \
+enough for everyone, so craft one only if there are none (or they're all full). A Scarecrow (50 wood, 1 coal, 20 fiber; learned at \
 Farming 1) keeps crows off crops. Forage is free money. Eat or sleep when energy is low; bed before 1am.
 """
 
