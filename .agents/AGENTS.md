@@ -60,9 +60,9 @@ knowledge.
   run with `scripts/deploy.sh --start`, check with `--status`, run commands there with `--ssh CMD` (in the
   project folder `~/nw-valley`). Mads' ssh agent asks him to approve every new connection, so all calls go
   through one shared connection (ControlMaster); don't call plain `ssh` there. Same game/SMAPI builds as here;
-  saves sync via Steam Cloud. One display (Dell, 1920x960 usable). No Chrome (the dashboard opens in the
-  default browser, unplaced), and no `rg`. Its disk is nearly full and something else (an Android emulator)
-  uses a lot of memory, so it swaps and turns are slower.
+  saves sync via Steam Cloud. One display (Dell, 1920x960 usable). No `rg`. It's an M4 Pro (this laptop:
+  M5 Pro), so turns are about twice as slow. Watch its disk and memory: other things run there too (an
+  Android emulator was using lots of memory once).
 
 ## Testing workflow
 

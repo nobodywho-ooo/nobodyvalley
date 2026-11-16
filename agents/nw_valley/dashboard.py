@@ -9,11 +9,11 @@ import json
 import shutil
 import socketserver
 import subprocess
+import sys
 import threading
 import time
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 from typing import Any
 
 PAGE = """<!doctype html>
@@ -147,18 +147,12 @@ class Dashboard:
         threading.Thread(target=server.serve_forever, daemon=True).start()
 
     def open_window(self, geometry: str | None) -> None:
-        """Open the dashboard in its own browser window; geometry is "x,y,w,h" in screen points."""
-        chrome = Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
-        profile = Path.home() / ".cache" / "nw-valley-dashboard"
-        if chrome.exists():
-            # Close a dashboard window left over from a previous run (it uses its own Chrome profile).
-            subprocess.run(["pkill", "-f", "--", f"user-data-dir={profile}"], check=False)
-            time.sleep(0.5)
-            args = [str(chrome), f"--app={self.url}", f"--user-data-dir={profile}",
-                    "--no-first-run", "--no-default-browser-check"]
-            if geometry:
-                x, y, w, h = geometry.split(",")
-                args += [f"--window-position={x},{y}", f"--window-size={w},{h}"]
-            subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        elif shutil.which("open"):
-            subprocess.Popen(["open", self.url])
+        """Open the dashboard in a native window (the system web view); geometry is "x,y,w,h" in screen points."""
+        # Close a dashboard window left over from a previous run.
+        subprocess.run(["pkill", "-f", "--", "python[^ ]* -m nw_valley[.]dashboard_window "], check=False)
+        try:
+            subprocess.Popen([sys.executable, "-m", "nw_valley.dashboard_window", self.url, geometry or ""],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except OSError:
+            if shutil.which("open"):
+                subprocess.Popen(["open", self.url])

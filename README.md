@@ -34,7 +34,7 @@ kills the instances.
 The agents also serve a live dashboard at http://127.0.0.1:8780. It has one panel per agent (what
 it's doing, its latest thought, its plan, the last result) and the chat log. A spinner shows when an agent
 is waiting for the shared model ("waiting for the model" while other agents' turns are ahead of it, then "thinking"). The launcher opens it
-as a borderless Chrome window in a column to the right of the games, 360 points wide
+in a native window (the system web view, via pywebview) in a column to the right of the games, 360 points wide
 (`NV_DASHBOARD_WIDTH`), or on another display with `NV_DASHBOARD_DISPLAY=1`.
 
 The mod sets the in-game UI scale to 60%, so the chat box and menus fit the small windows. Change
