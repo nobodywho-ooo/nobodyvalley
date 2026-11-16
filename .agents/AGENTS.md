@@ -134,6 +134,8 @@ Open issues:
     FIFO opened read-write (`<> fifo`) as stdin, which blocks forever instead.
   - SIGTERM makes the game abort in its native teardown (Steam networking/OpenAL), and macOS's
     ReportCrashService then burns CPU for minutes on each report. The scripts stop games with SIGKILL.
+  - `GameLocation.DisplayName` of interiors without their own name (farmhouse, cabins, greenhouse, coops)
+    falls back to the parent's: "Nowhere Farm". Use `Observer.LocationName` for anything agents read.
   - The SMAPI launcher script drops CLI args (except after `--`). Pass settings via env vars
     (`NOBODYVALLEY_HOST/JOIN/LOAD/WINDOW`).
 - **Small-model behaviour:**

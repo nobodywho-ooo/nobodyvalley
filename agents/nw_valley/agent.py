@@ -450,6 +450,10 @@ class Agent:
                     errors.append(f"Skipped buy: the shops are closed right now ({world.get('time')}). They're open 9am-5pm "
                                   "(Pierre's not on Wednesdays). Do something else until then.")
                 continue
+            if cmd == "craft" and thing.lower() == "chest" and len(obs.get("chests") or []) >= 2:
+                errors.append(f"Skipped craft Chest: the farm already has {len(obs['chests'])} chests, with lots of room. "
+                              "Use store/take with those.")
+                continue
             if cmd == "till" and not has_xy and empty_tilled >= MAX_EMPTY_TILLED:
                 if not any("enough tilled" in e for e in errors):
                     errors.append(f"Skipped till: there are already {empty_tilled} empty tilled tiles waiting for seeds. "

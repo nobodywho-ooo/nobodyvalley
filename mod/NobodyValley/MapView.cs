@@ -180,7 +180,8 @@ internal static class MapView
         foreach (var pair in loc.terrainFeatures.Pairs)
         {
             var p = Jobs.Steps.ToPoint(pair.Key);
-            if (!InView(p) && Near(pair.Key) && pair.Value is Tree or HoeDirt)
+            // Crops anywhere on this map, so an agent at its cabin door still finds the field.
+            if (!InView(p) && (pair.Value is HoeDirt || (Near(pair.Key) && pair.Value is Tree)))
                 Glyph(loc, p, doors, note);
         }
     }
@@ -192,8 +193,7 @@ internal static class MapView
             doors[pair.Key] = pair.Value;
         foreach (var b in loc.buildings)
             if (b.humanDoor.X >= 0 && b.GetIndoors() is { } indoors)
-                doors[b.getPointForHumanDoor()] = indoors is FarmHouse house && house.owner is { } owner
-                    ? $"{owner.Name}'s house" : indoors.NameOrUniqueName;
+                doors[b.getPointForHumanDoor()] = indoors.NameOrUniqueName;
         return doors;
     }
 
@@ -204,13 +204,13 @@ internal static class MapView
         foreach (var w in loc.warps)
         {
             var target = Navigation.GetLocation(w.TargetName);
-            string name = target?.DisplayName ?? w.TargetName;
+            string name = target != null ? Observer.LocationName(target) : w.TargetName;
             if (seen.Add(name))
                 yield return (name, new Point(Math.Clamp(w.X, 0, loc.map.Layers[0].LayerWidth - 1), Math.Clamp(w.Y, 0, loc.map.Layers[0].LayerHeight - 1)));
         }
         foreach (var (p, name) in DoorTiles(loc))
         {
-            var display = name.EndsWith("'s house") ? name : Navigation.GetLocation(name)?.DisplayName ?? name;
+            var display = Navigation.GetLocation(name) is { } target ? Observer.LocationName(target) : name;
             if (seen.Add(display))
                 yield return (display, p);
         }

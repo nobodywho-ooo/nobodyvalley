@@ -87,6 +87,7 @@ def format_observation(obs: dict[str, Any]) -> str:
                 None,
                 [
                     f"crops: {', '.join(farm['crops'])}" if farm["crops"] else "no crops yet",
+                    f"the crops are around {farm['crops_around']}" if farm.get("crops_around") else None,
                     f"{farm['crops_needing_water']} need water" if farm["crops_needing_water"] else None,
                     f"{farm['empty_tilled_soil']} empty tilled tiles" if farm["empty_tilled_soil"] else None,
                     f"{farm['dead_crops']} dead crops" if farm["dead_crops"] else None,
@@ -114,8 +115,8 @@ def format_observation(obs: dict[str, Any]) -> str:
     seeds = [x for x in obs.get("seeds_for_sale", []) if "Sapling" not in x]
     if seeds:
         lines.append(f"Pierre sells: {', '.join(seeds)}.")
-    if obs.get("chests"):
-        lines.append("Shared chest: " + "; ".join(obs["chests"]) + ".")
+    if chests := obs.get("chests"):
+        lines.append(f"Shared chests ({len(chests)} on the farm): {merge_chests(chests) or 'all empty'}.")
     if obs.get("forage_here"):
         lines.append(f"There are {obs['forage_here']} forage items here.")
     useful = [r for r in obs.get("recipes", []) if r.split(" (")[0] in USEFUL_RECIPES]
@@ -127,4 +128,22 @@ def format_observation(obs: dict[str, Any]) -> str:
         lines.append(f"Map around you (you're @ at {m['you']}):\n{m['grid']}")
         if m.get("nearby"):
             lines.append("Nearest: " + "; ".join(f"{k}: {v}" for k, v in m["nearby"].items()) + ".")
+    if me.get("location_id") != "Farm":
+        # Otherwise agents waking up in their cabin pick crop coordinates off the cabin's map.
+        lines.append("You're not on the farm, so the map and coordinates above are of this place, not the farm. "
+                     "Farm work without x,y (e.g. water, harvest n) walks to the farm by itself.")
     return "\n".join(lines)
+
+
+def merge_chests(chests: list[str]) -> str:
+    """The chests' contents added up ("Wood x35, Sap x2"; empty chests are "nothing")."""
+    counts: dict[str, int] = {}
+    for chest in chests:
+        if chest == "nothing":
+            continue
+        for part in chest.split(", "):
+            name, sep, n = part.rpartition(" x")
+            if not sep or not n.isdigit():
+                name, n = part, "1"
+            counts[name] = counts.get(name, 0) + int(n)
+    return ", ".join(f"{k} x{v}" if v > 1 else k for k, v in counts.items())

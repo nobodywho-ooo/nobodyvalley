@@ -68,8 +68,8 @@ internal static class MoreJobs
             job.Summary = "Foraged " + string.Join(", ", found.Select(f => $"{f.Value} {f.Key}"));
         }
         job.Summary = picked == 0
-            ? $"Found nothing to forage in {loc.DisplayName} (try the Forest, Mountain or Beach)."
-            : job.Summary + $" in {loc.DisplayName}.";
+            ? $"Found nothing to forage in {Observer.LocationName(loc)} (try the Forest, Mountain or Beach)."
+            : job.Summary + $" in {Observer.LocationName(loc)}.";
     }
 
     public static int ForageCount(GameLocation? loc) =>

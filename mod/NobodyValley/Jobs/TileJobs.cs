@@ -47,7 +47,7 @@ internal static class TileJobs
         // Read (and leave for the auto-dismiss) whatever message popped up.
         string? text = (Game1.activeClickableMenu as DialogueBox)?.getCurrentString();
         job.Summary = Me.currentLocation != before
-            ? $"You went through to {Me.currentLocation.DisplayName}."
+            ? $"You went through to {Observer.LocationName(Me.currentLocation)}."
             : text != null ? $"It says: \"{text.Trim()}\""
             : did ? "Done." : "Nothing happened.";
     }

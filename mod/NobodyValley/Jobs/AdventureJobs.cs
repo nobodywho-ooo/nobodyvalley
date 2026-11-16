@@ -33,10 +33,10 @@ internal static class AdventureJobs
 
         var loc = Me.currentLocation;
         if (!loc.canFishHere())
-            throw new JobFailed($"you can't fish in {loc.DisplayName}");
+            throw new JobFailed($"you can't fish in {Observer.LocationName(loc)}");
         var spot = FishingSpots(loc).OrderBy(s => Steps.Dist(s.stand, Me.TilePoint)).Take(6).ToList();
         if (spot.Count == 0)
-            throw new JobFailed($"no good fishing spot in {loc.DisplayName} (try the Beach, the Mountain lake or the Forest river)");
+            throw new JobFailed($"no good fishing spot in {Observer.LocationName(loc)} (try the Beach, the Mountain lake or the Forest river)");
 
         bool there = false;
         (Point stand, Point water, int facing) chosen = default;
@@ -92,7 +92,7 @@ internal static class AdventureJobs
                 yield return null; // holding the fish up
             Me.CanMove = true;
         }
-        job.Summary += $" in {loc.DisplayName}.";
+        job.Summary += $" in {Observer.LocationName(loc)}.";
     }
 
     /// <summary>Shore tiles next to fairly open water, with the direction to face.</summary>

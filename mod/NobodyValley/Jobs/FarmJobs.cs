@@ -33,6 +33,13 @@ internal static class FarmJobs
             Game1.characterData.Keys.FirstOrDefault(k => k.Equals(target.Trim(), StringComparison.OrdinalIgnoreCase)) is { } villager
                 ? $"you don't know where {villager} is right now - try their home, the town or the saloon"
                 : $"unknown place or person '{target}'");
+        if (resolved.Person == null && Me.currentLocation.NameOrUniqueName == Navigation.GetLocation(resolved.Location)?.NameOrUniqueName)
+        {
+            // Agents that can't see what they're looking for tend to go_to where they already are, in a loop.
+            job.Summary = $"You're already at {Observer.LocationName(Me.currentLocation)}; nothing changed. Use walk x,y, "
+                + "or a bulk action (e.g. harvest, water) that finds things by itself.";
+            yield break;
+        }
         var r = new StepResult();
         yield return Steps.GoToLocation(resolved.Location, r);
         if (!r.Ok)
@@ -54,13 +61,13 @@ internal static class FarmJobs
             var person = resolved.Person();
             int dist = person == null ? 99 : Steps.Dist(person.TilePoint, Me.TilePoint);
             if (dist > 2)
-                throw new JobFailed($"you're in {Me.currentLocation.DisplayName} but couldn't reach {target} ({dist} tiles away)");
+                throw new JobFailed($"you're in {Observer.LocationName(Me.currentLocation)} but couldn't reach {target} ({dist} tiles away)");
             Me.faceGeneralDirection(person!.Position, 0, false, false);
-            job.Summary = $"You are next to {target} in {Me.currentLocation.DisplayName}.";
+            job.Summary = $"You are next to {target} in {Observer.LocationName(Me.currentLocation)}.";
         }
         else
         {
-            job.Summary = $"You arrived at {Me.currentLocation.DisplayName}.";
+            job.Summary = $"You arrived at {Observer.LocationName(Me.currentLocation)}.";
         }
     }
 

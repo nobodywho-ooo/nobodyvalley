@@ -19,7 +19,7 @@ internal static class Observer
             ["me"] = new JObject
             {
                 ["name"] = me.Name,
-                ["location"] = me.currentLocation?.DisplayName ?? "?",
+                ["location"] = LocationName(me.currentLocation, onFarm: true),
                 ["location_id"] = me.currentLocation?.NameOrUniqueName,
                 ["tile"] = new JArray(me.TilePoint.X, me.TilePoint.Y),
                 ["energy"] = (int)me.Stamina,
@@ -45,7 +45,7 @@ internal static class Observer
                 .Select(f => new JObject
                 {
                     ["name"] = f.Name,
-                    ["location"] = f.currentLocation?.DisplayName,
+                    ["location"] = LocationName(f.currentLocation),
                     ["distance"] = f.currentLocation == me.currentLocation ? (int)Vector2.Distance(f.Tile, me.Tile) : null,
                     ["doing"] = PlayerState.GetActivity(f) ?? "nothing in particular",
                 })),
@@ -66,6 +66,7 @@ internal static class Observer
     private static JObject FarmSummary(Farm farm)
     {
         int tilledEmpty = 0, unwatered = 0, dead = 0;
+        var fieldTiles = new List<Vector2>();
         var crops = new Dictionary<string, (int total, int ready)>();
         foreach (var pair in farm.terrainFeatures.Pairs)
         {
@@ -84,6 +85,7 @@ internal static class Observer
             string name = ItemRegistry.GetDataOrErrorItem(dirt.crop.indexOfHarvest.Value).DisplayName;
             var c = crops.GetValueOrDefault(name);
             crops[name] = (c.total + 1, c.ready + (dirt.readyForHarvest() ? 1 : 0));
+            fieldTiles.Add(pair.Key);
             if (dirt.needsWatering() && !dirt.isWatered())
                 unwatered++;
         }
@@ -95,13 +97,42 @@ internal static class Observer
 
         return new JObject
         {
-            ["crops"] = new JArray(crops.Select(c => $"{c.Value.total} {c.Key}" + (c.Value.ready > 0 ? $" ({c.Value.ready} ready to harvest)" : ""))),
+            // "14 Parsnip (1 ready to harvest)" got read as "14 parsnips are ready"; spell out both numbers.
+            ["crops"] = new JArray(crops.Select(c => $"{c.Key} (" + (c.Value.ready == 0 ? $"{c.Value.total} growing"
+                : c.Value.ready == c.Value.total ? $"{c.Value.ready} ripe" : $"{c.Value.ready} ripe, {c.Value.total - c.Value.ready} growing") + ")")),
+            // Where the crops are (the map view only covers the area around the farmer).
+            ["crops_around"] = fieldTiles.Count == 0 ? null
+                : $"{(int)fieldTiles.Average(t => t.X)},{(int)fieldTiles.Average(t => t.Y)}",
             ["crops_needing_water"] = unwatered,
             ["empty_tilled_soil"] = tilledEmpty,
             ["dead_crops"] = dead,
             ["debris_near_field"] = debris,
             ["raining"] = farm.IsRainingHere(),
         };
+    }
+
+    /// <summary>
+    /// A location's name as the agents should see it. Interiors without a name of their own (houses, cabins,
+    /// the greenhouse, ...) report their parent's DisplayName ("Nowhere Farm"), which made agents in their
+    /// cabin think they were out on the farm.
+    /// </summary>
+    /// <param name="onFarm">Add "(on the farm)" to buildings on the farm.</param>
+    public static string LocationName(GameLocation? loc, bool onFarm = false)
+    {
+        if (loc == null)
+            return "?";
+        string suffix = onFarm && loc.GetParentLocation() is Farm ? " (a building on the farm)" : "";
+        if (loc is StardewValley.Locations.FarmHouse house) // also cabins
+        {
+            var owner = house.owner;
+            if (owner != null && owner.UniqueMultiplayerID == Game1.player.UniqueMultiplayerID)
+                return "your house" + suffix;
+            return (owner != null && !string.IsNullOrEmpty(owner.Name) ? $"{owner.Name}'s house" : "a farmhand cabin") + suffix;
+        }
+        var parent = loc.GetParentLocation();
+        if (parent != null && loc.DisplayName == parent.DisplayName)
+            return loc.Name + suffix; // e.g. Greenhouse, Coop, Barn
+        return loc.DisplayName;
     }
 
     private static string Weather()
