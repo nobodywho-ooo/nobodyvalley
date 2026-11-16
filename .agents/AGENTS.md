@@ -12,7 +12,7 @@ knowledge.
   you need to install something system-wide (e.g. `brew install`), say so.
 - **Short polls only.** Never block a tool call for long. Run anything slow (game instances,
   agents, downloads, long jobs) in the background with `nohup … &`, then poll with at most a
-  5-second `sleep` per tool call. Don't call scripts that wait internally (e.g.
+  20-second `sleep` per tool call. Don't call scripts that wait internally (e.g.
   `scripts/test-instance.sh`) in the foreground.
 - **Temporary and downloaded files go in `ideas/`** (scratch in `ideas/tmp/`), never `/tmp`.
   `ideas/` is gitignored, and also holds reference material (StarDojo, stardew-anima, SMAPI
@@ -68,8 +68,13 @@ knowledge.
   Useful commands: `debug_state`, `debug_give item=Wood count=50`, `debug_set_time time=2200`.
 - Test the agent loop without the game: `uv run python -m nw_valley.fake_game`, then
   `uv run nw-valley --base-port 9765`.
-- Full demo: `nohup scripts/start-demo.sh --agents > ideas/tmp/start-demo.out 2>&1 &`. Agent
-  output goes to `agents/agents.log`; the dashboard is at http://127.0.0.1:8780.
+- Full demo: `nohup scripts/start-demo.sh --build --agents > ideas/tmp/start-demo.out 2>&1 &` (takes about
+  a minute; `--stop` stops the games and the agents). Agent output goes to `agents/agents.log`, and every
+  LLM prompt and reply to `agents/prompts.log`: read those to tell model confusion from bugs. The dashboard
+  is at http://127.0.0.1:8780.
+- Python-only changes don't need the games restarted: `pkill -TERM -f bin/nw-valley`, then
+  `cd agents && nohup uv run nw-valley --dashboard-window 1152,34,360,948 > ../ideas/tmp/agents.out 2>&1 &`.
+  (Background processes ignore SIGINT.) Each restart replays the same morning, since the game only saves overnight.
 - Look up game APIs in `ideas/stardew-decompiled/` (decompiled with ilspycmd), rather than
   guessing.
 
@@ -80,22 +85,26 @@ Hybrid actions, the map view, compact JSON, a 32k context, fishing and mining ar
 `--agents`) to pick them up.
 
 Tested on a single-player test instance:
+
 - the map view
 - clear/mine/chop on a tile
 - fishing in the farm pond
 
 Not yet tested:
+
 - the mines (`descend`, bulk `mine` with monsters, leaving)
 - `use`, `till`, `plant`, `water` and `harvest` on a tile
 - buying at Willy's
 - the agents actually using the new map/coordinate actions
 
 Open issues:
+
 - Four agents sharing the model run their turns one after another (no batching):
   - one turn takes ~3.5 s (~4.5 s with the map);
   - all four at once take ~15 s (~25 s with the map).
 
   Benchmark: `ideas/tmp/bench.py`.
+
 - The fishing catch is simulated, without the minigame. Real fishing would mean faking input
   through FishingRod's states (see `ideas/stardew-decompiled/StardewValley.Tools/FishingRod.cs`).
 
@@ -126,7 +135,7 @@ Open issues:
   - Farmhands only know NPCs in locations they've loaded.
   - Farmhands take 20–30s to join after "Joining as …"; start them one at a time.
   - Walking: the vanilla `PathFindController` stops the farmer for a tick on every tile (choppy
-    animation), and in the *focused* window `UpdateControlInput` calls `player.Halt()` every tick when
+    animation), and in the _focused_ window `UpdateControlInput` calls `player.Halt()` every tick when
     no keys are held (no animation at all). `SmoothPathController` and `HaltPatch` handle both.
     Use `debug_trace` to check.
   - SMAPI's console thread spins on `Console.ReadLine()` at EOF, so with stdin on `/dev/null`
