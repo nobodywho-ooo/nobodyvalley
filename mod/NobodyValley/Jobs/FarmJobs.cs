@@ -532,8 +532,11 @@ internal static class FarmJobs
     {
         if (name != null)
             return i.DisplayName.Contains(name, StringComparison.OrdinalIgnoreCase) && i.canBeShipped();
-        return i is SObject o && i.canBeShipped() && o.Category is SObject.VegetableCategory or SObject.FruitsCategory
-            or SObject.flowersCategory or SObject.GreensCategory;
+        // Crops, forage (incl. beach finds like clams, which count as fish), fish and animal products;
+        // not materials (wood, stone, ...) that are needed for crafting.
+        return i is SObject o && i.canBeShipped() && (o.isForage() || o.Category is SObject.VegetableCategory
+            or SObject.FruitsCategory or SObject.flowersCategory or SObject.GreensCategory or SObject.FishCategory
+            or SObject.EggCategory or SObject.MilkCategory or SObject.artisanGoodsCategory or SObject.sellAtPierresAndMarnies);
     }
 
     // ================================================================ buy

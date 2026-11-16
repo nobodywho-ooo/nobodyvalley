@@ -92,7 +92,8 @@ internal sealed class ModEntry : Mod
             lastTracePos = p.Position;
             Monitor.Log($"TRACE t={e.Ticks} tile={p.TilePoint} d=({delta.X:0.#},{delta.Y:0.#}) moving={p.isMoving()} running={p.running} "
                 + $"face={p.FacingDirection} frame={p.FarmerSprite.CurrentFrame} anim={p.FarmerSprite.CurrentAnimation?.Count ?? 0} "
-                + $"ctrl={(p.controller == null ? "-" : p.controller.pathToEndPoint?.Count.ToString())} speed={p.getMovementSpeed():0.##}", LogLevel.Debug);
+                + $"ctrl={(p.controller == null ? "-" : p.controller.pathToEndPoint?.Count.ToString())} speed={p.getMovementSpeed():0.##} "
+                + $"canMove={p.CanMove} pause={p.FarmerSprite.PauseForSingleAnimation} single={p.FarmerSprite.currentSingleAnimation} idx={p.FarmerSprite.currentAnimationIndex} dirs={p.movementDirections.Count}", LogLevel.Debug);
         }
         if (!Context.IsWorldReady)
         {

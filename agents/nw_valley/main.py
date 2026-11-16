@@ -25,7 +25,6 @@ KIND_STYLE = {
     "say": "\033[1m",  # bold
     "plan": "",
     "result": "",
-    "diary": "\033[3m",  # italic
     "info": "\033[2m",
 }
 RESET = "\033[0m"

@@ -30,6 +30,7 @@ knowledge.
   7 GB with 4 agents.
 - **Focus: cooperative farming** of the shared farm, plus foraging, wood, crafting, a shared chest
   and chatting with villagers.
+- **Agents' chat stays out of the game** (dashboard only). No diaries; context resets daily.
 - **Demo polish he asked for:**
   - windowed games tiled in a grid (not fullscreen)
   - thoughts shown in a separate dashboard window (not an in-game overlay)
@@ -90,6 +91,10 @@ knowledge.
     which can route around blocked exits.
   - Farmhands only know NPCs in locations they've loaded.
   - Farmhands take 20–30s to join after "Joining as …"; start them one at a time.
+  - Walking: the vanilla `PathFindController` stops the farmer for a tick on every tile (choppy
+    animation), and in the *focused* window `UpdateControlInput` calls `player.Halt()` every tick when
+    no keys are held (no animation at all). `SmoothPathController` and `HaltPatch` handle both.
+    Use `debug_trace` to check.
   - The SMAPI launcher script drops CLI args (except after `--`). Pass settings via env vars
     (`NOBODYVALLEY_HOST/JOIN/LOAD/WINDOW`).
 - **Small-model behaviour:**

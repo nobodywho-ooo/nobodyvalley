@@ -17,7 +17,6 @@ import os
 import sys
 import time
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Callable
 
 from nobodywho import ChatAsync, ContextShiftOptions, Model, SamplerPresets
@@ -89,8 +88,6 @@ MIN_TURN_GAP_SECONDS = 3.0
 # Keep the chat calm: an agent speaks at most this often (unless answering someone who addressed it).
 MIN_SAY_GAP_SECONDS = 90.0
 DEBUG_TOKENS = bool(os.environ.get("NV_DEBUG_TOKENS"))
-# Diaries survive restarts (one JSON list per farmer).
-DIARY_DIR = Path(os.environ.get("NV_DIARY_DIR", Path(__file__).parent.parent / "diaries"))
 
 
 @dataclass
@@ -104,13 +101,23 @@ class Action:
 
 
 class Team:
-    """Shared between all agents in this process, so each can see what the others have planned."""
+    """Shared between all agents in this process: their plans, and the chat between them.
+
+    The agents' chat stays out of the game (it would pop up in every window); it goes from agent to
+    agent here, and is shown in the dashboard.
+    """
 
     def __init__(self) -> None:
         self.plans: dict[str, str] = {}
+        self.members: dict[str, "Agent"] = {}
 
     def others(self, me: str) -> str:
         return "; ".join(f"{name}: {plan}" for name, plan in self.plans.items() if name != me and plan)
+
+    def say(self, speaker: str, text: str) -> None:
+        for name, agent in self.members.items():
+            if name != speaker:
+                agent.hear(speaker, text)
 
 
 class Agent:
@@ -127,7 +134,6 @@ class Agent:
 
         self.name = f"port{conn.port}"
         self.others: list[str] = []
-        self.diary: list[str] = []
         self.chat: ChatAsync | None = None
 
         self.queue: list[Action] = []  # actions waiting to be started
@@ -151,7 +157,7 @@ class Agent:
             await self._wait_for_event("world_ready")
             hello = await self.conn.request("hello")
         self.name = hello["farmer"]
-        self.diary = self._load_diary()
+        self.team.members[self.name] = self
 
         obs = await self.conn.request("observe")
         self.others = [o["name"] for o in obs.get("others", [])]
@@ -175,11 +181,19 @@ class Agent:
         finally:
             events.cancel()
 
-    def _persona(self) -> str:
+    def _persona(self) -> str | tuple[str, str]:
         return self.persona_override or prompts.DEFAULT_PERSONAS[0]
 
     def _system_prompt(self) -> str:
-        return prompts.system_prompt(self.name, self.others, self._persona(), self.diary, EMOTES)
+        return prompts.system_prompt(self.name, self.others, self._persona(), EMOTES)
+
+    def hear(self, speaker: str, text: str, private: bool = False) -> None:
+        """A chat message from another farmer (another agent, or a human typing in the game)."""
+        self.inbox.append(f"{speaker} says: \"{text}\"")
+        # Only interrupt for messages aimed at us; others are read at the next turn.
+        if private or self.name.lower() in text.lower():
+            self.addressed = True
+            self.wake.set()
 
     async def _wait_for_event(self, name: str) -> dict[str, Any]:
         while True:
@@ -196,11 +210,9 @@ class Agent:
             if kind == "job_done":
                 self._on_job_done(ev)
             elif kind == "chat":
-                self.inbox.append(f"{ev['from']} says: \"{ev['text']}\"")
-                # Only interrupt for messages aimed at us; others are read at the next turn.
-                if ev.get("private") or self.name.lower() in ev["text"].lower():
-                    self.addressed = True
-                    self.wake.set()
+                # Typed into the game's chat (e.g. by a human player); agents talk via the Team.
+                if ev["from"] not in self.team.members:
+                    self.hear(ev["from"], ev["text"], bool(ev.get("private")))
             elif kind == "day_started":
                 await self._new_day(ev.get("date", "a new day"))
             elif kind == "time":
@@ -257,18 +269,7 @@ class Agent:
     async def _new_day(self, date: str) -> None:
         if self.chat is None:
             return
-        # Summarise yesterday into the diary, then start the new day with a fresh context.
-        try:
-            raw = await self.chat.ask(
-                "The day is over. Put a one or two sentence diary entry in 'thought': what got done, and what to do tomorrow. No actions."
-            ).completed()
-            entry = json.loads(raw).get("thought", "").strip()
-            if entry:
-                self.diary.append(entry)
-                self._save_diary()
-                self.print(self.name, "diary", entry)
-        except Exception as e:  # noqa: BLE001 - diary is best-effort
-            log.warning("diary failed for %s: %s", self.name, e)
+        # Start each day with a fresh context (the observation carries everything that matters).
         await self.chat.reset(self._system_prompt(), [])
         self.queue.clear()
         self.busy, self.busy_id = None, None
@@ -327,7 +328,7 @@ class Agent:
         team_note = f"\nWhat the others plan: {t}." if (t := self.team.others(self.name)) else ""
         speak_note = "" if may_speak else "\nYou spoke recently, so leave 'say' empty this turn."
         prompt = (f"What happened:\n{events}\n\n{prompts.format_observation(obs)}{team_note}{plan_note}{speak_note}\n\n"
-                  f"Remember your role: {self._persona()}\nWhat do you do? Prefer work nobody else is doing.")
+                  f"Your job: {prompts.persona_parts(self._persona())[1]}. What do you do?")
 
         t0 = time.monotonic()
         try:
@@ -347,7 +348,7 @@ class Agent:
             self.print(self.name, "say", say)
             if self.dashboard:
                 self.dashboard.said(self.name, say)
-            await self._send("say", text=say)
+            self.team.say(self.name, say)
         if emote := decision.get("emote"):
             await self._send("emote", emote=emote)
 
@@ -448,19 +449,6 @@ class Agent:
             if DEBUG_TOKENS:
                 print(f"[{self.name}] {token!r}", file=sys.stderr, flush=True)
         return "".join(parts)
-
-    def _diary_path(self) -> Path:
-        return DIARY_DIR / f"{self.name}.json"
-
-    def _load_diary(self) -> list[str]:
-        try:
-            return json.loads(self._diary_path().read_text())
-        except (OSError, ValueError):
-            return []
-
-    def _save_diary(self) -> None:
-        DIARY_DIR.mkdir(parents=True, exist_ok=True)
-        self._diary_path().write_text(json.dumps(self.diary[-20:], indent=1))
 
     def _dash(self, **fields: Any) -> None:
         if self.dashboard:

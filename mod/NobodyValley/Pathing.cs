@@ -142,6 +142,9 @@ internal sealed class SmoothPathController : PathFindController
     private readonly Farmer farmer;
     private readonly bool run;
 
+    /// <summary>Set while we halt the farmer ourselves at the end of the path (see <see cref="HaltPatch"/>).</summary>
+    public bool Finishing { get; private set; }
+
     public SmoothPathController(Stack<Point> path, GameLocation location, Farmer farmer, Point endPoint, int facing, bool run)
         : base(path, location, farmer, endPoint)
     {
@@ -161,6 +164,7 @@ internal sealed class SmoothPathController : PathFindController
             pathToEndPoint.Pop();
             if (pathToEndPoint.Count == 0)
             {
+                Finishing = true;
                 farmer.Halt();
                 if (finalFacingDirection != -1)
                     farmer.faceDirection(finalFacingDirection);
@@ -194,4 +198,16 @@ internal sealed class SmoothPathController : PathFindController
 
     private static bool Reached(Rectangle box, Rectangle target) =>
         (target.Contains(box) || (box.Width > target.Width && target.Contains(box.Center))) && target.Bottom - box.Bottom >= 2;
+}
+
+/// <summary>
+/// In the focused window, the game's input handling calls <c>Halt()</c> on the local player every tick
+/// when no movement keys are held, which wipes the walk direction and stops the walk animation (the
+/// farmer glides). Ignore that while our controller is walking the farmer.
+/// </summary>
+[HarmonyLib.HarmonyPatch(typeof(Farmer), nameof(Farmer.Halt))]
+internal static class HaltPatch
+{
+    private static bool Prefix(Farmer __instance) =>
+        __instance.controller is not SmoothPathController { Finishing: false };
 }

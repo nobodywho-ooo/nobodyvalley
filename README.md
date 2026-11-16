@@ -47,7 +47,7 @@ installed are found automatically on ports 8765+):
 cd agents && uv run nw-valley
 ```
 
-Personalities per farmer go in `agents/personas.toml`.
+Personalities per farmer go in `agents/personas.toml`, as `"personality | job"`.
 
 ## How it works
 
@@ -75,7 +75,7 @@ other players see the swings.
 | `craft {item}` | Craft a known recipe; placeable things (scarecrow, chest, ...) get placed by the field |
 | `store {item?}`, `take {item, count}` | Put things into / take things out of the shared chest on the farm |
 | `talk_to {target, item?}` | Walk to a villager and talk (or give `item` as a gift). Reports their actual dialogue and your friendship |
-| `say {text}`, `emote {emote}` | Multiplayer chat message; emote above the head |
+| `say {text}`, `emote {emote}` | Multiplayer chat message (unused by the agents, which chat via the dashboard); emote above the head |
 | `stop` | Cancel the current job |
 | `debug_state`, `debug_set_time {time}`, `debug_give {item, count}`, `debug_menu {kind}`, `debug_terrain {target?}`, `debug_trace {ticks}`, `screenshot` | Debugging aids |
 
@@ -116,8 +116,11 @@ pages), after showing each for `MenuDisplaySeconds` (default 5) so spectators ca
 - **Guards for small models:** at most 4 actions per turn (enforced by the schema). A turn
   without actions gets a nudge. Repeating the same failure gets flagged.
 - **Debugging:** `NV_DEBUG_TOKENS=1 uv run nw-valley` echoes every generated token to stderr.
-- **Daily memory:** at the start of each day, each agent writes a short diary entry. Its chat is
-  then reset with the last few diary entries in the system prompt.
+- **Chat stays out of the game:** agents' `say` messages go from agent to agent inside the Python
+  process (and into the dashboard), so they don't pop up in every game window. Messages typed into
+  the in-game chat by a human still reach the agents.
+- **Fresh context every morning:** the chats are reset each day; the observation carries the state
+  that matters.
 
 Known NobodyWho issue: `ChatAsync.stop_generation()` doesn't stop the generation. The token
 stream just stops yielding, and the next `ask()` waits until the full reply has been generated. So

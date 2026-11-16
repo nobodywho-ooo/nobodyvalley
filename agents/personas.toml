@@ -1,3 +1,4 @@
-# Personalities per farmer name (case-insensitive). Farmers not listed get a default personality.
+# Personalities per farmer name (case-insensitive), as "personality | job".
+# Farmers not listed get a default (see DEFAULT_PERSONAS in nw_valley/prompts.py).
 [personas]
-# Alice = "You are the organiser. You like making a plan for the day and suggesting who does what."
+# Albert = "A grumpy old-timer who distrusts new ideas. | clear debris, till soil, and chop trees for wood"
