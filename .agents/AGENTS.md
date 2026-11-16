@@ -77,8 +77,10 @@ knowledge.
 - Test the agent loop without the game: `uv run python -m nw_valley.fake_game`, then
   `uv run nw-valley --base-port 9765`.
 - Full demo: `nohup scripts/start-demo.sh --build --agents > ideas/tmp/start-demo.out 2>&1 &` (takes about
-  a minute; `--stop` stops the games and the agents). Agent output goes to `agents/agents.log`, and every
-  LLM prompt and reply to `agents/prompts.log`: read those to tell model confusion from bugs. The dashboard
+  a minute; `--stop` stops the games and the agents, and keeps a copy of the save with the logs). Each run
+  logs to `logs/runs/<date>_<time>/` (`logs/latest`): the games' output (timestamped), `start-demo.out`,
+  `agents.log`, and every LLM prompt and reply in `prompts.log`: read those to tell model confusion from
+  bugs. Runs on the Mac Mini: `scripts/deploy.sh --fetch` copies them to `logs/remote-runs/`. The dashboard
   is at http://127.0.0.1:8780.
 - Python-only changes don't need the games restarted: `pkill -TERM -f bin/nw-valley`, then
   `cd agents && nohup uv run nw-valley --dashboard-window 1152,34,360,948 > ../ideas/tmp/agents.out 2>&1 &`.

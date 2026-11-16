@@ -7,6 +7,7 @@
 #   scripts/deploy.sh --stop     # stop the demo there
 #   scripts/deploy.sh --status   # what's running there, and the latest agent output
 #   scripts/deploy.sh --ssh CMD  # run a command there (in the project folder)
+#   scripts/deploy.sh --fetch    # copy its run logs (logs/runs/*) into logs/remote-runs/ here
 #
 # Configure with environment variables:
 #   NV_REMOTE      user@host to deploy to   (default: nobodywho@nobodywhos-mac-mini.local)
@@ -38,6 +39,11 @@ case "${1:-}" in
         exit 0 ;;
     --status)
         remote 'pgrep -lf "StardewModdingAPI|bin/nw-valley" | cut -c1-80; echo; echo "Logs: $(readlink logs/latest)"; tail -n 25 logs/latest/agents.log 2>/dev/null | cut -c1-200'
+        exit 0 ;;
+    --fetch)
+        mkdir -p "$ROOT/logs/remote-runs"
+        sync "$REMOTE:$REMOTE_DIR/logs/runs/" "$ROOT/logs/remote-runs/"
+        echo "Copied to logs/remote-runs/:"; ls "$ROOT/logs/remote-runs"
         exit 0 ;;
     --ssh)
         shift
