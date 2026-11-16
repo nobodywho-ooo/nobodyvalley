@@ -91,8 +91,6 @@ Not yet tested:
 - the agents actually using the new map/coordinate actions
 
 Open issues:
-- Each game instance uses 60–120% CPU even when its farmer is idle. Mads measured ~25% before;
-  not investigated (the machine was also loaded by a VM etc.).
 - Four agents sharing the model run their turns one after another (no batching):
   - one turn takes ~3.5 s (~4.5 s with the map);
   - all four at once take ~15 s (~25 s with the map).
@@ -131,6 +129,9 @@ Open issues:
     animation), and in the *focused* window `UpdateControlInput` calls `player.Halt()` every tick when
     no keys are held (no animation at all). `SmoothPathController` and `HaltPatch` handle both.
     Use `debug_trace` to check.
+  - SMAPI's console thread spins on `Console.ReadLine()` at EOF, so with stdin on `/dev/null`
+    (any background launch) each instance burns a whole core. The launch scripts give SMAPI a
+    FIFO opened read-write (`<> fifo`) as stdin, which blocks forever instead.
   - The SMAPI launcher script drops CLI args (except after `--`). Pass settings via env vars
     (`NOBODYVALLEY_HOST/JOIN/LOAD/WINDOW`).
 - **Small-model behaviour:**

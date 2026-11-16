@@ -82,7 +82,11 @@ mkdir -p "$LOG_DIR"
 launch() { # <log name> <env assignments...>
     local name="$1"; shift
     # Run SMAPI directly (not the StardewValley wrapper script, which opens a Terminal window).
-    (cd "$GAME_DIR" && env "$@" ./StardewModdingAPI > "$LOG_DIR/$name.log" 2>&1 &)
+    # stdin must block rather than hit EOF: SMAPI's console thread loops on Console.ReadLine() and
+    # spins at 100% CPU on /dev/null. A FIFO opened read-write never reaches EOF.
+    local stdin="$LOG_DIR/.$name.stdin"
+    rm -f "$stdin" && mkfifo "$stdin"
+    (cd "$GAME_DIR" && env "$@" ./StardewModdingAPI <> "$stdin" > "$LOG_DIR/$name.log" 2>&1 &)
     echo "Started $name (log: logs/$name.log)"
 }
 
