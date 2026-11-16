@@ -32,6 +32,11 @@ for arg in "$@"; do
             # (Nothing is lost: the game only saves overnight.)
             pkill -KILL -x StardewModdingAPI || true
             pkill -TERM -f 'bin/nw-valley' || true # the agents
+            # Keep the game state with the latest run's logs (the save as of the last night).
+            if [ -d "$LOG_DIR/latest" ] && [ -d "$HOME/.config/StardewValley/Saves/$SAVE" ]; then
+                cp -R "$HOME/.config/StardewValley/Saves/$SAVE" "$LOG_DIR/latest/save-at-stop"
+                date "+Stopped at %Y-%m-%d %H:%M:%S" >> "$LOG_DIR/latest/start-demo.out"
+            fi
             echo "Stopped."
             exit 0 ;;
         --build) BUILD=true ;;
@@ -82,7 +87,14 @@ window_for() { # <index> -> x,y,w,h (content size; the title bar sits above it)
     echo "$((SX + (i % COLS) * CELL_W)),$((SY + (i / COLS) * CELL_H + TITLE_BAR)),$CELL_W,$((CELL_H - TITLE_BAR))"
 }
 
-mkdir -p "$LOG_DIR"
+# Everything from this run goes into its own folder (logs/latest points at the newest one):
+# the games' output (timestamped), this script's output, and the agents' log and LLM prompts.
+RUN_DIR="$LOG_DIR/runs/$(date +%Y-%m-%d_%H%M%S)"
+mkdir -p "$RUN_DIR"
+ln -sfn "runs/$(basename "$RUN_DIR")" "$LOG_DIR/latest"
+exec > >(tee -a "$RUN_DIR/start-demo.out") 2>&1
+echo "Logs: $RUN_DIR"
+
 launch() { # <log name> <env assignments...>
     local name="$1"; shift
     # Run SMAPI directly (not the StardewValley wrapper script, which opens a Terminal window).
@@ -90,25 +102,28 @@ launch() { # <log name> <env assignments...>
     # spins at 100% CPU on /dev/null. A FIFO opened read-write never reaches EOF.
     local stdin="$LOG_DIR/.$name.stdin"
     rm -f "$stdin" && mkfifo "$stdin"
-    # exec, so no shell lingers to wait for (and report on) the game process.
-    (cd "$GAME_DIR" && exec env "$@" ./StardewModdingAPI <> "$stdin" > "$LOG_DIR/$name.log" 2>&1 &)
-    echo "Started $name (log: logs/$name.log)"
+    # Timestamp each line (the console output has none). The outer shell's stderr goes to /dev/null, so
+    # it doesn't report "Killed: 9" when --stop kills the game.
+    ( (cd "$GAME_DIR" && env "$@" ./StardewModdingAPI <> "$stdin" 2>&1 \
+        | /usr/bin/perl -MPOSIX -pe 'BEGIN { $| = 1 } print strftime("%H:%M:%S ", localtime)' > "$RUN_DIR/$name.log") \
+        2> /dev/null & )
+    echo "Started $name (log: logs/latest/$name.log)"
 }
 
 wait_in_game() { # <log name>: wait until that instance has loaded the world
     for _ in $(seq 1 60); do
-        if grep -q "In game as" "$LOG_DIR/$1.log" 2>/dev/null; then
-            grep "In game as" "$LOG_DIR/$1.log" | sed 's/\x1b\[[0-9;]*m//g'
+        if grep -q "In game as" "$RUN_DIR/$1.log" 2>/dev/null; then
+            grep "In game as" "$RUN_DIR/$1.log" | sed 's/\x1b\[[0-9;]*m//g'
             return 0
         fi
         sleep 2
     done
-    echo "$1 didn't get into the game within 2 minutes; see logs/$1.log" >&2
+    echo "$1 didn't get into the game within 2 minutes; see $RUN_DIR/$1.log" >&2
     return 1
 }
 
 wait_joined() { # <farmhand>: wait until it's in the game; fails if it gets stuck before joining
-    local log="$LOG_DIR/$1.log" asked=""
+    local log="$RUN_DIR/$1.log" asked=""
     for _ in $(seq 1 120); do
         if grep -q "In game as" "$log" 2>/dev/null; then
             grep "In game as" "$log" | sed 's/\x1b\[[0-9;]*m//g'
@@ -123,7 +138,7 @@ wait_joined() { # <farmhand>: wait until it's in the game; fails if it gets stuc
         fi
         sleep 1
     done
-    echo "$1 didn't get into the game within 2 minutes; see logs/$1.log" >&2
+    echo "$1 didn't get into the game within 2 minutes; see $RUN_DIR/$1.log" >&2
     return 1
 }
 
@@ -147,5 +162,5 @@ echo "Everyone's in."
 
 if [ "$AGENTS" = true ]; then
     cd "$ROOT/agents"
-    exec uv run nw-valley --dashboard-window "$DASHBOARD_WINDOW"
+    exec uv run nw-valley --dashboard-window "$DASHBOARD_WINDOW" --log "$RUN_DIR/agents.log" --prompt-log "$RUN_DIR/prompts.log"
 fi

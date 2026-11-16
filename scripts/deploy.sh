@@ -3,6 +3,7 @@
 #
 #   scripts/deploy.sh            # build the mod here; copy the mod and the agents over
 #   scripts/deploy.sh --start    # ...and (re)start the demo there (games + agents), in the background
+#   scripts/deploy.sh --start --stop-after 60   # ...and stop it again after 60 minutes
 #   scripts/deploy.sh --stop     # stop the demo there
 #   scripts/deploy.sh --status   # what's running there, and the latest agent output
 #   scripts/deploy.sh --ssh CMD  # run a command there (in the project folder)
@@ -36,7 +37,7 @@ case "${1:-}" in
         remote 'scripts/start-demo.sh --stop'
         exit 0 ;;
     --status)
-        remote 'pgrep -lf "StardewModdingAPI|bin/nw-valley" | cut -c1-80; echo; tail -n 25 agents/agents.log 2>/dev/null | cut -c1-200'
+        remote 'pgrep -lf "StardewModdingAPI|bin/nw-valley" | cut -c1-80; echo; echo "Logs: $(readlink logs/latest)"; tail -n 25 logs/latest/agents.log 2>/dev/null | cut -c1-200'
         exit 0 ;;
     --ssh)
         shift
@@ -45,6 +46,10 @@ case "${1:-}" in
     ""|--start) ;;
     *) echo "unknown option $1" >&2; exit 2 ;;
 esac
+STOP_AFTER=""
+if [ "${2:-}" = "--stop-after" ]; then
+    STOP_AFTER="${3:?--stop-after needs a number of minutes}"
+fi
 
 echo "Building the mod..."
 export DOTNET_ROOT="${DOTNET_ROOT:-/opt/homebrew/opt/dotnet/libexec}"
@@ -65,5 +70,10 @@ if [ "${1:-}" = "--start" ]; then
     fi
     echo "Starting the demo there (about a minute; check with: $0 --status)..."
     # nohup + no terminal: it keeps running after we disconnect.
-    remote 'scripts/start-demo.sh --stop > /dev/null; nohup scripts/start-demo.sh --agents > logs/start-demo.out 2>&1 < /dev/null &'
+    remote 'pkill -f "nv-stop-after" || true; scripts/start-demo.sh --stop > /dev/null; nohup scripts/start-demo.sh --agents > logs/start-demo.out 2>&1 < /dev/null &'
+    if [ -n "$STOP_AFTER" ]; then
+        # A timer there (named, so a new --start cancels it); --stop keeps the save with the run's logs.
+        remote "nohup bash -c ': nv-stop-after; sleep $((STOP_AFTER * 60)); scripts/start-demo.sh --stop' > logs/stop-after.out 2>&1 < /dev/null &"
+        echo "It stops itself in $STOP_AFTER minutes."
+    fi
 fi
