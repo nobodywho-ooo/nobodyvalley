@@ -115,8 +115,10 @@ def format_observation(obs: dict[str, Any]) -> str:
         )
     if obs.get("nearby_villagers"):
         lines.append(f"Villagers nearby: {', '.join(obs['nearby_villagers'])}.")
-    if obs.get("seeds_for_sale"):
-        lines.append(f"Pierre sells: {', '.join(obs['seeds_for_sale'])}.")
+    # Leave out the fruit tree saplings (thousands of gold): just noise early on.
+    seeds = [x for x in obs.get("seeds_for_sale", []) if "Sapling" not in x]
+    if seeds:
+        lines.append(f"Pierre sells: {', '.join(seeds)}.")
     if obs.get("chests"):
         lines.append("Shared chest: " + "; ".join(obs["chests"]) + ".")
     if obs.get("forage_here"):

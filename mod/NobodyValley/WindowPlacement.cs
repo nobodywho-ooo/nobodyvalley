@@ -10,6 +10,19 @@ namespace NobodyValley;
 /// </summary>
 internal static class WindowPlacement
 {
+    /// <summary>Show whose game this is in the window title (handy with several instances).</summary>
+    public static void SetTitle(string? farmer)
+    {
+        try
+        {
+            Game1.game1.Window.Title = farmer == null ? "Stardew Valley" : $"{farmer} - Stardew Valley";
+        }
+        catch (Exception)
+        {
+            // not supported on this platform
+        }
+    }
+
     public static void Apply(IMonitor monitor)
     {
         var spec = Environment.GetEnvironmentVariable("NOBODYVALLEY_WINDOW");

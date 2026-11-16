@@ -54,6 +54,7 @@ internal sealed class ModEntry : Mod
             Game1.options.pauseWhenOutOfFocus = false;
             ApplyUiScale();
             WindowPlacement.Apply(Monitor);
+            WindowPlacement.SetTitle(Game1.player.Name);
             Monitor.Log($"In game as {Game1.player.Name} ({(Context.IsMainPlayer ? "host" : "farmhand")}), agent port {server.Port}.", LogLevel.Info);
             server.Broadcast("world_ready", Hello());
         };
@@ -69,12 +70,30 @@ internal sealed class ModEntry : Mod
             if (e.NewTime % 100 == 0)
                 server.Broadcast("time", new JObject { ["time"] = Observer.FormatTime(e.NewTime), ["time_raw"] = e.NewTime });
         };
-        helper.Events.GameLoop.ReturnedToTitle += (_, _) => jobs.Cancel("returned to title");
+        helper.Events.GameLoop.ReturnedToTitle += (_, _) =>
+        {
+            jobs.Cancel("returned to title");
+            WindowPlacement.SetTitle(null);
+        };
     }
+
+    private int traceTicks;
+    private Microsoft.Xna.Framework.Vector2 lastTracePos;
 
     private void OnUpdateTicked(object? sender, UpdateTickedEventArgs e)
     {
         server.Drain(HandleCommand);
+        if (traceTicks > 0 && Context.IsWorldReady)
+        {
+            // Debug aid (debug_trace): per-tick movement, to diagnose janky walking.
+            traceTicks--;
+            var p = Game1.player;
+            var delta = p.Position - lastTracePos;
+            lastTracePos = p.Position;
+            Monitor.Log($"TRACE t={e.Ticks} tile={p.TilePoint} d=({delta.X:0.#},{delta.Y:0.#}) moving={p.isMoving()} running={p.running} "
+                + $"face={p.FacingDirection} frame={p.FarmerSprite.CurrentFrame} anim={p.FarmerSprite.CurrentAnimation?.Count ?? 0} "
+                + $"ctrl={(p.controller == null ? "-" : p.controller.pathToEndPoint?.Count.ToString())} speed={p.getMovementSpeed():0.##}", LogLevel.Debug);
+        }
         if (!Context.IsWorldReady)
         {
             autoStart.Tick();
@@ -221,6 +240,10 @@ internal sealed class ModEntry : Mod
                 Game1.player.addItemToInventoryBool(item);
                 return new JObject { ["gave"] = $"{n} {item.DisplayName}" };
             }
+
+            case "debug_trace":
+                traceTicks = Math.Clamp(Int("ticks", 300), 1, 3600);
+                return new JObject { ["tracing_ticks"] = traceTicks };
 
             case "debug_set_time":
             {

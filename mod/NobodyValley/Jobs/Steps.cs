@@ -30,29 +30,46 @@ internal static class Steps
             yield break;
         }
 
-        // Prefer our own path-loving pathfinder; fall back to the game's.
-        PathFindController pc;
-        if (Pathing.FindPath(loc, p.TilePoint, tile, p) is { } path)
-            pc = new PathFindController(path, loc, p, tile) { finalFacingDirection = facing };
-        else
-            pc = new PathFindController(p, loc, tile, facing);
-        if (pc.pathToEndPoint == null || pc.pathToEndPoint.Count == 0)
+        // If someone stands in the way, the controller gives up after a few seconds; then re-plan
+        // around whoever is near us.
+        var blocked = new HashSet<Point>();
+        for (int attempt = 0; attempt < 3; attempt++)
         {
-            r.Fail($"no path to {tile.X},{tile.Y}");
-            yield break;
+            // Prefer our own path-loving pathfinder; fall back to the game's.
+            PathFindController pc;
+            if (Pathing.FindPath(loc, p.TilePoint, tile, p, blocked) is { } path)
+                pc = new SmoothPathController(path, loc, p, tile, facing, run: true);
+            else
+                pc = new PathFindController(p, loc, tile, facing);
+            if (pc.pathToEndPoint == null || pc.pathToEndPoint.Count == 0)
+            {
+                r.Fail($"no path to {tile.X},{tile.Y}");
+                yield break;
+            }
+
+            p.setRunning(true, force: true);
+            p.controller = pc;
+            int timeout = pc.pathToEndPoint.Count * 40 + 180;
+            while (p.controller != null && p.currentLocation == loc && timeout-- > 0)
+                yield return null;
+
+            if (p.controller != null)
+            {
+                p.controller = null;
+                p.Halt();
+            }
+            if (p.currentLocation != loc || p.TilePoint == tile)
+                break;
+
+            foreach (var c in loc.characters.Cast<Character>().Concat(loc.farmers))
+            {
+                if (c != p && Dist(c.TilePoint, p.TilePoint) <= 2 && c.TilePoint != tile)
+                    blocked.Add(c.TilePoint);
+            }
+            if (blocked.Count == 0)
+                break; // not blocked by anyone; don't loop
         }
 
-        p.setRunning(true, force: true);
-        p.controller = pc;
-        int timeout = pc.pathToEndPoint.Count * 40 + 180;
-        while (p.controller != null && p.currentLocation == loc && timeout-- > 0)
-            yield return null;
-
-        if (p.controller != null)
-        {
-            p.controller = null;
-            p.Halt();
-        }
         r.Ok = p.currentLocation == loc && p.TilePoint == tile;
         if (!r.Ok)
             r.Error = "got stuck on the way";
