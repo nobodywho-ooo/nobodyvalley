@@ -27,7 +27,10 @@ AGENTS=false
 for arg in "$@"; do
     case "$arg" in
         --stop)
-            pkill -x StardewModdingAPI || true
+            # SIGKILL: on SIGTERM the game aborts in its native teardown (Steam networking, OpenAL),
+            # and macOS's ReportCrashService then spends minutes at 100% CPU on each crash report.
+            # (Nothing is lost: the game only saves overnight.)
+            pkill -KILL -x StardewModdingAPI || true
             echo "Stopped."
             exit 0 ;;
         --build) BUILD=true ;;
@@ -86,7 +89,8 @@ launch() { # <log name> <env assignments...>
     # spins at 100% CPU on /dev/null. A FIFO opened read-write never reaches EOF.
     local stdin="$LOG_DIR/.$name.stdin"
     rm -f "$stdin" && mkfifo "$stdin"
-    (cd "$GAME_DIR" && env "$@" ./StardewModdingAPI <> "$stdin" > "$LOG_DIR/$name.log" 2>&1 &)
+    # exec, so no shell lingers to wait for (and report on) the game process.
+    (cd "$GAME_DIR" && exec env "$@" ./StardewModdingAPI <> "$stdin" > "$LOG_DIR/$name.log" 2>&1 &)
     echo "Started $name (log: logs/$name.log)"
 }
 
@@ -112,7 +116,7 @@ for f in "${FARMHANDS[@]}"; do
         # Occasionally a client gets stuck waiting for the farmhand list; a fresh process fixes it.
         echo "Restarting $f's instance..."
         for pid in $(pgrep -x StardewModdingAPI || true); do
-            if ps eww "$pid" | grep -q "NOBODYVALLEY_JOIN=$f"; then kill "$pid"; fi
+            if ps eww "$pid" | grep -q "NOBODYVALLEY_JOIN=$f"; then kill -KILL "$pid"; fi
         done
         sleep 2
         launch "$f" NOBODYVALLEY_JOIN="$f" NOBODYVALLEY_WINDOW="$(window_for $i)"

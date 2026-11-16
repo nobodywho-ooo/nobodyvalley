@@ -10,7 +10,7 @@ ID="${SRC##*_}"
 TEST="NVTest_$ID"
 
 for pid in $(pgrep -x StardewModdingAPI || true); do
-    if ps eww "$pid" | grep -q "NOBODYVALLEY_LOAD=$TEST"; then kill "$pid"; fi
+    if ps eww "$pid" | grep -q "NOBODYVALLEY_LOAD=$TEST"; then kill -KILL "$pid"; fi # SIGTERM crashes it (see start-demo.sh --stop)
 done
 sleep 1
 
@@ -24,7 +24,7 @@ mkdir -p "$ROOT/logs"
 # stdin is a FIFO opened read-write, so it blocks instead of hitting EOF (SMAPI's console thread
 # spins at 100% CPU on /dev/null; see start-demo.sh).
 rm -f "$ROOT/logs/.test.stdin" && mkfifo "$ROOT/logs/.test.stdin"
-(cd "$GAME_DIR" && NOBODYVALLEY_LOAD="$TEST" NOBODYVALLEY_PORT="${NV_PORT:-8790}" NOBODYVALLEY_WINDOW="${NV_WINDOW:-60,60,1280,800}" ./StardewModdingAPI <> "$ROOT/logs/.test.stdin" > "$ROOT/logs/test.log" 2>&1 &)
+(cd "$GAME_DIR" && exec env NOBODYVALLEY_LOAD="$TEST" NOBODYVALLEY_PORT="${NV_PORT:-8790}" NOBODYVALLEY_WINDOW="${NV_WINDOW:-60,60,1280,800}" ./StardewModdingAPI <> "$ROOT/logs/.test.stdin" > "$ROOT/logs/test.log" 2>&1 &)
 echo "Started test instance on $TEST (log: logs/test.log). Waiting for it to load..."
 for _ in $(seq 1 30); do
     if grep -q "In game as" "$ROOT/logs/test.log" 2>/dev/null; then

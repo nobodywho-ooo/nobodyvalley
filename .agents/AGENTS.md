@@ -132,6 +132,8 @@ Open issues:
   - SMAPI's console thread spins on `Console.ReadLine()` at EOF, so with stdin on `/dev/null`
     (any background launch) each instance burns a whole core. The launch scripts give SMAPI a
     FIFO opened read-write (`<> fifo`) as stdin, which blocks forever instead.
+  - SIGTERM makes the game abort in its native teardown (Steam networking/OpenAL), and macOS's
+    ReportCrashService then burns CPU for minutes on each report. The scripts stop games with SIGKILL.
   - The SMAPI launcher script drops CLI args (except after `--`). Pass settings via env vars
     (`NOBODYVALLEY_HOST/JOIN/LOAD/WINDOW`).
 - **Small-model behaviour:**
