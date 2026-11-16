@@ -135,7 +135,7 @@ internal static class TileJobs
         var v = new Vector2(tile.X, tile.Y);
         var hoe = Steps.FindTool<Hoe>() ?? throw new JobFailed("you don't have a hoe");
         if (loc.terrainFeatures.TryGetValue(v, out var tf) && tf is HoeDirt)
-            throw new JobFailed($"{tile.X},{tile.Y} is already tilled");
+            throw new JobFailed($"{tile.X},{tile.Y} is already tilled - plant seeds there (plant item x,y)");
         if (loc.doesTileHaveProperty(tile.X, tile.Y, "Diggable", "Back") == null)
             throw new JobFailed($"{tile.X},{tile.Y} can't be tilled (only soil can)");
         if (Describe(loc, v) != null)

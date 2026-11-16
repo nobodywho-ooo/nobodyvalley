@@ -145,7 +145,7 @@ internal static class MapView
                     if (Jobs.MoreJobs.IsWildOnion(dirt)) { note("forage", p); return 'f'; }
                     if (dirt.crop == null)
                     {
-                        note("empty tilled soil", p);
+                        note("tilled soil ready for seeds", p);
                         return dirt.isWatered() ? ';' : ',';
                     }
                     if (dirt.readyForHarvest()) { note("ripe crops", p); return '*'; }
