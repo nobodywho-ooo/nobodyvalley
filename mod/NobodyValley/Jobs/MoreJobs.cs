@@ -269,6 +269,13 @@ internal static class MoreJobs
     /// <summary>Take an item out of the chest(s) on the farm.</summary>
     public static IEnumerator Take(Job job, string itemName, int count)
     {
+        // Check all the chests first, rather than walking to one and reporting just that one's contents.
+        var all = Game1.getFarm().objects.Values.OfType<Chest>().Where(ch => ch.playerChest.Value).ToList();
+        if (all.Count > 0 && !all.Any(ch => ch.GetItemsForPlayer().Any(i => i != null && i.DisplayName.Contains(itemName, StringComparison.OrdinalIgnoreCase))))
+        {
+            var have = all.Select(ChestContents).Where(t => t != "nothing").ToList();
+            throw new JobFailed($"none of the {all.Count} chests has '{itemName}'. They have: {(have.Count == 0 ? "nothing" : string.Join("; ", have))}");
+        }
         var chest = new Chest?[1];
         yield return OpenChest(chest, itemName);
         var c = chest[0]!;
