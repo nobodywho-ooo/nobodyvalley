@@ -25,11 +25,13 @@ scripts/start-demo.sh --build --agents
 This builds and installs the mod and starts the host, which loads the save in co-op mode. It then
 starts the farmhand instances one at a time; each auto-joins `localhost` as its character. Each
 instance places its own window in a grid cell, and then the agents run in the terminal. A cold
-start takes about 45 seconds.
+start takes about 45 seconds; a farmhand that gets stuck joining is restarted after 20 seconds.
+Each run's logs go to `logs/runs/<date>_<time>/` (`logs/latest`): the games' output (timestamped),
+the launcher's output, `agents.log` and `prompts.log` (every LLM prompt and reply).
 
 Configure it with `NV_SAVE`, `NV_FARMHANDS` and `NV_DISPLAY` (see the top of the script).
 `swift scripts/screen-bounds.swift list` lists the displays. `scripts/start-demo.sh --stop`
-kills the instances.
+kills the instances and the agents, and keeps a copy of the save with the run's logs.
 
 The agents also serve a live dashboard at http://127.0.0.1:8780. It has one panel per agent (what
 it's doing, its latest thought, its plan, the last result) and the chat log. A spinner shows when an agent
@@ -126,17 +128,19 @@ pages), after showing each for `MenuDisplaySeconds` (default 5) so spectators ca
   long. A constrained decision is fast, bounded and always valid.
 - **When an agent takes a turn:** when its plan is finished or fails, when a chat message
   mentions it by name, on the hour if it's idle, or after 20s of idling. Other chat messages are
-  collected and shown at its next turn, which keeps the four from chatting endlessly. A turn
-  taken mid-plan can only reply in chat (or `stop` first).
+  collected and shown at its next turn, which keeps the four from chatting endlessly. While a
+  plan runs, only being addressed by name gives an agent a turn (which can only reply in chat, or
+  `stop` first); everything else waits for the plan to finish.
 - **Quiet chat:** the prompt asks for `say: ""` unless there's something new to coordinate. Each
   agent speaks at most once per 90s unless someone addresses it by name.
-- **Team awareness:** each prompt includes what the other agents have planned, since they all run
-  in the same process.
+- **Team awareness:** each agent knows the others' jobs, and each prompt includes what they have
+  planned, since they all run in the same process. The coordinate lists leave out tiles that
+  teammates nearby are about to work on, and tile jobs claim their tile in the game.
 - **Bedtime:** from 11pm agents are told to go to bed; after 1am the code sends them. Once in bed,
   an agent takes no turns until morning.
 - **Guards for small models:** at most 4 actions per turn (enforced by the schema). A turn
   without actions gets a nudge. Repeating the same failure gets flagged.
-- **Debugging:** every prompt and reply goes to `agents/prompts.log`. `NV_DEBUG_TOKENS=1 uv run nw-valley`
+- **Debugging:** every prompt and reply goes to `prompts.log` (in the run's log folder, or `agents/`). `NV_DEBUG_TOKENS=1 uv run nw-valley`
   echoes every generated token to stderr.
 - **Chat stays out of the game:** agents' `say` messages go from agent to agent inside the Python
   process (and into the dashboard), so they don't pop up in every game window. Messages typed into
@@ -167,3 +171,9 @@ Restart the game to load the new version.
 
 `ideas/` holds reference material, and isn't committed: StarDojo, stardew-anima, SMAPI source, the
 decompiled game (handy for finding the right game APIs), the NobodyWho docs, and scratch files.
+
+## Status
+
+See "Status" in `.agents/AGENTS.md` for what was done last, what's running where, and the open issues.
+In short: the demo runs (here or on the office Mac Mini via `scripts/deploy.sh`); the last session ended
+with an hour-long run on the Mini whose logs are waiting to be reviewed (`scripts/deploy.sh --fetch`).

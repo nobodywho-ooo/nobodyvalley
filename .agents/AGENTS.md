@@ -88,33 +88,41 @@ knowledge.
 - Look up game APIs in `ideas/stardew-decompiled/` (decompiled with ilspycmd), rather than
   guessing.
 
-## Status (end of last session)
+## Status (end of last session, 2026-11-16 evening)
 
-Hybrid actions, the map view, compact JSON, a 32k context, fishing and mining are implemented and
-**committed, but not yet deployed to the running co-op session**: restart it (`scripts/start-demo.sh --stop`, then
-`--agents`) to pick them up.
+**Running:** the demo was left running on the **Mac Mini** for an hour, with a timer that stops it at about
+20:00 (`scripts/deploy.sh --start --stop-after 60`). Its logs are in `~/nw-valley/logs/runs/2026-11-16_190012/`
+there; `scripts/deploy.sh --fetch` copies them to `logs/remote-runs/` here. **Next: go through those logs**
+(`agents.log` for behaviour, `prompts.log` to see what each agent was shown, the game logs for mod errors),
+and sort what's a bug from what's model confusion. Older runs from that day are all appended in the Mini's
+`agents/agents.log` and `agents/prompts.log`. The demo isn't running on this laptop.
 
-Tested on a single-player test instance:
+Done this session (all committed and deployed):
 
-- the map view
-- clear/mine/chop on a tile
-- fishing in the farm pond
-
-Not yet tested:
-
-- the mines (`descend`, bulk `mine` with monsters, leaving)
-- `use`, `till`, `plant`, `water` and `harvest` on a tile
-- buying at Willy's
-- the agents actually using the new map/coordinate actions
+- Performance: game instances were at ~100% CPU each (SMAPI's console thread spinning on an EOF stdin;
+  now a FIFO), and `--stop` crashed every game (SIGTERM; now SIGKILL), which kept ReportCrashService busy.
+- Agents don't take turns while busy unless addressed (was 14% of the turns, slowing everyone down).
+  Every step's result reaches the agent, and a repeat of the running action means "keep going".
+- Prompt fixes found in `prompts.log`: interiors named properly (a cabin said "Nowhere Farm"), "Parsnip
+  (1 ripe, 13 growing)", rain waters the crops, "tilled soil ready for seeds", chest contents added up,
+  only craft what you need, counts in item names ("Parsnip Seeds n:5"), "none"/"all" placeholders.
+- Agents stay off each other's tiles (claims in tile jobs; the lists leave out teammates' planned tiles).
+- Wild spring onions are forage; `water`/`harvest` don't walk to the farm for nothing.
+- Personas in `agents/personas.toml` (personality + job, each agent sees the others' jobs), random looks
+  per farmer, a dashboard spinner while waiting for the model, fixed-height panels, the dashboard in a
+  native pywebview window, farmhands that get stuck joining restart after 20s, and `scripts/deploy.sh`.
 
 Open issues:
 
-- Four agents sharing the model run their turns one after another (no batching):
-  - one turn takes ~3.5 s (~4.5 s with the map);
-  - all four at once take ~15 s (~25 s with the map).
-
-  Benchmark: `ideas/tmp/bench.py`.
-
+- The Mac Mini (M4 Pro) is about twice as slow as this laptop (M5 Pro): ~10 s per turn with four agents
+  queueing on the shared model. Ideas: a shorter prompt (the map view is the biggest part), or batching.
+- Small-model confusion that's left: going to Pierre's before 9am, "clearing" tilled soil, asking the chest
+  for seeds it doesn't have, `till` on already-tilled tiles (now with a hint in the error).
+- Trees can be walled in by debris (the pathfinder treats debris as solid), so "can't reach" on chop.
+- Screen Sharing in High Performance mode replaces the Mini's Dell with a virtual display; the launcher then
+  tiles onto that. Use Standard mode, or restart the demo after disconnecting.
+- Not yet tested: the mines (`descend`, bulk `mine` with monsters), buying at Willy's (Mads and Jonathan
+  need a rod for their jobs), `plant`/`water` on a tile.
 - The fishing catch is simulated, without the minigame. Real fishing would mean faking input
   through FishingRod's states (see `ideas/stardew-decompiled/StardewValley.Tools/FishingRod.cs`).
 
