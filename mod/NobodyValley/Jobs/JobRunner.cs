@@ -1,0 +1,167 @@
+using System.Collections;
+using StardewModdingAPI;
+using StardewValley;
+
+namespace NobodyValley.Jobs;
+
+/// <summary>Thrown inside a job to abort it with a reason the agent will see.</summary>
+internal sealed class JobFailed : Exception
+{
+    public JobFailed(string reason) : base(reason) { }
+}
+
+/// <summary>A long-running action (walking, tilling, ...) driven one game tick at a time.</summary>
+internal sealed class Job
+{
+    private static int nextId;
+    public int Id { get; } = Interlocked.Increment(ref nextId);
+    public string Action { get; init; } = "";
+    /// <summary>Human-readable description, also shared with other players (e.g. "tilling soil").</summary>
+    public string Activity { get; init; } = "";
+    public Func<Job, IEnumerator> Body { get; init; } = null!;
+
+    /// <summary>Keep ticking while a menu is open (for jobs that answer dialogues themselves).</summary>
+    public bool RunDuringMenus { get; init; }
+
+    /// <summary>Set by the body as it progresses; reported when the job ends.</summary>
+    public string Summary { get; set; } = "";
+}
+
+/// <summary>
+/// Runs at most one <see cref="Job"/> at a time as a stack of nested coroutines.
+///
+/// Inside a coroutine:
+///   yield return null;            -> wait one tick
+///   yield return Wait.Ticks(n);   -> wait n ticks
+///   yield return otherEnumerator; -> run a sub-step to completion, then resume
+///   throw new JobFailed("...");   -> abort the whole job
+/// </summary>
+internal sealed class JobRunner
+{
+    private readonly IMonitor monitor;
+    private readonly Action<Job, bool, string> onFinished;
+    private readonly Stack<IEnumerator> stack = new();
+    private int waitTicks;
+
+    public Job? Current { get; private set; }
+
+    public JobRunner(IMonitor monitor, Action<Job, bool, string> onFinished)
+    {
+        this.monitor = monitor;
+        this.onFinished = onFinished;
+    }
+
+    public void Start(Job job)
+    {
+        Cancel("interrupted by a new action");
+        Current = job;
+        stack.Push(job.Body(job));
+        waitTicks = 0;
+        PlayerState.SetActivity(job.Activity);
+    }
+
+    public void Cancel(string reason)
+    {
+        if (Current == null)
+            return;
+        var job = Current;
+        Reset();
+        StopPlayer();
+        onFinished(job, false, string.IsNullOrEmpty(job.Summary) ? reason : $"{job.Summary} ({reason})");
+    }
+
+    public void Tick()
+    {
+        if (Current == null)
+            return;
+
+        // Freeze while a menu, cutscene or screen transition is up; resume afterwards.
+        if ((Game1.activeClickableMenu != null && !Current.RunDuringMenus) || Game1.eventUp || Game1.isWarping || Game1.fadeToBlack)
+            return;
+
+        if (waitTicks > 0)
+        {
+            waitTicks--;
+            return;
+        }
+
+        var job = Current;
+        try
+        {
+            while (stack.Count > 0)
+            {
+                var top = stack.Peek();
+                if (!top.MoveNext())
+                {
+                    stack.Pop();
+                    continue; // resume the parent in the same tick
+                }
+                switch (top.Current)
+                {
+                    case IEnumerator sub:
+                        stack.Push(sub);
+                        continue;
+                    case Wait w:
+                        waitTicks = w.Count;
+                        return;
+                    default:
+                        return; // null: next tick
+                }
+            }
+            Reset();
+            onFinished(job, true, string.IsNullOrEmpty(job.Summary) ? "done" : job.Summary);
+        }
+        catch (JobFailed f)
+        {
+            Reset();
+            StopPlayer();
+            onFinished(job, false, string.IsNullOrEmpty(job.Summary) ? f.Message : $"{job.Summary}; stopped: {f.Message}");
+        }
+        catch (Exception ex)
+        {
+            monitor.Log($"Job {job.Action} crashed: {ex}", LogLevel.Error);
+            Reset();
+            StopPlayer();
+            onFinished(job, false, $"internal error: {ex.Message}");
+        }
+    }
+
+    private void Reset()
+    {
+        stack.Clear();
+        Current = null;
+        waitTicks = 0;
+        PlayerState.SetActivity(null);
+        PlayerState.SetClaim(null);
+    }
+
+    private static void StopPlayer()
+    {
+        var p = Game1.player;
+        if (p == null)
+            return;
+        p.controller = null;
+        p.Halt();
+    }
+}
+
+internal sealed class Wait
+{
+    public int Count { get; }
+    private Wait(int count) => Count = count;
+    public static Wait Ticks(int n) => new(Math.Max(0, n - 1));
+    public static Wait Seconds(double s) => Ticks((int)(s * 60));
+}
+
+/// <summary>Out-parameter for sub-steps (iterators can't have out/ref params).</summary>
+internal sealed class StepResult
+{
+    public bool Ok { get; set; }
+    public string? Error { get; set; }
+
+    public void Fail(string error)
+    {
+        Ok = false;
+        Error = error;
+    }
+}

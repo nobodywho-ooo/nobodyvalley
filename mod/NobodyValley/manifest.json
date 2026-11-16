@@ -1,0 +1,10 @@
+{
+  "Name": "NobodyValley",
+  "Author": "NobodyWho",
+  "Version": "0.1.0",
+  "Description": "Lets an external LLM agent (via a localhost socket) play the local farmer.",
+  "UniqueID": "nobodywho.NobodyValley",
+  "EntryDll": "NobodyValley.dll",
+  "MinimumApiVersion": "4.0.0",
+  "UpdateKeys": []
+}

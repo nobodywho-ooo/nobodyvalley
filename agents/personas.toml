@@ -1,0 +1,3 @@
+# Personalities per farmer name (case-insensitive). Farmers not listed get a default personality.
+[personas]
+# Alice = "You are the organiser. You like making a plan for the day and suggesting who does what."

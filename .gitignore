@@ -1,0 +1,7 @@
+logs/
+agents.log
+agents/.venv/
+mod/NobodyValley/bin/
+mod/NobodyValley/obj/
+__pycache__/
+agents/diaries/

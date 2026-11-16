@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>NobodyValley</AssemblyName>
+    <RootNamespace>NobodyValley</RootNamespace>
+    <Version>0.1.0</Version>
+    <TargetFramework>net6.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- SMAPI ships Harmony; ModBuildConfig adds the reference. -->
+    <EnableHarmony>true</EnableHarmony>
+    <!-- .NET 6 is EOL but it's what SMAPI 4.x / SDV 1.6 runs on. -->
+    <CheckEolTargetFramework>false</CheckEolTargetFramework>
+    <!-- `dotnet build` copies the mod into <game>/Mods/NobodyValley. Override game path with -p:GamePath=... -->
+    <EnableModDeploy>true</EnableModDeploy>
+    <EnableModZip>false</EnableModZip>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Pathoschild.Stardew.ModBuildConfig" Version="4.4.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Bundled with SMAPI; don't copy into the mod folder. -->
+    <Reference Include="Newtonsoft.Json" HintPath="$(GamePath)/smapi-internal/Newtonsoft.Json.dll" Private="false" />
+  </ItemGroup>
+</Project>
