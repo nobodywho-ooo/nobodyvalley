@@ -21,7 +21,13 @@ PAGE = """<!doctype html>
 <style>
   body { margin: 0; padding: 10px; background: #1d1b26; color: #eee; font: 13px/1.35 -apple-system, sans-serif; }
   h1 { font-size: 14px; margin: 0 0 8px; color: #f6c86b; }
-  .agent { background: #2b2838; border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; border-left: 4px solid var(--c); }
+  /* Fixed-ish height, so the panels don't jump around as the text changes: room for the usual
+     content, and the longer fields are cut off after a few lines (the full text is in a tooltip). */
+  .agent { background: #2b2838; border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; border-left: 4px solid var(--c);
+           min-height: 13em; box-sizing: border-box; }
+  .clamp2, .clamp3 { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
+  .clamp2 { -webkit-line-clamp: 2; }
+  .clamp3 { -webkit-line-clamp: 3; }
   .name { font-weight: 600; color: var(--c); }
   .meta { color: #999; font-size: 11px; float: right; }
   .doing { margin-top: 3px; }
@@ -47,7 +53,7 @@ PAGE = """<!doctype html>
 <div id="chat"></div>
 <script>
 const colors = ["#5fd0e0", "#d08ae8", "#e8c75f", "#7fd67f", "#7f9fe8", "#e87f7f"];
-const esc = s => (s || "").replace(/[&<>]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;"}[c]));
+const esc = s => (s || "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
 async function refresh() {
   let s;
   try { s = await (await fetch("/state")).json(); } catch (e) { return; }
@@ -61,10 +67,10 @@ async function refresh() {
       `${a.llm === "waiting" ? "waiting for the model" : "thinking"} ${Math.max(0, Math.floor(s.now - a.llm_since))}s</span>` : "";
     return `<div class="agent" style="--c:${color(n)}">
       <span class="name">${esc(n)}</span>${llm}<span class="meta">${esc(a.where)}</span>
-      <div class="doing">${esc(a.doing || "idle")}</div>
-      ${a.thought ? `<div class="thought">"${esc(a.thought)}"</div>` : ""}
-      ${a.plan ? `<div class="plan">Plan: ${esc(a.plan)}</div>` : ""}
-      ${a.result ? `<div class="result ${a.result_ok ? "" : "failed"}">${esc(a.result)}</div>` : ""}
+      <div class="doing clamp2">${esc(a.doing || "idle")}</div>
+      ${a.thought ? `<div class="thought clamp3" title="${esc(a.thought)}">"${esc(a.thought)}"</div>` : ""}
+      ${a.plan ? `<div class="plan clamp2" title="${esc(a.plan)}">Plan: ${esc(a.plan)}</div>` : ""}
+      ${a.result ? `<div class="result clamp2 ${a.result_ok ? "" : "failed"}" title="${esc(a.result)}">${esc(a.result)}</div>` : ""}
     </div>`;
   }).join("");
   document.getElementById("chat").innerHTML = s.chat.slice().reverse().map(m =>

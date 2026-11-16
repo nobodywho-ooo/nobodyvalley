@@ -27,6 +27,12 @@ internal sealed class ModConfig
     /// <summary>Automatically dismiss end-of-day menus (shipping summary, level ups), dialogue and cutscenes.</summary>
     public bool AutoDismissMenus { get; set; } = true;
 
+    /// <summary>Give each farmer a random look when the save loads (the same one every time, per name).</summary>
+    public bool RandomLooks { get; set; } = true;
+
+    /// <summary>Change this to roll different random looks.</summary>
+    public int LookSeed { get; set; } = 0;
+
     /// <summary>How long such a screen stays up before it's dismissed (so spectators can see it).</summary>
     public float MenuDisplaySeconds { get; set; } = 5f;
 }

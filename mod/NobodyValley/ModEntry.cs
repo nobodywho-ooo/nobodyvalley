@@ -57,6 +57,8 @@ internal sealed class ModEntry : Mod
         {
             Game1.options.pauseWhenOutOfFocus = false;
             ApplyUiScale();
+            if (Config.RandomLooks)
+                Looks.Randomize(Monitor, Config.LookSeed);
             WindowPlacement.Apply(Monitor);
             WindowPlacement.SetTitle(Game1.player.Name);
             Monitor.Log($"In game as {Game1.player.Name} ({(Context.IsMainPlayer ? "host" : "farmhand")}), agent port {server.Port}.", LogLevel.Info);
@@ -250,6 +252,11 @@ internal sealed class ModEntry : Mod
                 Game1.player.addItemToInventoryBool(item);
                 return new JObject { ["gave"] = $"{n} {item.DisplayName}" };
             }
+
+            case "debug_look":
+                // Testing aid: roll a look with another seed.
+                Looks.Randomize(Monitor, Int("seed", Config.LookSeed));
+                return new JObject { ["hair"] = Game1.player.hair.Value, ["skin"] = Game1.player.skin.Value, ["shirt"] = Game1.player.shirtItem.Value?.ItemId };
 
             case "debug_trace":
                 traceTicks = Math.Clamp(Int("ticks", 300), 1, 3600);

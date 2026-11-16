@@ -133,7 +133,9 @@ Open issues:
   - The NPC route cache ignores `Farm`, so routing uses our own BFS over warps/doors/buildings,
     which can route around blocked exits.
   - Farmhands only know NPCs in locations they've loaded.
-  - Farmhands take 20–30s to join after "Joining as …"; start them one at a time.
+  - Farmhands take 20–30s to join after "Joining as …"; start them one at a time. Started together with
+    the host, the Steam logins collide (`k_EResultDuplicateRequest`) and nobody gets the farmhand list.
+    A farmhand stuck before "Joining as" needs a fresh process; the script restarts it after 20s.
   - Walking: the vanilla `PathFindController` stops the farmer for a tick on every tile (choppy
     animation), and in the _focused_ window `UpdateControlInput` calls `player.Halt()` every tick when
     no keys are held (no animation at all). `SmoothPathController` and `HaltPatch` handle both.

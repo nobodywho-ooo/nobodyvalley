@@ -107,22 +107,40 @@ wait_in_game() { # <log name>: wait until that instance has loaded the world
     return 1
 }
 
+wait_joined() { # <farmhand>: wait until it's in the game; fails if it gets stuck before joining
+    local log="$LOG_DIR/$1.log" asked=""
+    for _ in $(seq 1 120); do
+        if grep -q "In game as" "$log" 2>/dev/null; then
+            grep "In game as" "$log" | sed 's/\x1b\[[0-9;]*m//g'
+            return 0
+        fi
+        # The farmhand list normally arrives within seconds of asking for it; occasionally it never
+        # does, and only a fresh process helps. (Loading the world after "Joining as" can take longer.)
+        if [ -z "$asked" ] && grep -q "Auto-joining" "$log" 2>/dev/null; then asked=$SECONDS; fi
+        if [ -n "$asked" ] && ! grep -q "Joining as" "$log" 2>/dev/null && [ $((SECONDS - asked)) -ge 20 ]; then
+            echo "$1 got stuck waiting for the host's farmhand list."
+            return 1
+        fi
+        sleep 1
+    done
+    echo "$1 didn't get into the game within 2 minutes; see logs/$1.log" >&2
+    return 1
+}
+
 launch host NOBODYVALLEY_HOST="$SAVE" NOBODYVALLEY_WINDOW="$(window_for 0)"
 wait_in_game host
 # Join one at a time: the host is slow to answer while it's sending the world to another farmhand.
 i=1
 for f in "${FARMHANDS[@]}"; do
-    launch "$f" NOBODYVALLEY_JOIN="$f" NOBODYVALLEY_WINDOW="$(window_for $i)"
-    if ! wait_in_game "$f"; then
-        # Occasionally a client gets stuck waiting for the farmhand list; a fresh process fixes it.
+    for attempt in 1 2 3; do
+        launch "$f" NOBODYVALLEY_JOIN="$f" NOBODYVALLEY_WINDOW="$(window_for $i)"
+        wait_joined "$f" && break
         echo "Restarting $f's instance..."
         for pid in $(pgrep -x StardewModdingAPI || true); do
             if ps eww "$pid" | grep -q "NOBODYVALLEY_JOIN=$f"; then kill -KILL "$pid"; fi
         done
         sleep 2
-        launch "$f" NOBODYVALLEY_JOIN="$f" NOBODYVALLEY_WINDOW="$(window_for $i)"
-        wait_in_game "$f" || true
-    fi
+    done
     i=$((i + 1))
 done
 echo "Everyone's in."

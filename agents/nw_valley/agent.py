@@ -138,6 +138,7 @@ class Team:
     def __init__(self) -> None:
         self.plans: dict[str, str] = {}
         self.members: dict[str, "Agent"] = {}
+        self.roles: dict[str, str] = {}  # farmer name -> their job
 
     def others(self, me: str) -> str:
         return "; ".join(f"{name}: {plan}" for name, plan in self.plans.items() if name != me and plan)
@@ -225,7 +226,8 @@ class Agent:
         return self.persona_override or prompts.DEFAULT_PERSONAS[0]
 
     def _system_prompt(self) -> str:
-        return prompts.system_prompt(self.name, self.others, self._persona(), EMOTES)
+        roles = {n: job for n, job in self.team.roles.items() if n != self.name}
+        return prompts.system_prompt(self.name, self.others, self._persona(), EMOTES, roles)
 
     def hear(self, speaker: str, text: str, private: bool = False) -> None:
         """A chat message from another farmer (another agent, or a human typing in the game)."""

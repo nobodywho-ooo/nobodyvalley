@@ -52,11 +52,19 @@ def make_printer(log_file: Path | None, prompt_log: Path | None = None):
     return printer
 
 
-def load_personas(path: Path) -> dict[str, str]:
+def load_personas(path: Path) -> dict[str, tuple[str, str]]:
+    """Farmer name (lowercase) -> (personality, job). Entries are tables, or "personality | job" strings."""
     if not path.exists():
         return {}
     data = tomllib.loads(path.read_text())
-    return {k.lower(): v for k, v in data.get("personas", {}).items()}
+    personas = {}
+    for name, value in data.get("personas", {}).items():
+        if isinstance(value, dict):
+            personas[name.lower()] = (value.get("personality", "").strip(),
+                                      value.get("job", "").strip() or "help wherever you're needed")
+        else:
+            personas[name.lower()] = prompts.persona_parts(value)
+    return personas
 
 
 async def amain(args: argparse.Namespace) -> None:
@@ -83,17 +91,27 @@ async def amain(args: argparse.Namespace) -> None:
     team = Team()
     running: dict[int, asyncio.Task[None]] = {}
 
-    async def start_agent(conn: GameConnection) -> None:
-        hello = await conn.request("hello")
-        name = (hello.get("farmer") or "").lower()
+    def persona_for(conn: GameConnection, hello: dict) -> tuple[str, str]:
         # Instances bind ports in launch order (host first), so the port picks a stable default role.
         index = conn.port - args.base_port
-        persona = personas.get(name) or prompts.DEFAULT_PERSONAS[index % len(prompts.DEFAULT_PERSONAS)]
+        return personas.get((hello.get("farmer") or "").lower()) or prompts.DEFAULT_PERSONAS[index % len(prompts.DEFAULT_PERSONAS)]
+
+    async def start_agent(conn: GameConnection, hello: dict | None = None) -> None:
+        hello = hello or await conn.request("hello")
+        persona = persona_for(conn, hello)
+        if hello.get("farmer"):
+            team.roles[hello["farmer"]] = persona[1]
+        index = conn.port - args.base_port
         agent = Agent(conn, model, persona, args.n_ctx, printer, team=team, start_delay=min(index, 4) * 4.0, dashboard=dashboard)
         running[conn.port] = asyncio.create_task(agent.run())
 
-    for conn in conns:
-        await start_agent(conn)
+    # Everyone's role first, so each agent's prompt can say who does what.
+    hellos = [await conn.request("hello") for conn in conns]
+    for conn, hello in zip(conns, hellos):
+        if hello.get("farmer"):
+            team.roles[hello["farmer"]] = persona_for(conn, hello)[1]
+    for conn, hello in zip(conns, hellos):
+        await start_agent(conn, hello)
 
     # Keep an eye out for instances that join (or come back) later.
     while True:

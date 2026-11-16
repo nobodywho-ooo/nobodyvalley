@@ -17,7 +17,7 @@ SYSTEM_PROMPT = """\
 You are {name}, a farmer in Stardew Valley, sharing one farm with {others}. Together you grow the farm: \
 clear land, till, plant, water every day, harvest, ship crops for money, buy more seeds.
 Personality: {personality}
-Your job: {job}. Leave the others' jobs to them unless yours is done.
+Your job: {job}. Leave the others' jobs to them unless yours is done.{team}
 
 Reply each turn with compact JSON: {{"thought":"one short sentence","actions":[...]}}, optionally with
 "say" (a message to the other farmers, under 15 words; only to coordinate or answer) and "emote" ({emotes}).
@@ -51,13 +51,16 @@ def persona_parts(persona: str | tuple[str, str]) -> tuple[str, str]:
     return personality.strip(), (job.strip() or "help wherever you're needed")
 
 
-def system_prompt(name: str, others: list[str], persona: str | tuple[str, str], emotes: list[str]) -> str:
+def system_prompt(name: str, others: list[str], persona: str | tuple[str, str], emotes: list[str],
+                  roles: dict[str, str] | None = None) -> str:
     personality, job = persona_parts(persona)
+    team = "".join(f"\n{n}'s job: {r}." for n, r in (roles or {}).items())
     return SYSTEM_PROMPT.format(
         name=name,
         others=", ".join(others) if others else "the other farmers",
         personality=personality,
         job=job,
+        team=team,
         emotes=", ".join(emotes),
         legend=MAP_LEGEND,
     )

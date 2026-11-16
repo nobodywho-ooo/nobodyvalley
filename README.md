@@ -48,7 +48,12 @@ installed are found automatically on ports 8765+):
 cd agents && uv run nw-valley
 ```
 
-Personalities per farmer go in `agents/personas.toml`, as `"personality | job"`.
+Personalities per farmer go in `agents/personas.toml`: a `personality` and a `job` each (see the comments
+there). Every agent also sees the others' jobs.
+
+Each farmer gets a random look (the character creator's dice), seeded by their name, so it's the same
+every launch. Set `"LookSeed"` in `Mods/NobodyValley/config.json` to roll new looks, or `"RandomLooks": false`
+to keep the saved ones.
 
 ## How it works
 
