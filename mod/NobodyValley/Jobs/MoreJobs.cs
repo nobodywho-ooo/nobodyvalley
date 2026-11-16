@@ -394,7 +394,7 @@ internal static class MoreJobs
         job.Summary += $" (Friendship: {heartsAfter} heart{(heartsAfter == 1 ? "" : "s")}{(heartsAfter > heartsBefore ? ", up!" : "")})";
     }
 
-    private static void EquipTool()
+    public static void EquipTool()
     {
         if (Me.Items.OfType<Tool>().FirstOrDefault() is { } tool)
             Steps.Equip(tool);

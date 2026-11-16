@@ -329,7 +329,7 @@ internal static class FarmJobs
         job.Summary = $"Planted {planted} {seedLabel}.";
     }
 
-    private static SObject? FindSeeds(string? name)
+    public static SObject? FindSeeds(string? name)
     {
         var seeds = Me.Items.OfType<SObject>().Where(o => o.Category == SObject.SeedsCategory).ToList();
         if (name == null)
@@ -341,7 +341,9 @@ internal static class FarmJobs
 
     // ================================================================ water
 
-    public static IEnumerator Water(Job job)
+    public static IEnumerator Water(Job job) => Water(job, int.MaxValue);
+
+    public static IEnumerator Water(Job job, int max)
     {
         var can = Steps.FindTool<WateringCan>() ?? throw new JobFailed("you don't have a watering can");
         yield return EnsureOnFarm();
@@ -354,7 +356,7 @@ internal static class FarmJobs
 
         var skipped = new HashSet<Vector2>();
         int watered = 0;
-        while (true)
+        while (watered < max)
         {
             var claims = PlayerState.OthersClaims();
             var here = Me.TilePoint;
@@ -395,10 +397,13 @@ internal static class FarmJobs
                 skipped.Add(tile);
             }
         }
-        job.Summary = watered == 0 ? "All crops are already watered." : $"Watered {watered} crops; all crops are now watered.";
+        int left = farm.terrainFeatures.Values.OfType<HoeDirt>().Count(d => d.needsWatering() && !d.isWatered());
+        job.Summary = watered == 0 && left == 0 ? "All crops are already watered."
+            : left == 0 ? $"Watered {watered} crops; all crops are now watered."
+            : $"Watered {watered} crops; {left} still need water.";
     }
 
-    private static IEnumerator Refill(WateringCan can, StepResult r)
+    public static IEnumerator Refill(WateringCan can, StepResult r)
     {
         var loc = Me.currentLocation;
         var here = Me.TilePoint;
@@ -443,14 +448,16 @@ internal static class FarmJobs
 
     // ================================================================ harvest
 
-    public static IEnumerator Harvest(Job job)
+    public static IEnumerator Harvest(Job job) => Harvest(job, int.MaxValue);
+
+    public static IEnumerator Harvest(Job job, int max)
     {
         yield return EnsureOnFarm();
         var farm = Game1.getFarm();
         var skipped = new HashSet<Vector2>();
         var counts = new Dictionary<string, int>();
 
-        while (true)
+        while (counts.Values.Sum() < max)
         {
             var claims = PlayerState.OthersClaims();
             var here = Me.TilePoint;
@@ -544,13 +551,32 @@ internal static class FarmJobs
     public static IEnumerator Buy(Job job, string itemName, int count)
     {
         count = Math.Clamp(count, 1, 99);
+        // Which shop sells it? (Pierre's: seeds etc., Willy's: rods, bait, tackle.)
+        var shops = new[] { (id: "SeedShop", owner: "Pierre", counter: "Buy General", name: "Pierre's"), (id: "FishShop", owner: "Willy", counter: "Buy Fish", name: "Willy's") };
+        KeyValuePair<ISalable, ItemStockInformation> match = default;
+        var shopInfo = shops[0];
+        foreach (var s in shops)
+        {
+            var stockHere = ShopBuilder.GetShopStock(s.id);
+            match = stockHere.FirstOrDefault(x => x.Key.DisplayName.Equals(itemName, StringComparison.OrdinalIgnoreCase));
+            if (match.Key == null)
+                match = stockHere.FirstOrDefault(x => x.Key.DisplayName.Contains(itemName, StringComparison.OrdinalIgnoreCase));
+            if (match.Key != null)
+            {
+                shopInfo = s;
+                break;
+            }
+        }
+        if (match.Key == null)
+            throw new JobFailed($"neither Pierre nor Willy sells '{itemName}' today");
+
         var r = new StepResult();
-        yield return Steps.GoToLocation("SeedShop", r);
+        yield return Steps.GoToLocation(shopInfo.id, r);
         if (!r.Ok)
-            throw new JobFailed(r.Error ?? "couldn't get to Pierre's");
+            throw new JobFailed(r.Error ?? $"couldn't get to {shopInfo.name}");
 
         var shop = Me.currentLocation;
-        var counter = FindActionTile(shop, "Buy General") ?? FindActionTile(shop, "OpenShop SeedShop");
+        var counter = FindActionTile(shop, shopInfo.counter) ?? FindActionTile(shop, $"OpenShop {shopInfo.id}");
         if (counter != null)
         {
             var stand = Navigation.ClosestStandable(shop, new Point(counter.Value.X, counter.Value.Y + 1), 2);
@@ -558,15 +584,8 @@ internal static class FarmJobs
                 yield return Steps.WalkTo(stand.Value, new StepResult(), Steps.Up);
         }
 
-        if (shop.getCharacterFromName("Pierre") == null)
-            throw new JobFailed("Pierre isn't at the counter (the shop is open 9am-5pm, closed Wednesdays)");
-
-        var stock = ShopBuilder.GetShopStock("SeedShop");
-        var match = stock.FirstOrDefault(s => s.Key.DisplayName.Equals(itemName, StringComparison.OrdinalIgnoreCase));
-        if (match.Key == null)
-            match = stock.FirstOrDefault(s => s.Key.DisplayName.Contains(itemName, StringComparison.OrdinalIgnoreCase));
-        if (match.Key == null)
-            throw new JobFailed($"Pierre doesn't sell '{itemName}' today");
+        if (shop.getCharacterFromName(shopInfo.owner) == null)
+            throw new JobFailed($"{shopInfo.owner} isn't at the counter (shops are open about 9am-5pm)");
 
         var salable = match.Key;
         int price = match.Value.Price;
@@ -585,7 +604,7 @@ internal static class FarmJobs
         job.Summary = $"Bought {count} {salable.DisplayName} for {price * count}g. Money left: {Me.Money}g.";
     }
 
-    public static Point? FindActionTile(GameLocation loc, string actionPrefix)
+    public static Point? FindActionTile(GameLocation loc, string actionPrefix, bool exact = false)
     {
         var layer = loc.map.GetLayer("Buildings");
         if (layer == null)
@@ -594,7 +613,9 @@ internal static class FarmJobs
         for (int y = 0; y < layer.LayerHeight; y++)
         {
             var action = loc.doesTileHaveProperty(x, y, "Action", "Buildings");
-            if (action != null && action.StartsWith(actionPrefix, StringComparison.OrdinalIgnoreCase))
+            if (action != null && (exact
+                    ? action.Equals(actionPrefix, StringComparison.OrdinalIgnoreCase) || action.StartsWith(actionPrefix + " ", StringComparison.OrdinalIgnoreCase)
+                    : action.StartsWith(actionPrefix, StringComparison.OrdinalIgnoreCase)))
                 return new Point(x, y);
         }
         return null;

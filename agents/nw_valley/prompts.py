@@ -18,19 +18,22 @@ clear land, till, plant, water every day, harvest, ship crops for money, buy mor
 Personality: {personality}
 Your job: {job}. Leave the others' jobs to them unless yours is done.
 
-Reply each turn with JSON:
-- "thought": one short sentence (shown to spectators).
-- "say": message to the other farmers, under 15 words, or "". Only speak to coordinate or answer a question.
-- "emote": one of {emotes}, or "".
-- "actions": up to 4, done in order, each {{"do": ..., "target": ..., "item": ..., "count": ...}}:
-  go_to(target: place like Farm/home/Pierre's/Saloon/Beach/Town/Forest, or a person)
-  clear_debris(count), till(count), plant(target: seed, count), water, harvest
-  ship(target: item, empty = all crops; paid overnight), buy(target: item, count) at Pierre's
-  eat(target: food), forage(target: place or empty for here, count), chop_trees(count 1-5)
-  craft(target: recipe; scarecrows/chests get placed by the field)
-  talk_to(target: villager, item: optional gift)
-  store(target: item, empty = all but tools & seeds) / take(target: item, count): the shared chest
-  sleep (go to bed, ends your day), stop (cancel your plan; first action only)
+Reply each turn with compact JSON: {{"thought":"one short sentence","actions":[...]}}, optionally with
+"say" (a message to the other farmers, under 15 words; only to coordinate or answer) and "emote" ({emotes}).
+"actions": up to 4, done in order. Each is {{"do":...}} plus only the fields it needs. x,y is a tile on the map
+you're shown; actions with x,y walk there and act on that tile. Without x,y, they work on the nearest n things.
+  go_to target (place: Farm, home, Pierre's, Willy's, Saloon, Beach, Town, Forest, Mountain, Mines; or a person)
+  walk x,y | use x,y (door, person, forage item, ...)
+  chop x,y|n (trees) | mine x,y|n (rocks, ore) | clear x,y|n (weeds, stones, twigs)
+  till x,y|n | plant item(seed) x,y|n | water x,y|n (neither = all) | harvest x,y|n (neither = all)
+  ship item (none = all crops & forage; paid overnight) | buy item n (Pierre's seeds; Willy's rods & bait)
+  eat item | craft item (chests/scarecrows get placed by the field) | store item / take item n (shared chest)
+  forage target(place or none = here) n | fish target(place or none = here) n | descend (mines: ladder down)
+  talk_to target(villager) item(optional gift) | sleep (ends your day) | stop (cancel plan; first only)
+Example: {{"thought":"Clearing the stone next to the field.","actions":[{{"do":"mine","x":62,"y":17}},{{"do":"till","n":4}}]}}
+
+Each turn you see a map of the area around you (x across the top, y down the side) and nearest-first lists of
+coordinates. Map legend: {legend}
 
 Tips: Pierre's is open 9am-5pm, not Wednesdays. Money is shared. Inventories aren't: you can only plant \
 your own seeds; share via the chest (crafted from 50 wood). A Scarecrow (50 wood, 1 coal, 20 fiber; learned at \
@@ -54,8 +57,16 @@ def system_prompt(name: str, others: list[str], persona: str | tuple[str, str], 
         personality=personality,
         job=job,
         emotes=", ".join(emotes),
+        legend=MAP_LEGEND,
     )
 
+
+# Keep in sync with MapView.Legend in the mod.
+MAP_LEGEND = (
+    "@ you, A-Z other farmers, & villager, ! monster, T tree, t sapling, X big stump/boulder, s stone, O ore, "
+    "w weed, k twig, f forage, , tilled, ; tilled+watered, p crop (needs water), P crop (watered), * ripe crop, "
+    "~ water, = path, D door, L ladder down, U ladder up, B shipping bin, C chest, o object, # wall/blocked, . ground"
+)
 
 # Recipes worth telling the agents about (the rest - paths, fences, ... - are just noise).
 USEFUL_RECIPES = {"Scarecrow", "Chest", "Basic Fertilizer", "Speed-Gro", "Sprinkler", "Quality Sprinkler", "Bee House", "Furnace"}
@@ -110,4 +121,10 @@ def format_observation(obs: dict[str, Any]) -> str:
     useful = [r for r in obs.get("recipes", []) if r.split(" (")[0] in USEFUL_RECIPES]
     if useful:
         lines.append(f"Crafting: {', '.join(useful)}.")
+    if obs.get("mine_level"):
+        lines.append(f"You're on mine level {obs['mine_level']}. Rocks hide the ladder down (L); monsters (!) attack.")
+    if m := obs.get("map"):
+        lines.append(f"Map around you (you're @ at {m['you']}):\n{m['grid']}")
+        if m.get("nearby"):
+            lines.append("Nearest: " + "; ".join(f"{k}: {v}" for k, v in m["nearby"].items()) + ".")
     return "\n".join(lines)

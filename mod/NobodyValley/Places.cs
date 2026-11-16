@@ -21,6 +21,7 @@ internal static class Places
         new("Mountain", "the mountain lake", "mountain", "mountains", "lake"),
         new("ScienceHouse", "Robin's carpenter shop", "carpenter", "robin", "science house"),
         new("Forest", "Cindersap Forest", "forest", "cindersap", "woods"),
+        new("Mine", "the mines (entrance)", "mines", "mine", "the mines", "mining", "cave"),
         new("AnimalShop", "Marnie's ranch", "ranch", "marnie"),
         new("BusStop", "the bus stop", "bus stop", "bus"),
         new("Railroad", "the railroad and bathhouse path", "railroad", "train", "tracks"),

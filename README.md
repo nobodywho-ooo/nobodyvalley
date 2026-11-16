@@ -60,18 +60,21 @@ other players see the swings.
 
 | Command | What it does |
 |---|---|
-| `observe` | Status, inventory, time/weather, farm summary (crops, needs water, ready...), what the other farmers are doing, villagers nearby, seeds for sale |
-| `go_to {target}` | Walk across maps to a place (`Saloon`, `Pierre's`, `home`, ...) or a person |
-| `clear_debris {count}` | Clear weeds/stones/twigs near the shared field |
-| `till {count}` | Till soil, growing the shared field outward from a point south of the farmhouse |
-| `plant {seed?, count}` | Plant seeds on empty tilled soil |
-| `water` | Water every crop that needs it, refilling the can at the nearest water |
-| `harvest` | Harvest everything that's ready |
-| `ship {item?}` | Put crops into the shipping bin |
-| `buy {item, count}` | Walk to Pierre's and buy (checks Pierre is there) |
+| `observe` | Status, inventory, time/weather, farm summary, what the other farmers are doing, villagers nearby, seeds for sale, shared chest, and a **map view**: an ASCII grid of the 25×17 tiles around the farmer, plus nearest-first coordinate lists (trees, stones, ore, weeds, forage, crops needing water, ripe crops, empty soil, people, exits, ladders) |
+| `go_to {target}` | Walk across maps to a place (`Saloon`, `Pierre's`, `Willy's`, `Mines`, `home`, ...) or a person; leaves the mines first if needed |
+| `walk {x,y}`, `use {x,y}` | Walk to a tile; "click" a tile (door, person, forage, sign, ...) |
+| `clear_debris {x,y \| count}` | Clear the weed/stone/twig at a tile, or the nearest `count` near the field |
+| `chop_trees {x,y \| count}` | Chop the tree at a tile, or the nearest `count` trees on the farm (full-grown first) |
+| `mine {x,y \| count}` | Break the rock at a tile, or the nearest `count` rocks here (in the mines: watches health, swings at monsters) |
+| `till {x,y \| count}` | Till a tile, or grow the shared field (outward from a point south of the farmhouse) |
+| `plant {seed?, x,y \| count}` | Plant at a tile, or on the nearest empty tilled soil |
+| `water {x,y \| count?}`, `harvest {x,y \| count?}` | One tile, the nearest `count`, or everything |
+| `ship {item?}` | Put things in the shipping bin (default: crops, forage, fish, animal products) |
+| `buy {item, count}` | Buy at Pierre's or Willy's (whichever sells it; checks the owner is there) |
 | `eat {item?}`, `sleep` | Restore energy; go home to bed (answers the sleep prompt) |
-| `forage {target?, count}` | Pick up wild forage (leeks, daffodils, ...) here or in another location |
-| `chop_trees {count}` | Chop trees on the farm (full-grown first) and collect the wood |
+| `forage {target?, count}` | Pick up wild forage here or in another location |
+| `fish {target?, count}` | Fish from the nearest shore. Real cast/hold-up animations, but the catch is **simulated** (no minigame; fish from the game's tables for the spot/season/time) |
+| `descend` | Mines: enter from the entrance (elevator once you've been deep), or take a ladder down |
 | `craft {item}` | Craft a known recipe; placeable things (scarecrow, chest, ...) get placed by the field |
 | `store {item?}`, `take {item, count}` | Put things into / take things out of the shared chest on the farm |
 | `talk_to {target, item?}` | Walk to a villager and talk (or give `item` as a gift). Reports their actual dialogue and your friendship |
@@ -89,7 +92,8 @@ tile and can see e.g. "Albert: watering the crops".
 
 Environment variables let a launcher skip the title screen and place the window:
 `NOBODYVALLEY_HOST=<save>` (host in co-op), `NOBODYVALLEY_JOIN=<farmhand name>`,
-`NOBODYVALLEY_LOAD=<save>` (single-player) and `NOBODYVALLEY_WINDOW=x,y,w,h` (screen points). The
+`NOBODYVALLEY_LOAD=<save>` (single-player), `NOBODYVALLEY_WINDOW=x,y,w,h` (screen points) and
+`NOBODYVALLEY_PORT=<port>` (pin the agent port). The
 mod also clicks through blocking screens (cutscenes, shipping summary, level-ups, letters, dialogue
 pages), after showing each for `MenuDisplaySeconds` (default 5) so spectators can see them.
 
@@ -98,6 +102,12 @@ pages), after showing each for `MenuDisplaySeconds` (default 5) so spectators ca
 - **One `nobodywho.Model`, many `ChatAsync`s:** every agent has its own chat (persona, history),
   all on one loaded model. The default is Qwen3.5-9B (Q4_K_M, 5.4 GB). With 4 agents and 8k
   context each, the process uses about 7 GB. Use `--model` to try others.
+- **Hybrid actions:** most work verbs take either a map tile (`{"do":"chop","x":63,"y":13}`, picked
+  from the map view) or a count for bulk work (`{"do":"water","n":5}`, or no `n` = all).
+- **Compact JSON:** the schema uses llguidance's `"x-guidance": {"whitespace_flexible": false}` and
+  only `thought`/`actions` are required, so replies have no whitespace or empty fields (~3× fewer tokens).
+- **Context:** 32k tokens per agent by default (`--n-ctx`). Qwen3.5 is a hybrid model (only 8 of 32
+  layers have a KV cache), so that's ~1 GB per agent.
 - **Structured decisions, not tool calls.** Each turn is one generation, constrained by NobodyWho's
   JSON-schema sampler to `{"thought", "say", "emote", "actions": [up to 4]}`, with length limits
   on every field. The actions then run one after another in the game. We started with tool
@@ -129,9 +139,10 @@ we can't cut off runaway replies, and rely on the schema's length limits instead
 ## Development
 
 ```sh
-scripts/test-instance.sh            # single-player test instance on a copy of a save (doesn't touch the real one)
+NV_WINDOW=x,y,w,h scripts/test-instance.sh [save]   # single-player test instance on a copy of a save, on port 8790
+                                                  # (outside the agents' range, so they don't pick it up)
 cd agents
-uv run python -m nw_valley.cli observe          # poke the mod by hand
+uv run python -m nw_valley.cli --port 8790 observe    # poke the mod by hand
 uv run python -m nw_valley.cli till count=5     # waits for the job and prints the result
 uv run python -m nw_valley.cli screenshot       # whole-map screenshot into the game's Screenshots folder
 uv run python -m nw_valley.cli debug_set_time time=900

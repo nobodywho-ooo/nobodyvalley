@@ -58,9 +58,13 @@ knowledge.
 
 ## Testing workflow
 
-- Single-player test instance on a copy of a save (port 8769 while the co-op game uses
-  8765–8768): `NV_WINDOW=x,y,w,h nohup scripts/test-instance.sh > ideas/tmp/test-instance.out 2>&1 &`
-- Drive the mod by hand: `cd agents && uv run python -m nw_valley.cli --port 8769 <cmd> key=value`.
+- Single-player test instance on a copy of a save, pinned to port 8790 (outside the 8765+ range the
+  agents scan, so they don't adopt it): `NV_WINDOW=x,y,w,h nohup scripts/test-instance.sh [save] > ideas/tmp/test-instance.out 2>&1 &`.
+  Running it with a different save leaves the previous test instance running; kill it first. Use
+  `scripts/test-instance.sh Nowhere_454507774` (a copy of the co-op save) for anything that needs a later
+  date, e.g. the mines (blocked by a landslide until day 5).
+- Drive the mod by hand: `cd agents && uv run python -m nw_valley.cli --port 8790 <cmd> key=value`
+  (run one job at a time; a new job cancels the running one).
   Useful commands: `debug_state`, `debug_give item=Wood count=50`, `debug_set_time time=2200`.
 - Test the agent loop without the game: `uv run python -m nw_valley.fake_game`, then
   `uv run nw-valley --base-port 9765`.
@@ -68,6 +72,34 @@ knowledge.
   output goes to `agents/agents.log`; the dashboard is at http://127.0.0.1:8780.
 - Look up game APIs in `ideas/stardew-decompiled/` (decompiled with ilspycmd), rather than
   guessing.
+
+## Status (end of last session)
+
+Hybrid actions, the map view, compact JSON, a 32k context, fishing and mining are implemented and
+**committed, but not yet deployed to the running co-op session**: restart it (`scripts/start-demo.sh --stop`, then
+`--agents`) to pick them up.
+
+Tested on a single-player test instance:
+- the map view
+- clear/mine/chop on a tile
+- fishing in the farm pond
+
+Not yet tested:
+- the mines (`descend`, bulk `mine` with monsters, leaving)
+- `use`, `till`, `plant`, `water` and `harvest` on a tile
+- buying at Willy's
+- the agents actually using the new map/coordinate actions
+
+Open issues:
+- Each game instance uses 60–120% CPU even when its farmer is idle. Mads measured ~25% before;
+  not investigated (the machine was also loaded by a VM etc.).
+- Four agents sharing the model run their turns one after another (no batching):
+  - one turn takes ~3.5 s (~4.5 s with the map);
+  - all four at once take ~15 s (~25 s with the map).
+
+  Benchmark: `ideas/tmp/bench.py`.
+- The fishing catch is simulated, without the minigame. Real fishing would mean faking input
+  through FishingRod's states (see `ideas/stardew-decompiled/StardewValley.Tools/FishingRod.cs`).
 
 ## Gotchas learned the hard way
 
@@ -80,11 +112,15 @@ knowledge.
     that define tools.
   - Python's `HTTPServer.server_bind()` calls `getfqdn()`, which takes ~30s on this Mac. The
     dashboard overrides it.
+  - Compact constrained JSON: `"x-guidance": {"whitespace_flexible": false}` in the schema works.
 - **SMAPI/Stardew:**
   - SMAPI suppresses `UpdateTicked` while the game is saving.
   - Never click menus repeatedly: `ShippingMenu.okClicked()` restarts its fade-out on every
     call, so only click when `CanReceiveInput()`.
   - `Event.skipEvent()` doesn't set `skipped`; set it yourself.
+  - `LevelUpMenu.receiveLeftClick` is empty (it polls the mouse); call `okButtonClicked()`.
+  - The game's pathfinder ignores characters (`pathfinding: true`), so routes go through people.
+  - `logs/test.log` can contain NUL bytes; use `rg -a`.
   - Building doors need `building.doAction`, map doors need `location.checkAction`, edge warps
     need an explicit `Game1.warpFarmer`.
   - The NPC route cache ignores `Farm`, so routing uses our own BFS over warps/doors/buildings,

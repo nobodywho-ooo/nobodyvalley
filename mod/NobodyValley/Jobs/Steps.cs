@@ -109,6 +109,14 @@ internal static class Steps
         // Map connections we couldn't use (e.g. an exit blocked by debris); route around them.
         var blocked = new HashSet<(string, string)>();
         string? lastError = null;
+        // The mines have no warps out: take the ladder up first.
+        if (Game1.player.currentLocation is StardewValley.Locations.MineShaft && !locationName.StartsWith("UndergroundMine"))
+        {
+            Game1.warpFarmer("Mine", 23, 8, false);
+            for (int i = 0; i < 300 && Game1.player.currentLocation is StardewValley.Locations.MineShaft; i++)
+                yield return null;
+            yield return Wait.Ticks(10);
+        }
         for (int hops = 0; hops < 20; hops++)
         {
             var p = Game1.player;

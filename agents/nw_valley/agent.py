@@ -2,7 +2,7 @@
 
 Each turn is a single generation constrained (by NobodyWho's JSON-schema sampler) to a decision like
 
-    {"thought": "...", "say": "", "emote": "", "actions": [{"do": "till", "count": 10}, {"do": "water"}]}
+    {"thought":"...","actions":[{"do":"chop","x":63,"y":13},{"do":"water","n":5}]}
 
 We used tool calling at first, but small models tend to narrate between tool calls (and hallucinate
 the results); a constrained one-shot decision is faster, bounded in length, and always valid.
@@ -29,27 +29,43 @@ log = logging.getLogger(__name__)
 
 EMOTES = ["happy", "sad", "heart", "exclamation", "question", "angry", "laugh", "surprised", "hi", "music", "yes", "no", "sleep"]
 
-# action -> (mod argument that "target" maps to, mod argument that "item" maps to, takes a count)
-ACTIONS: dict[str, tuple[str | None, str | None, bool]] = {
-    "go_to": ("target", None, False),
-    "clear_debris": (None, None, True),
-    "till": (None, None, True),
-    "plant": ("seed", None, True),
-    "water": (None, None, False),
-    "harvest": (None, None, False),
-    "ship": ("item", None, False),
-    "buy": ("item", None, True),
-    "eat": ("item", None, False),
-    "forage": ("target", None, True),
-    "chop_trees": (None, None, True),
-    "craft": ("item", None, False),
-    "talk_to": ("target", "item", False),
-    "store": ("item", None, False),
-    "take": ("item", None, True),
-    "sleep": (None, None, False),
-    "stop": (None, None, False),
+@dataclass(frozen=True)
+class Spec:
+    """How a decision's action maps onto a mod command."""
+
+    cmd: str  # mod command
+    target: str | None = None  # mod argument the "target" field maps to
+    item: str | None = None  # mod argument the "item" field maps to
+    n: bool = False  # takes a count ("n")
+    xy: bool = False  # can act on a map tile ("x", "y")
+    needs: tuple[str, ...] = ()  # fields that must be present ("target", "item", "xy")
+
+
+# Most work actions act on one map tile (x,y), or in bulk on the nearest n (or all) things.
+ACTIONS: dict[str, Spec] = {
+    "go_to": Spec("go_to", target="target", needs=("target",)),
+    "walk": Spec("walk", xy=True, needs=("xy",)),
+    "use": Spec("use", xy=True, needs=("xy",)),
+    "clear": Spec("clear_debris", n=True, xy=True),
+    "chop": Spec("chop_trees", n=True, xy=True),
+    "mine": Spec("mine", n=True, xy=True),
+    "till": Spec("till", n=True, xy=True),
+    "plant": Spec("plant", item="seed", n=True, xy=True),
+    "water": Spec("water", n=True, xy=True),
+    "harvest": Spec("harvest", n=True, xy=True),
+    "ship": Spec("ship", item="item"),
+    "buy": Spec("buy", item="item", n=True, needs=("item",)),
+    "eat": Spec("eat", item="item"),
+    "forage": Spec("forage", target="target", n=True),
+    "fish": Spec("fish", target="target", n=True),
+    "descend": Spec("descend"),
+    "craft": Spec("craft", item="item", needs=("item",)),
+    "talk_to": Spec("talk_to", target="target", item="item", needs=("target",)),
+    "store": Spec("store", item="item"),
+    "take": Spec("take", item="item", n=True, needs=("item",)),
+    "sleep": Spec("sleep"),
+    "stop": Spec("stop"),
 }
-REQUIRED_TARGET = {"go_to", "buy", "craft", "talk_to", "take"}
 # Don't till more when this much tilled soil is already waiting for seeds.
 MAX_EMPTY_TILLED = 30
 
@@ -57,10 +73,12 @@ MAX_ACTIONS_PER_TURN = 4
 
 DECISION_SCHEMA = {
     "type": "object",
+    # Compact JSON: no whitespace, and fields that aren't needed are simply left out (fewer tokens).
+    "x-guidance": {"whitespace_flexible": False},
     "properties": {
         "thought": {"type": "string", "maxLength": 160},
         "say": {"type": "string", "maxLength": 100},
-        "emote": {"enum": [""] + EMOTES},
+        "emote": {"enum": EMOTES},
         "actions": {
             "type": "array",
             "maxItems": MAX_ACTIONS_PER_TURN,
@@ -70,14 +88,16 @@ DECISION_SCHEMA = {
                     "do": {"enum": list(ACTIONS)},
                     "target": {"type": "string", "maxLength": 40},
                     "item": {"type": "string", "maxLength": 40},
-                    "count": {"type": "integer", "minimum": 1, "maximum": 25},
+                    "x": {"type": "integer", "minimum": 0, "maximum": 200},
+                    "y": {"type": "integer", "minimum": 0, "maximum": 200},
+                    "n": {"type": "integer", "minimum": 1, "maximum": 25},
                 },
                 "required": ["do"],
                 "additionalProperties": False,
             },
         },
     },
-    "required": ["thought", "say", "emote", "actions"],
+    "required": ["thought", "actions"],
     "additionalProperties": False,
 }
 
@@ -96,7 +116,9 @@ class Action:
     args: dict[str, Any] = field(default_factory=dict)
 
     def describe(self) -> str:
-        a = ", ".join(str(v) for v in self.args.values())
+        a = ", ".join(f"{v}" for k, v in self.args.items() if k not in ("x", "y"))
+        if "x" in self.args:
+            a = f"{self.args['x']},{self.args['y']}" + (f", {a}" if a else "")
         return f"{self.cmd}({a})" if a else self.cmd
 
 
@@ -391,20 +413,25 @@ class Agent:
         farmers = {n.lower() for n in self.others}
         for item in raw:
             cmd = item.get("do", "")
-            if cmd not in ACTIONS:
+            spec = ACTIONS.get(cmd)
+            if spec is None:
                 continue
-            arg_name, item_arg, takes_count = ACTIONS[cmd]
             args: dict[str, Any] = {}
             target = (item.get("target") or "").strip()
-            if arg_name and target:
-                args[arg_name] = target
-            elif cmd in REQUIRED_TARGET:
-                errors.append(f"'{cmd}' needs a target, so it was skipped.")
+            thing = (item.get("item") or "").strip()
+            has_xy = isinstance(item.get("x"), int) and isinstance(item.get("y"), int)
+            missing = [f for f in spec.needs if not {"target": target, "item": thing, "xy": has_xy}[f]]
+            if missing:
+                errors.append(f"'{cmd}' needs {' and '.join('x,y' if m == 'xy' else m for m in missing)}, so it was skipped.")
                 continue
-            if item_arg and (extra := (item.get("item") or "").strip()):
-                args[item_arg] = extra
-            if takes_count and item.get("count"):
-                args["count"] = item["count"]
+            if spec.target and target:
+                args[spec.target] = target
+            if spec.item and thing:
+                args[spec.item] = thing
+            if spec.xy and has_xy:
+                args["x"], args["y"] = item["x"], item["y"]
+            elif spec.n and item.get("n"):
+                args["count"] = item["n"]
             if cmd == "talk_to" and target.lower() in farmers:
                 errors.append(f"Skipped talk_to {target}: that's a fellow farmer - use 'say' to talk to them. "
                               "talk_to is for villagers.")
@@ -419,20 +446,24 @@ class Agent:
                                   "(crops, forage), paid out overnight - help with that instead.")
                 continue
             if cmd == "buy" and shop_closed:
-                if not any("Pierre's is closed" in e for e in errors):
-                    errors.append(f"Skipped buy: Pierre's is closed right now ({world.get('time')}). It's open 9am-5pm, "
-                                  "except Wednesdays. Do something else until then.")
+                if not any("shops are closed" in e for e in errors):
+                    errors.append(f"Skipped buy: the shops are closed right now ({world.get('time')}). They're open 9am-5pm "
+                                  "(Pierre's not on Wednesdays). Do something else until then.")
                 continue
-            if cmd == "till" and empty_tilled >= MAX_EMPTY_TILLED:
+            if cmd == "till" and not has_xy and empty_tilled >= MAX_EMPTY_TILLED:
                 if not any("enough tilled" in e for e in errors):
                     errors.append(f"Skipped till: there are already {empty_tilled} empty tilled tiles waiting for seeds. "
                                   "Plant (or get seeds) instead of tilling more.")
                 continue
-            # Merge repeats like till(4) -> till(4), or water -> water.
+            # Merge bulk repeats like till(4) -> till(4), or water -> water.
             prev = actions[-1] if actions else None
-            if prev and prev.cmd == cmd and {k: v for k, v in prev.args.items() if k != "count"} == {k: v for k, v in args.items() if k != "count"}:
-                if takes_count:
-                    prev.args["count"] = min(25, prev.args.get("count", 10) + args.get("count", 10))
+            if prev and prev.cmd == cmd and not has_xy and "x" not in prev.args and \
+                    {k: v for k, v in prev.args.items() if k != "count"} == {k: v for k, v in args.items() if k != "count"}:
+                if spec.n:
+                    if "count" in prev.args and "count" in args:
+                        prev.args["count"] = min(25, prev.args["count"] + args["count"])
+                    else:
+                        prev.args.pop("count", None)  # one of them meant "all"
                 continue
             actions.append(Action(cmd, args))
         if any(a.cmd == "stop" for a in actions[1:]):
@@ -466,7 +497,7 @@ class Agent:
         action = self.queue.pop(0)
         self.busy, self.busy_id = action, None
         try:
-            reply = await self.conn.request(action.cmd, **action.args)
+            reply = await self.conn.request(ACTIONS[action.cmd].cmd, **action.args)
             self.busy_id = reply.get("job_id")
         except GameError as e:
             self.busy = None

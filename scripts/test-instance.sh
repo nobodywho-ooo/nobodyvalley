@@ -21,7 +21,7 @@ mv "$SAVES/$TEST/$SRC" "$SAVES/$TEST/$TEST"
 rm -f "$SAVES/$TEST/${SRC}_old" "$SAVES/$TEST/SaveGameInfo_old"
 
 mkdir -p "$ROOT/logs"
-(cd "$GAME_DIR" && NOBODYVALLEY_LOAD="$TEST" NOBODYVALLEY_WINDOW="${NV_WINDOW:-60,60,1280,800}" ./StardewModdingAPI > "$ROOT/logs/test.log" 2>&1 &)
+(cd "$GAME_DIR" && NOBODYVALLEY_LOAD="$TEST" NOBODYVALLEY_PORT="${NV_PORT:-8790}" NOBODYVALLEY_WINDOW="${NV_WINDOW:-60,60,1280,800}" ./StardewModdingAPI > "$ROOT/logs/test.log" 2>&1 &)
 echo "Started test instance on $TEST (log: logs/test.log). Waiting for it to load..."
 for _ in $(seq 1 30); do
     if grep -q "In game as" "$ROOT/logs/test.log" 2>/dev/null; then

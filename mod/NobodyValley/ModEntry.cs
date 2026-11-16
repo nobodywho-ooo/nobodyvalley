@@ -34,7 +34,11 @@ internal sealed class ModEntry : Mod
         Config = helper.ReadConfig<ModConfig>();
 
         server = new BridgeServer(Monitor);
-        server.Start(Config.BasePort, Config.PortRange);
+        // NOBODYVALLEY_PORT pins the port (e.g. for a test instance the agents shouldn't pick up).
+        if (int.TryParse(Environment.GetEnvironmentVariable("NOBODYVALLEY_PORT"), out int pinned))
+            server.Start(pinned, 1);
+        else
+            server.Start(Config.BasePort, Config.PortRange);
         jobs = new JobRunner(Monitor, OnJobFinished);
         janitor = new MenuJanitor(helper, Monitor, () => (int)(Config.MenuDisplaySeconds * 60));
         autoStart = new AutoStart(helper, Monitor);
@@ -141,6 +145,11 @@ internal sealed class ModEntry : Mod
 
         string? Str(string key) => string.IsNullOrWhiteSpace((string?)msg[key]) ? null : ((string?)msg[key])!.Trim();
         int Int(string key, int def) => msg[key]?.Type == JTokenType.Integer ? (int)msg[key]! : int.TryParse((string?)msg[key], out var v) ? v : def;
+        // Most work commands take an optional map tile (x, y): then they act on just that tile.
+        Microsoft.Xna.Framework.Point? Tile() => msg["x"] != null && msg["y"] != null
+            ? new Microsoft.Xna.Framework.Point(Int("x", 0), Int("y", 0)) : null;
+        var at = Tile();
+        string AtText() => at is { } t ? $" at {t.X},{t.Y}" : "";
 
         switch (cmd)
         {
@@ -263,26 +272,74 @@ internal sealed class ModEntry : Mod
                 var target = Str("target") ?? throw new CommandException("missing 'target'");
                 return StartJob(cmd, $"walking to {target}", j => FarmJobs.GoTo(j, target));
             }
+            case "walk":
+            {
+                var t = at ?? throw new CommandException("missing x, y");
+                return StartJob(cmd, $"walking to {t.X},{t.Y}", j => TileJobs.Walk(j, t));
+            }
+            case "use":
+            {
+                var t = at ?? throw new CommandException("missing x, y");
+                return StartJob(cmd, $"using {t.X},{t.Y}", j => TileJobs.Use(j, t), runDuringMenus: true);
+            }
             case "clear_debris":
             {
+                if (at is { } t)
+                    return StartJob(cmd, $"clearing{AtText()}", j => TileJobs.Hit(j, t, "clear"));
                 int n = Math.Clamp(Int("count", 10), 1, 25);
                 return StartJob(cmd, "clearing debris from the field", j => FarmJobs.ClearDebris(j, n));
             }
+            case "chop_trees":
+            {
+                if (at is { } t)
+                    return StartJob(cmd, $"chopping the tree{AtText()}", j => TileJobs.Hit(j, t, "chop"));
+                int n = Math.Clamp(Int("count", 1), 1, 5);
+                return StartJob(cmd, "chopping trees", j => MoreJobs.ChopTrees(j, n));
+            }
+            case "mine":
+            {
+                if (at is { } t)
+                    return StartJob(cmd, $"mining{AtText()}", j => TileJobs.Hit(j, t, "mine"));
+                int n = Math.Clamp(Int("count", 10), 1, 25);
+                return StartJob(cmd, "breaking rocks", j => AdventureJobs.MineRocks(j, n));
+            }
+            case "descend":
+                return StartJob(cmd, "heading down into the mines", AdventureJobs.Descend);
+            case "fish":
+            {
+                var where = Str("target");
+                int n = Math.Clamp(Int("count", 3), 1, 10);
+                return StartJob(cmd, where == null ? "fishing" : $"fishing at {where}", j => AdventureJobs.Fish(j, where, n));
+            }
             case "till":
             {
+                if (at is { } t)
+                    return StartJob(cmd, $"tilling{AtText()}", j => TileJobs.Till(j, t));
                 int n = Math.Clamp(Int("count", 10), 1, 25);
                 return StartJob(cmd, "tilling soil in the field", j => FarmJobs.Till(j, n));
             }
             case "plant":
             {
                 var seed = Str("seed");
+                if (at is { } t)
+                    return StartJob(cmd, $"planting {seed ?? "seeds"}{AtText()}", j => TileJobs.Plant(j, t, seed));
                 int n = Math.Clamp(Int("count", 99), 1, 200);
                 return StartJob(cmd, $"planting {seed ?? "seeds"}", j => FarmJobs.Plant(j, seed, n));
             }
             case "water":
-                return StartJob(cmd, "watering the crops", FarmJobs.Water);
+            {
+                if (at is { } t)
+                    return StartJob(cmd, $"watering{AtText()}", j => TileJobs.Water(j, t));
+                int n = Math.Clamp(Int("count", int.MaxValue), 1, int.MaxValue);
+                return StartJob(cmd, "watering the crops", j => FarmJobs.Water(j, n));
+            }
             case "harvest":
-                return StartJob(cmd, "harvesting crops", FarmJobs.Harvest);
+            {
+                if (at is { } t)
+                    return StartJob(cmd, $"harvesting{AtText()}", j => TileJobs.Harvest(j, t));
+                int n = Math.Clamp(Int("count", int.MaxValue), 1, int.MaxValue);
+                return StartJob(cmd, "harvesting crops", j => FarmJobs.Harvest(j, n));
+            }
             case "ship":
             {
                 var item = Str("item");
@@ -306,11 +363,6 @@ internal sealed class ModEntry : Mod
                 var where = Str("target");
                 int n = Math.Clamp(Int("count", 10), 1, 30);
                 return StartJob(cmd, where == null ? "foraging" : $"foraging in {where}", j => MoreJobs.Forage(j, where, n));
-            }
-            case "chop_trees":
-            {
-                int n = Math.Clamp(Int("count", 1), 1, 5);
-                return StartJob(cmd, "chopping trees", j => MoreJobs.ChopTrees(j, n));
             }
             case "craft":
             {

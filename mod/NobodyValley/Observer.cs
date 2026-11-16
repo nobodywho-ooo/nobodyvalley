@@ -56,6 +56,8 @@ internal static class Observer
                 .Select(n => $"{n.displayName} ({(int)Vector2.Distance(n.Tile, me.Tile)} tiles away)")),
             ["seeds_for_sale"] = new JArray(Jobs.FarmJobs.SeedsForSale()),
             ["forage_here"] = Jobs.MoreJobs.ForageCount(me.currentLocation),
+            ["map"] = MapView.Render(me),
+            ["mine_level"] = me.currentLocation is StardewValley.Locations.MineShaft shaft ? shaft.mineLevel : null,
             ["chests"] = new JArray(Jobs.MoreJobs.FarmChestContents()),
             ["recipes"] = new JArray(Jobs.MoreJobs.Recipes()),
         };
