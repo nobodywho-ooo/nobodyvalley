@@ -41,6 +41,11 @@ The mod sets the in-game UI scale to 60%, so the chat box and menus fit the smal
 `UiScale` in `Mods/NobodyValley/config.json`, or set it to `null` to keep the game's own setting.
 Note that the game saves this in its (shared) options.
 
+To run it on another Mac, e.g. the office Mac Mini, use `scripts/deploy.sh --start`. It builds the mod here, copies
+the mod and the agents over (the other Mac needs Steam, the game, SMAPI and uv, but not .NET) and starts the demo
+there. `--status`, `--stop` and `--ssh CMD` manage it; `NV_REMOTE=user@host` picks another machine. The saves
+sync through Steam Cloud, so don't run the demo on both machines at once.
+
 To run just the agents against instances you started yourself (any instances with the mod
 installed are found automatically on ports 8765+):
 

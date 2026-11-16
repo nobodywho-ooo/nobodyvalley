@@ -56,6 +56,14 @@ knowledge.
   command (whole-map PNG in `~/.local/share/StardewValley/Screenshots`).
   `ideas/tmp/winbounds` (compiled from `winbounds.swift`) lists the game windows' bounds.
 
+- **Office Mac Mini** (`nobodywho@nobodywhos-mac-mini.local`; use `.local`, not the Tailscale name): deploy and
+  run with `scripts/deploy.sh --start`, check with `--status`, run commands there with `--ssh CMD` (in the
+  project folder `~/nw-valley`). Mads' ssh agent asks him to approve every new connection, so all calls go
+  through one shared connection (ControlMaster); don't call plain `ssh` there. Same game/SMAPI builds as here;
+  saves sync via Steam Cloud. One display (Dell, 1920x960 usable). No Chrome (the dashboard opens in the
+  default browser, unplaced), and no `rg`. Its disk is nearly full and something else (an Android emulator)
+  uses a lot of memory, so it swaps and turns are slower.
+
 ## Testing workflow
 
 - Single-player test instance on a copy of a save, pinned to port 8790 (outside the 8765+ range the
