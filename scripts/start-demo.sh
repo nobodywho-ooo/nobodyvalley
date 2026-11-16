@@ -5,7 +5,7 @@
 #   scripts/start-demo.sh             # start the game instances
 #   scripts/start-demo.sh --agents    # ...and then run the agents in this terminal
 #   scripts/start-demo.sh --build     # rebuild + deploy the mod first
-#   scripts/start-demo.sh --stop      # kill all game instances
+#   scripts/start-demo.sh --stop      # kill all game instances (and the agents)
 #
 # Configure with environment variables (defaults match our office save):
 #   NV_SAVE        save folder to host                     (default: Nowhere_454507774)
@@ -31,6 +31,7 @@ for arg in "$@"; do
             # and macOS's ReportCrashService then spends minutes at 100% CPU on each crash report.
             # (Nothing is lost: the game only saves overnight.)
             pkill -KILL -x StardewModdingAPI || true
+            pkill -TERM -f 'bin/nw-valley' || true # the agents
             echo "Stopped."
             exit 0 ;;
         --build) BUILD=true ;;

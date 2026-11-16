@@ -353,8 +353,10 @@ class Agent:
                   f"Your job: {prompts.persona_parts(self._persona())[1]}. What do you do?")
 
         t0 = time.monotonic()
+        self.print(self.name, "prompt", prompt)
         try:
             raw = await self._ask(prompt)
+            self.print(self.name, "reply", raw)
             decision = json.loads(raw)
         except Exception as e:  # noqa: BLE001
             self.print(self.name, "info", f"LLM error: {e}")

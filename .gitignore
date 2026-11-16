@@ -1,5 +1,6 @@
 logs/
 agents.log
+prompts.log
 agents/.venv/
 mod/NobodyValley/bin/
 mod/NobodyValley/obj/

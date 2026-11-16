@@ -30,13 +30,20 @@ KIND_STYLE = {
 RESET = "\033[0m"
 
 
-def make_printer(log_file: Path | None):
+def make_printer(log_file: Path | None, prompt_log: Path | None = None):
     colors: dict[str, str] = {}
     fh = log_file.open("a") if log_file else None
+    ph = prompt_log.open("a") if prompt_log else None
 
     def printer(name: str, kind: str, text: str) -> None:
-        color = colors.setdefault(name, COLORS[len(colors) % len(COLORS)])
         stamp = time.strftime("%H:%M:%S")
+        if kind in ("prompt", "reply"):
+            # Full LLM prompts and replies: too long for the terminal, but needed for debugging.
+            if ph:
+                ph.write(f"===== {stamp} {name} {kind}\n{text}\n")
+                ph.flush()
+            return
+        color = colors.setdefault(name, COLORS[len(colors) % len(COLORS)])
         print(f"{stamp} {color}{name:>10}{RESET} {kind:>7} {KIND_STYLE.get(kind, '')}{text}{RESET}", flush=True)
         if fh:
             fh.write(f"{stamp}\t{name}\t{kind}\t{text}\n")
@@ -53,7 +60,7 @@ def load_personas(path: Path) -> dict[str, str]:
 
 
 async def amain(args: argparse.Namespace) -> None:
-    printer = make_printer(args.log)
+    printer = make_printer(args.log, args.prompt_log)
 
     conns = await discover(args.base_port, args.max_instances)
     if not conns:
@@ -109,6 +116,7 @@ def main() -> None:
     p.add_argument("--max-instances", type=int, default=8)
     p.add_argument("--personas", type=Path, default=Path(__file__).parent.parent / "personas.toml")
     p.add_argument("--log", type=Path, default=Path("agents.log"), help="also append everything to this file")
+    p.add_argument("--prompt-log", type=Path, default=Path("prompts.log"), help="append every LLM prompt and reply to this file")
     p.add_argument("--dashboard-port", type=int, default=8780)
     p.add_argument("--dashboard-window", metavar="X,Y,W,H", help="where to put the dashboard window (screen points)")
     p.add_argument("--no-dashboard", action="store_true", help="don't serve/open the dashboard")

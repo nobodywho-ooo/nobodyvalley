@@ -82,7 +82,7 @@ internal static class Observer
                 dead++;
                 continue;
             }
-            string name = ItemRegistry.GetDataOrErrorItem(dirt.crop.indexOfHarvest.Value).DisplayName;
+            string name = CropName(dirt.crop);
             var c = crops.GetValueOrDefault(name);
             crops[name] = (c.total + 1, c.ready + (dirt.readyForHarvest() ? 1 : 0));
             fieldTiles.Add(pair.Key);
@@ -133,6 +133,14 @@ internal static class Observer
         if (parent != null && loc.DisplayName == parent.DisplayName)
             return loc.Name + suffix; // e.g. Greenhouse, Coop, Barn
         return loc.DisplayName;
+    }
+
+    /// <summary>What a crop gives. Wild spring onions/ginger are "forage crops", without an indexOfHarvest.</summary>
+    public static string CropName(Crop crop)
+    {
+        if (crop.forageCrop.Value)
+            return ItemRegistry.GetDataOrErrorItem(crop.whichForageCrop.Value == Crop.forageCrop_gingerID ? "(O)829" : "(O)399").DisplayName;
+        return ItemRegistry.GetDataOrErrorItem(crop.indexOfHarvest.Value).DisplayName;
     }
 
     private static string Weather()

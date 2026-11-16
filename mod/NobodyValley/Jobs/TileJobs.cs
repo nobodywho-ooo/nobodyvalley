@@ -203,11 +203,15 @@ internal static class TileJobs
         yield return Steps.WalkAdjacent(tile, walk);
         if (!walk.Ok)
             throw new JobFailed(walk.Error ?? $"can't reach {tile.X},{tile.Y}");
-        string name = ItemRegistry.GetDataOrErrorItem(dirt.crop.indexOfHarvest.Value).DisplayName;
+        string name = Observer.CropName(dirt.crop);
+        if (dirt.crop.forageCrop.Value && dirt.crop.whichForageCrop.Value == Crop.forageCrop_gingerID)
+            throw new JobFailed($"the {name} at {tile.X},{tile.Y} has to be dug up with a hoe");
         if (dirt.crop.GetHarvestMethod() == StardewValley.GameData.Crops.HarvestMethod.Scythe && Steps.FindScythe() is { } scythe)
             Steps.Equip(scythe);
         dirt.performUseAction(v);
         yield return Wait.Ticks(30);
+        if (dirt.crop != null && dirt.readyForHarvest())
+            throw new JobFailed($"couldn't harvest the {name} at {tile.X},{tile.Y}");
         job.Summary = $"Harvested the {name} at {tile.X},{tile.Y}.";
     }
 }

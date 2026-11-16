@@ -353,13 +353,19 @@ internal static class FarmJobs
     public static IEnumerator Water(Job job, int max)
     {
         var can = Steps.FindTool<WateringCan>() ?? throw new JobFailed("you don't have a watering can");
-        yield return EnsureOnFarm();
         var farm = Game1.getFarm();
+        // Check before walking all the way to the farm for nothing.
         if (farm.IsRainingHere())
         {
             job.Summary = "It's raining, so the crops are watered already.";
             yield break;
         }
+        if (!farm.terrainFeatures.Values.OfType<HoeDirt>().Any(d => d.needsWatering() && !d.isWatered()))
+        {
+            job.Summary = "All crops are already watered.";
+            yield break;
+        }
+        yield return EnsureOnFarm();
 
         var skipped = new HashSet<Vector2>();
         int watered = 0;
@@ -459,8 +465,13 @@ internal static class FarmJobs
 
     public static IEnumerator Harvest(Job job, int max)
     {
-        yield return EnsureOnFarm();
         var farm = Game1.getFarm();
+        if (!farm.terrainFeatures.Values.OfType<HoeDirt>().Any(d => d.readyForHarvest()))
+        {
+            job.Summary = "Nothing is ready to harvest on the farm.";
+            yield break;
+        }
+        yield return EnsureOnFarm();
         var skipped = new HashSet<Vector2>();
         var counts = new Dictionary<string, int>();
 
@@ -489,7 +500,7 @@ internal static class FarmJobs
                 continue;
             }
 
-            string name = ItemRegistry.GetDataOrErrorItem(dirt.crop.indexOfHarvest.Value).DisplayName;
+            string name = Observer.CropName(dirt.crop);
             if (dirt.crop.GetHarvestMethod() == HarvestMethod.Scythe && Steps.FindScythe() is { } scythe)
                 Steps.Equip(scythe);
             dirt.performUseAction(tile);

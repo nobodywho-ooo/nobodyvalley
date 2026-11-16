@@ -93,7 +93,7 @@ def format_observation(obs: dict[str, Any]) -> str:
                     f"{farm['empty_tilled_soil']} empty tilled tiles" if farm["empty_tilled_soil"] else None,
                     f"{farm['dead_crops']} dead crops" if farm["dead_crops"] else None,
                     f"{farm['debris_near_field']} weeds/stones near the field",
-                    "raining" if farm["raining"] else None,
+                    "raining, so the rain waters all the crops today (no need to water)" if farm["raining"] else None,
                 ],
             )
         )
@@ -117,7 +117,7 @@ def format_observation(obs: dict[str, Any]) -> str:
     if seeds:
         lines.append(f"Pierre sells: {', '.join(seeds)}.")
     if chests := obs.get("chests"):
-        lines.append(f"Shared chests ({len(chests)} on the farm): {merge_chests(chests) or 'all empty'}.")
+        lines.append(f"Shared chests ({len(chests)} on the farm, no need to craft more): {merge_chests(chests) or 'all empty'}.")
     if obs.get("forage_here"):
         lines.append(f"There are {obs['forage_here']} forage items here.")
     useful = [r for r in obs.get("recipes", []) if r.split(" (")[0] in USEFUL_RECIPES]
