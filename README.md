@@ -124,8 +124,9 @@ pages), after showing each for `MenuDisplaySeconds` (default 5) so spectators ca
 - **Context:** 32k tokens per agent by default (`--n-ctx`). Qwen3.5 is a hybrid model (only 8 of 32
   layers have a KV cache), so that's ~1 GB per agent.
 - **Structured decisions, not tool calls.** Each turn is one generation, constrained by NobodyWho's
-  JSON-schema sampler to `{"thought", "emote", "actions": [up to 4]}`, with length limits
-  on every field. Saying something is an action like the rest: `{"do":"say","text":"..."}`.
+  JSON-schema sampler to `{"thought", "actions": [up to 10]}`, with length limits
+  on every field. Talking and emoting are actions like the rest: `{"do":"say","text":"..."}`,
+  `{"do":"emote","emote":"happy"}`.
   The actions then run one after another in the game. We started with tool
   calling, but the models narrated between calls (and invented results), which made turns slow and
   long. A constrained decision is fast, bounded and always valid.
@@ -141,7 +142,7 @@ pages), after showing each for `MenuDisplaySeconds` (default 5) so spectators ca
   teammates nearby are about to work on, and tile jobs claim their tile in the game.
 - **Bedtime:** from 11pm agents are told to go to bed; after 1am the code sends them. Once in bed,
   an agent takes no turns until morning.
-- **Guards for small models:** at most 4 actions per turn (enforced by the schema). A turn
+- **Guards for small models:** at most 10 actions per turn (enforced by the schema). A turn
   without actions gets a nudge. Repeating the same failure gets flagged.
 - **Debugging:** every prompt and reply goes to `prompts.log` (in the run's log folder, or `agents/`). `NV_DEBUG_TOKENS=1 uv run nobodyvalley`
   echoes every generated token to stderr.

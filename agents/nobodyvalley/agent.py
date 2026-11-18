@@ -70,8 +70,8 @@ ACTIONS: dict[str, Spec] = {
 # Don't till more when this much tilled soil is already waiting for seeds.
 MAX_EMPTY_TILLED = 30
 
-MAX_ACTIONS_PER_TURN = 4
-# "say" is an action like the rest ({"do":"say","text":"..."}); this limits its text.
+MAX_ACTIONS_PER_TURN = 10
+# "say" and "emote" are actions like the rest ({"do":"say","text":"..."}); this limits the text.
 MAX_SAY_LENGTH = 100
 
 DECISION_SCHEMA = {
@@ -80,16 +80,17 @@ DECISION_SCHEMA = {
     "x-guidance": {"whitespace_flexible": False},
     "properties": {
         "thought": {"type": "string", "maxLength": 160},
-        "emote": {"enum": EMOTES},
         "actions": {
             "type": "array",
             "maxItems": MAX_ACTIONS_PER_TURN,
             "items": {
                 "type": "object",
                 "properties": {
-                    # "say" first, to match the prompt's action list (it's not a mod command).
-                    "do": {"enum": ["say"] + list(ACTIONS)},
+                    # "say"/"emote" first, to match the prompt's action list (they're not mod commands
+                    # queued in the game - they're handled right away in _take_turn).
+                    "do": {"enum": ["say", "emote"] + list(ACTIONS)},
                     "text": {"type": "string", "maxLength": MAX_SAY_LENGTH},
+                    "emote": {"enum": EMOTES},
                     "target": {"type": "string", "maxLength": 40},
                     "item": {"type": "string", "maxLength": 40},
                     "x": {"type": "integer", "minimum": 0, "maximum": 200},
@@ -390,7 +391,8 @@ class Agent:
 
         thought = decision.get("thought", "").strip()
         self.print(self.name, "thought", f"{thought}  ({time.monotonic() - t0:.1f}s)")
-        # "say" is an action, but it never queues: it goes to the other farmers right away.
+        # "say" and "emote" are actions, but they never queue: handled right away (say goes to the
+        # other farmers, emote to the game).
         raw_actions = [a for a in decision.get("actions", []) if isinstance(a, dict)]
         say = " ".join(str(a.get("text", "")) for a in raw_actions if a.get("do") == "say").strip()
         if len(say) >= MAX_SAY_LENGTH:  # hit the limit mid-sentence
@@ -401,10 +403,10 @@ class Agent:
             if self.dashboard:
                 self.dashboard.said(self.name, say)
             self.team.say(self.name, say)
-        if emote := decision.get("emote"):
+        if emote := next((a.get("emote") for a in raw_actions if a.get("do") == "emote"), None):
             await self._send("emote", emote=emote)
 
-        actions, errors = self._parse_actions([a for a in raw_actions if a.get("do") != "say"], obs)
+        actions, errors = self._parse_actions([a for a in raw_actions if a.get("do") not in ("say", "emote")], obs)
         self.inbox.extend(errors)
         if actions and actions[0].cmd == "stop":
             await self._send("stop")
