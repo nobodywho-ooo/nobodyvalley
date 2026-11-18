@@ -336,6 +336,68 @@ internal static class FarmJobs
         job.Summary = $"Planted {planted} {seedLabel}.";
     }
 
+    /// <summary>Plant a fruit-tree sapling on open ground on the farm.</summary>
+    public static IEnumerator PlantTree(Job job, string? name)
+    {
+        var saplings = Me.Items.OfType<SObject>().Where(o => o.Category == -74).ToList();
+        var sapling = (name == null ? null : saplings.FirstOrDefault(o => o.DisplayName.Contains(name, StringComparison.OrdinalIgnoreCase)))
+            ?? saplings.FirstOrDefault()
+            ?? throw new JobFailed(name == null ? "you have no fruit-tree saplings - buy one at Pierre's" : $"you have no '{name}' sapling");
+        yield return EnsureOnFarm();
+        var farm = Game1.getFarm();
+        var centre = FieldCentre();
+        var spots = Enumerable.Range(-18, 37).SelectMany(dx => Enumerable.Range(-14, 29).Select(dy => new Vector2(centre.X + dx, centre.Y + dy)))
+            .Where(t => !farm.terrainFeatures.ContainsKey(t) && !farm.objects.ContainsKey(t) && sapling.canBePlacedHere(farm, t))
+            .OrderBy(t => Vector2.DistanceSquared(t, new Vector2(centre.X, centre.Y)))
+            .Take(8)
+            .ToList();
+        foreach (var spot in spots)
+        {
+            var walk = new StepResult();
+            yield return Steps.WalkAdjacent(Steps.ToPoint(spot), walk);
+            if (!walk.Ok)
+                continue;
+            Steps.Equip(sapling);
+            yield return null;
+            if (sapling.placementAction(farm, (int)spot.X * 64, (int)spot.Y * 64, Me))
+            {
+                Me.Items.ReduceId(sapling.QualifiedItemId, 1);
+                job.Summary = $"Planted a {sapling.DisplayName} at {spot.X},{spot.Y}; fruit trees take about a season to mature.";
+                yield break;
+            }
+        }
+        throw new JobFailed("couldn't find a free 3x3 spot for the fruit tree; clear some debris/grass first");
+    }
+
+    /// <summary>Shake ripe fruit off all fruit trees and put it in the inventory.</summary>
+    public static IEnumerator HarvestFruit(Job job)
+    {
+        yield return EnsureOnFarm();
+        var farm = Game1.getFarm();
+        int total = 0;
+        foreach (var pair in farm.terrainFeatures.Pairs.Where(p => p.Value is FruitTree).ToList())
+        {
+            var tree = (FruitTree)pair.Value;
+            if (tree.fruit.Count == 0)
+                continue;
+            var walk = new StepResult();
+            yield return Steps.WalkAdjacent(Steps.ToPoint(pair.Key), walk);
+            if (!walk.Ok)
+                continue;
+            tree.performUseAction(pair.Key);
+            yield return Wait.Seconds(1.5);
+            for (int i = tree.fruit.Count - 1; i >= 0; i--)
+            {
+                var fruit = tree.fruit[i];
+                if (!Me.addItemToInventoryBool(fruit))
+                    throw new JobFailed($"picked {total} fruit but your inventory is full");
+                tree.fruit.RemoveAt(i);
+                total++;
+            }
+        }
+        job.Summary = total == 0 ? "No ripe fruit on the fruit trees right now." : $"Picked {total} fruit from the fruit trees.";
+    }
+
     public static SObject? FindSeeds(string? name)
     {
         var seeds = Me.Items.OfType<SObject>().Where(o => o.Category == SObject.SeedsCategory).ToList();
@@ -527,6 +589,10 @@ internal static class FarmJobs
     public static IEnumerator Ship(Job job, string? itemName)
     {
         var items = Me.Items.Where(i => i != null && IsShippable(i, itemName)).ToList();
+        if (itemName != null && items.FirstOrDefault(i => CommunityCenterJobs.IsNeeded(i)) is { } needed)
+            throw new JobFailed($"{needed.DisplayName} is still needed for a Community Center bundle - donate it instead");
+        // A bulk ship should never throw away the last copy of something the Junimos still want.
+        items = items.Where(i => !CommunityCenterJobs.IsNeeded(i)).ToList();
         if (items.Count == 0)
             throw new JobFailed(itemName == null ? "you have no crops or forage to ship" : $"you have no '{itemName}'");
 
@@ -569,16 +635,28 @@ internal static class FarmJobs
     public static IEnumerator Buy(Job job, string itemName, int count)
     {
         count = Math.Clamp(count, 1, 99);
-        // Which shop sells it? (Pierre's: seeds etc., Willy's: rods, bait, tackle.)
-        var shops = new[] { (id: "SeedShop", owner: "Pierre", counter: "Buy General", name: "Pierre's"), (id: "FishShop", owner: "Willy", counter: "Buy Fish", name: "Willy's") };
+        // Which shop sells it? (Pierre's seeds, Willy's rods, Marnie's hay, the Saloon's cooked dishes, ...)
+        var shops = new[]
+        {
+            (id: "SeedShop", owner: "Pierre", counter: "Buy General", name: "Pierre's"),
+            (id: "FishShop", owner: "Willy", counter: "Buy Fish", name: "Willy's"),
+            (id: "AnimalShop", owner: "Marnie", counter: "Buy", name: "Marnie's Ranch"),
+            (id: "Saloon", owner: "Gus", counter: "Buy", name: "the Saloon"),
+            (id: "Sandy", owner: "Sandy", counter: "Buy", name: "the Oasis"),
+            (id: "Sewer", owner: "Krobus", counter: "Buy", name: "Krobus' shop"),
+            (id: "Carpenter", owner: "Robin", counter: "Buy", name: "the Carpenter's Shop"),
+            (id: "Blacksmith", owner: "Clint", counter: "Buy", name: "the Blacksmith"),
+        };
         KeyValuePair<ISalable, ItemStockInformation> match = default;
         var shopInfo = shops[0];
         foreach (var s in shops)
         {
             var stockHere = ShopBuilder.GetShopStock(s.id);
-            match = stockHere.FirstOrDefault(x => x.Key.DisplayName.Equals(itemName, StringComparison.OrdinalIgnoreCase));
+            match = stockHere.FirstOrDefault(x => x.Key.DisplayName.Equals(itemName, StringComparison.OrdinalIgnoreCase)
+                && x.Key is not FarmAnimal);
             if (match.Key == null)
-                match = stockHere.FirstOrDefault(x => x.Key.DisplayName.Contains(itemName, StringComparison.OrdinalIgnoreCase));
+                match = stockHere.FirstOrDefault(x => x.Key.DisplayName.Contains(itemName, StringComparison.OrdinalIgnoreCase)
+                    && x.Key is not FarmAnimal);
             if (match.Key != null)
             {
                 shopInfo = s;
@@ -586,7 +664,7 @@ internal static class FarmJobs
             }
         }
         if (match.Key == null)
-            throw new JobFailed($"neither Pierre nor Willy sells '{itemName}' today");
+            throw new JobFailed($"no shop sells '{itemName}' today");
 
         var r = new StepResult();
         yield return Steps.GoToLocation(shopInfo.id, r);
@@ -594,7 +672,9 @@ internal static class FarmJobs
             throw new JobFailed(r.Error ?? $"couldn't get to {shopInfo.name}");
 
         var shop = Me.currentLocation;
-        var counter = FindActionTile(shop, shopInfo.counter) ?? FindActionTile(shop, $"OpenShop {shopInfo.id}");
+        var counter = FindActionTile(shop, shopInfo.counter)
+            ?? FindActionTile(shop, "Buy")
+            ?? FindActionTile(shop, $"OpenShop {shopInfo.id}");
         if (counter != null)
         {
             var stand = Navigation.ClosestStandable(shop, new Point(counter.Value.X, counter.Value.Y + 1), 2);
@@ -653,6 +733,32 @@ internal static class FarmJobs
         {
             return new List<string>();
         }
+    }
+
+    // ================================================================ repairs
+
+    /// <summary>Repair the broken bridge on the beach (300 wood) so the right side is reachable.</summary>
+    public static IEnumerator Repair(Job job, string target)
+    {
+        if (!target.Contains("bridge", StringComparison.OrdinalIgnoreCase))
+            throw new JobFailed("only the beach bridge can be repaired right now (repair target=bridge)");
+        var r = new StepResult();
+        yield return Steps.GoToLocation("Beach", r);
+        if (!r.Ok)
+            throw new JobFailed(r.Error ?? "couldn't get to the beach");
+        var beach = (StardewValley.Locations.Beach)Me.currentLocation;
+        if (beach.bridgeFixed.Value)
+        {
+            job.Summary = "The beach bridge is already repaired.";
+            yield break;
+        }
+        if (!Me.Items.ContainsId("(O)388", 300))
+            throw new JobFailed($"you need 300 Wood to repair the beach bridge, but have {Me.Items.CountId("(O)388")}");
+        Me.Items.ReduceId("(O)388", 300);
+        beach.bridgeFixed.Value = true;
+        StardewValley.Locations.Beach.fixBridge(beach);
+        Game1.playSound("axchop");
+        job.Summary = "Repaired the beach bridge; the right side of the beach is now reachable.";
     }
 
     // ================================================================ eat

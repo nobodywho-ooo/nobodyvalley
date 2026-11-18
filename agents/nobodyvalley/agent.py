@@ -55,6 +55,15 @@ ACTIONS: dict[str, Spec] = {
     "water": Spec("water", n=True, xy=True),
     "harvest": Spec("harvest", n=True, xy=True),
     "ship": Spec("ship", item="item"),
+    "donate": Spec("donate", item="item"),
+    "cook": Spec("cook", item="item", needs=("item",)),
+    "operate": Spec("operate", xy=True),
+    "build": Spec("build", item="item", needs=("item",)),
+    "buy_animal": Spec("buy_animal", item="item", needs=("item",)),
+    "care_animals": Spec("care_animals"),
+    "plant_tree": Spec("plant_tree", item="item"),
+    "fruit": Spec("fruit"),
+    "repair": Spec("repair", target="target", needs=("target",)),
     "buy": Spec("buy", item="item", n=True, needs=("item",)),
     "eat": Spec("eat", item="item"),
     "forage": Spec("forage", target="target", n=True),
@@ -392,7 +401,8 @@ class Agent:
             self.idle_turns += 1
             # Nudge once right away; after that, wait for the idle timer instead of spinning.
             self.inbox.append("You didn't choose any actions, so you're standing around. "
-                              "If there's nothing to do, forage for something to ship, chop trees, or visit a villager.")
+                              "Check the Community Center's missing items: forage, fish, mine, chop, or gather "
+                              "bundle items, then take them to the Community Center and donate.")
             if self.idle_turns == 1:
                 self.wake.set()
         if actions:

@@ -187,12 +187,20 @@ internal static class MoreJobs
         var placeable = Me.Items.FirstOrDefault(i => i?.QualifiedItemId == item.QualifiedItemId) as SObject;
         if (placeable == null)
             yield break;
-        var spots = Enumerable.Range(-10, 21).SelectMany(dx => Enumerable.Range(-10, 21).Select(dy => new Vector2(centre.X + dx, centre.Y + dy)))
-            .Where(t => !farm.terrainFeatures.ContainsKey(t) && !farm.objects.ContainsKey(t) && Steps.IsStandable(farm, Steps.ToPoint(t))
-                && placeable.canBePlacedHere(farm, t))
-            .OrderBy(t => Vector2.DistanceSquared(t, new Vector2(centre.X, centre.Y)))
-            .Take(5)
-            .ToList();
+        // Tappers go on trees, not on the ground. Everything else goes on open ground near the field.
+        var spots = placeable.IsTapper()
+            ? farm.terrainFeatures.Pairs
+                .Where(p => p.Value is Tree && !farm.objects.ContainsKey(p.Key) && placeable.canBePlacedHere(farm, p.Key))
+                .Select(p => p.Key)
+                .OrderBy(t => Vector2.DistanceSquared(t, new Vector2(centre.X, centre.Y)))
+                .Take(5)
+                .ToList()
+            : Enumerable.Range(-10, 21).SelectMany(dx => Enumerable.Range(-10, 21).Select(dy => new Vector2(centre.X + dx, centre.Y + dy)))
+                .Where(t => !farm.terrainFeatures.ContainsKey(t) && !farm.objects.ContainsKey(t) && Steps.IsStandable(farm, Steps.ToPoint(t))
+                    && placeable.canBePlacedHere(farm, t))
+                .OrderBy(t => Vector2.DistanceSquared(t, new Vector2(centre.X, centre.Y)))
+                .Take(5)
+                .ToList();
         foreach (var spot in spots)
         {
             var walk = new StepResult();
@@ -204,7 +212,9 @@ internal static class MoreJobs
             if (placeable.placementAction(farm, (int)spot.X * 64, (int)spot.Y * 64, Me))
             {
                 Me.reduceActiveItemByOne();
-                job.Summary = $"Crafted a {item.DisplayName} and placed it by the field.";
+                job.Summary = placeable.IsTapper()
+                    ? $"Crafted a {item.DisplayName} and put it on a tree."
+                    : $"Crafted a {item.DisplayName} and placed it by the field.";
                 yield break;
             }
         }
@@ -234,6 +244,114 @@ internal static class MoreJobs
             }
         }
         return result;
+    }
+
+    // ================================================================ machines
+
+    /// <summary>Machine statuses on the farm, for the observation.</summary>
+    public static List<string> Machines()
+    {
+        var farm = Game1.getFarm();
+        return farm.objects.Pairs
+            .Where(p => p.Value.GetMachineData() != null)
+            .OrderBy(p => Vector2.DistanceSquared(p.Key, Me.Tile))
+            .Take(20)
+            .Select(p =>
+            {
+                var o = p.Value;
+                string state = o.readyForHarvest.Value && o.heldObject.Value != null
+                    ? $"ready: {o.heldObject.Value.DisplayName}"
+                    : o.heldObject.Value != null
+                        ? $"working: {o.heldObject.Value.DisplayName}"
+                        : "empty";
+                return $"{o.DisplayName} at {(int)p.Key.X},{(int)p.Key.Y} ({state})";
+            })
+            .ToList();
+    }
+
+    /// <summary>Collect a machine's output, or load the right item into an empty machine.</summary>
+    public static IEnumerator Operate(Job job, Point? tile)
+    {
+        if (tile == null)
+        {
+            if (Me.currentLocation is not Farm)
+            {
+                var r = new StepResult();
+                yield return Steps.GoToLocation("Farm", r);
+                if (!r.Ok)
+                    throw new JobFailed(r.Error ?? "couldn't get to the farm");
+            }
+        }
+
+        var loc = Me.currentLocation;
+        KeyValuePair<Vector2, SObject>? pick = null;
+        if (tile is { } t)
+        {
+            if (loc.objects.TryGetValue(new Vector2(t.X, t.Y), out var obj) && obj.GetMachineData() != null)
+                pick = new KeyValuePair<Vector2, SObject>(new Vector2(t.X, t.Y), obj);
+        }
+        else
+        {
+            var candidates = loc.objects.Pairs.Where(p => p.Value.GetMachineData() != null).ToList();
+            pick = candidates
+                .OrderBy(p => p.Value.readyForHarvest.Value ? 0 : p.Value.heldObject.Value == null ? 1 : 2)
+                .ThenBy(p => Steps.Dist(Steps.ToPoint(p.Key), Me.TilePoint))
+                .Cast<KeyValuePair<Vector2, SObject>?>()
+                .FirstOrDefault();
+        }
+        if (pick == null)
+            throw new JobFailed("there's no machine here - craft a furnace, keg, preserves jar, cheese press or similar first");
+
+        var pair = pick.Value;
+        var machine = pair.Value;
+        var walk = new StepResult();
+        yield return Steps.WalkAdjacent(Steps.ToPoint(pair.Key), walk);
+        if (!walk.Ok)
+            throw new JobFailed($"can't reach the {machine.DisplayName}");
+
+        if (machine.readyForHarvest.Value && machine.heldObject.Value != null)
+        {
+            var product = machine.heldObject.Value.DisplayName;
+            if (!machine.checkForAction(Me))
+                throw new JobFailed($"couldn't collect from the {machine.DisplayName} (inventory full?)");
+            job.Summary = $"Collected {product} from the {machine.DisplayName}.";
+            yield break;
+        }
+
+        var input = Me.Items.OfType<SObject>()
+            .FirstOrDefault(i => i != null && machine.performObjectDropInAction(i, probe: true, Me, returnFalseIfItemConsumed: true));
+        if (input == null)
+            throw new JobFailed(machine.heldObject.Value != null
+                ? $"the {machine.DisplayName} is already working on {machine.heldObject.Value.DisplayName}"
+                : $"you have nothing the {machine.DisplayName} accepts");
+        int before = input.Stack;
+        if (!machine.performObjectDropInAction(input, probe: false, Me, returnFalseIfItemConsumed: true))
+            throw new JobFailed($"couldn't load the {machine.DisplayName} with {input.DisplayName}");
+        if (input.Stack <= 0)
+            Me.removeItemFromInventory(input);
+        job.Summary = $"Loaded {before - input.Stack} {input.DisplayName} into the {machine.DisplayName}.";
+    }
+
+    // ================================================================ cook
+
+    /// <summary>Cook a known recipe (the Chef's bundle needs a Maki Roll and a Fried Egg).</summary>
+    public static IEnumerator Cook(Job job, string name)
+    {
+        var known = Me.cookingRecipes.Keys.ToList();
+        var recipeName = known.FirstOrDefault(k => k.Equals(name, StringComparison.OrdinalIgnoreCase))
+            ?? known.FirstOrDefault(k => k.Contains(name, StringComparison.OrdinalIgnoreCase))
+            ?? throw new JobFailed($"you don't know how to cook '{name}'. You know: {string.Join(", ", known)}");
+        var recipe = new CraftingRecipe(recipeName, true);
+        if (!recipe.doesFarmerHaveIngredientsInInventory())
+            throw new JobFailed($"not enough ingredients for {recipe.DisplayName}: needs {Ingredients(recipe)}");
+
+        recipe.consumeIngredients(null);
+        var item = recipe.createItem();
+        if (!Me.addItemToInventoryBool(item))
+            throw new JobFailed("your inventory is full");
+        Game1.playSound("coin");
+        job.Summary = $"Cooked {item.DisplayName}.";
+        yield break;
     }
 
     // ================================================================ shared chest

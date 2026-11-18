@@ -5,6 +5,7 @@ using NobodyValley.Jobs;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
+using StardewValley.Internal;
 
 namespace NobodyValley;
 
@@ -244,6 +245,25 @@ internal sealed class ModEntry : Mod
                 return new JObject { ["opened"] = kind };
             }
 
+            case "debug_finish_buildings":
+            {
+                // Testing aid: finish all construction/upgrades on the farm immediately.
+                foreach (var b in Game1.getFarm().buildings)
+                {
+                    if (b.daysOfConstructionLeft.Value > 0 || b.daysUntilUpgrade.Value > 0)
+                        b.FinishConstruction();
+                }
+                return new JObject { ["finished"] = true };
+            }
+
+            case "debug_money":
+            {
+                // Testing aid: set the player's money.
+                int amount = Math.Max(0, Int("amount", 100000));
+                Game1.player.Money = amount;
+                return new JObject { ["money"] = amount };
+            }
+
             case "debug_give":
             {
                 // Testing aid: add an item (by display name or id) to the inventory.
@@ -378,6 +398,45 @@ internal sealed class ModEntry : Mod
                 var item = Str("item") ?? throw new CommandException("missing 'item'");
                 return StartJob(cmd, $"crafting {item}", j => MoreJobs.Craft(j, item));
             }
+            case "repair":
+            {
+                var target = Str("target") ?? throw new CommandException("missing 'target'");
+                return StartJob(cmd, $"repairing {target}", j => FarmJobs.Repair(j, target));
+            }
+            case "plant_tree":
+            {
+                var item = Str("item");
+                return StartJob(cmd, item == null ? "planting a fruit tree" : $"planting a {item}",
+                    j => FarmJobs.PlantTree(j, item));
+            }
+            case "fruit":
+                return StartJob(cmd, "picking fruit", FarmJobs.HarvestFruit);
+            case "donate":
+            {
+                var item = Str("item");
+                return StartJob(cmd, item == null ? "donating to the Community Center" : $"donating {item}",
+                    j => CommunityCenterJobs.Donate(j, item));
+            }
+            case "cook":
+            {
+                var item = Str("item") ?? throw new CommandException("missing 'item'");
+                return StartJob(cmd, $"cooking {item}", j => MoreJobs.Cook(j, item));
+            }
+            case "operate":
+                return StartJob(cmd, at is { } opTile ? $"using the machine at {opTile.X},{opTile.Y}" : "using a machine",
+                    j => MoreJobs.Operate(j, at), runDuringMenus: true);
+            case "build":
+            {
+                var item = Str("item") ?? throw new CommandException("missing 'item'");
+                return StartJob(cmd, $"building {item}", j => HomesteadJobs.Build(j, item));
+            }
+            case "buy_animal":
+            {
+                var item = Str("item") ?? throw new CommandException("missing 'item'");
+                return StartJob(cmd, $"buying a {item}", j => HomesteadJobs.BuyAnimal(j, item));
+            }
+            case "care_animals":
+                return StartJob(cmd, "tending the animals", HomesteadJobs.CareAnimals);
             case "store":
             {
                 var item = Str("item");

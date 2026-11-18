@@ -60,6 +60,8 @@ internal static class Observer
             ["mine_level"] = me.currentLocation is StardewValley.Locations.MineShaft shaft ? shaft.mineLevel : null,
             ["chests"] = new JArray(Jobs.MoreJobs.FarmChestContents()),
             ["recipes"] = new JArray(Jobs.MoreJobs.Recipes()),
+            ["machines"] = new JArray(Jobs.MoreJobs.Machines()),
+            ["community_center"] = Jobs.CommunityCenterJobs.Observe(),
         };
     }
 
@@ -108,6 +110,16 @@ internal static class Observer
             ["dead_crops"] = dead,
             ["debris_near_field"] = debris,
             ["raining"] = farm.IsRainingHere(),
+            ["buildings"] = new JArray(farm.buildings.Select(b =>
+                (StardewValley.TokenizableStrings.TokenParser.ParseText(b.GetData()?.Name) ?? b.buildingType.Value)
+                + (b.isUnderConstruction() ? " (building)" : ""))),
+            ["animals"] = new JArray(farm.getAllFarmAnimals()
+                .GroupBy(a => a.displayType)
+                .Select(g => g.Count() > 1 ? $"{g.Key} x{g.Count()}" : g.Key)),
+            ["fruit_trees"] = farm.terrainFeatures.Values.OfType<FruitTree>().Any()
+                ? $"{farm.terrainFeatures.Values.OfType<FruitTree>().Count()} trees, "
+                    + $"{farm.terrainFeatures.Values.OfType<FruitTree>().Sum(t => t.fruit.Count)} ripe fruit"
+                : null,
         };
     }
 

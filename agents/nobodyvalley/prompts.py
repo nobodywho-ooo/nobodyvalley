@@ -5,9 +5,10 @@ from __future__ import annotations
 from typing import Any
 
 SYSTEM_PROMPT = """\
-You are {name}, a farmer in the game Stardew Valley, sharing one farm with {others}. Together you try to complete the game.
-You inherited your grandfather's old, overgrown farm: with hand-me-down tools and a few coins, you set out to begin your new
-life and turn those fields into a thriving home. There's real opportunity here - with a little dedication.
+You are {name}, a farmer in the game Stardew Valley, sharing one farm with {others}. Together you are restoring the
+Community Center: finishing all of its Junimo bundles is the main goal that completes the valley's story. You inherited your
+grandfather's old, overgrown farm: with hand-me-down tools and a few coins, you set out to begin your new life and turn those
+fields into a thriving home. There's real opportunity here - with a little dedication.
 Personality: {personality}.
 Your job: {job}.
 
@@ -26,8 +27,17 @@ you're shown; actions with x,y walk there and act on that tile. Without x,y, the
   plant item(seed) x,y|n
   water x,y|n (neither = all)
   harvest x,y|n (neither = all)
-  ship item (none = all crops & forage; paid overnight)
-  buy item n (Pierre's seeds; Willy's rods & bait)
+  ship item (none = all crops & forage; paid overnight; keeps bundle items)
+  donate item (optional; none = every bundle item you carry) at the Community Center
+  buy item n (any shop: Pierre, Willy, Marnie, Saloon, Oasis, Krobus, Robin, Clint)
+  cook item (known recipes; e.g. Maki Roll, Fried Egg)
+  operate x,y (collect from or load a machine; no x,y = nearest machine)
+  build item (Coop, Barn, Big Coop, Big Barn, Deluxe Coop, Deluxe Barn, Silo; needs materials)
+  buy_animal item (Chicken, Cow, Goat, Duck, Sheep, Rabbit, Pig at Marnie's)
+  care_animals (pet/feed animals and collect milk, eggs, wool, ...)
+  plant_tree item (fruit-tree sapling; needs open farm ground)
+  fruit (shake ripe fruit off the fruit trees)
+  repair target (bridge; 300 wood for the beach bridge)
   eat item
   craft item (chests/scarecrows get placed by the field)
   store item (shared chest)
@@ -47,6 +57,8 @@ Tips: Pierre's is open 9am-5pm, not Wednesdays. Money is shared. Inventories are
 your own seeds; share via the shared chests on the farm. Only craft things you need: one chest is \
 enough for everyone, so craft one only if there are none (or they're all full). A Scarecrow (50 wood, 1 coal, 20 fiber; learned at \
 Farming 1) keeps crows off crops. Forage is free money. Eat or sleep when energy is low; bed before 1am.
+
+Community Center first: the observation lists every bundle's missing items. Keep those items instead of shipping them;\nwhen you are carrying any, go_to CommunityCenter and donate. Missing crops mean plant their seeds (buy them from\nPierre), missing forage/fish/minerals mean go and collect them, and missing animal/artisan goods need a coop, barn or\ncrafting machine. Check the list before choosing farm work, and tell the others in chat what you are collecting.\nThe six rooms: Pantry (seasonal crops, animal products, artisan goods), Crafts Room (forage, wood/stone/hardwood),\nFish Tank (fish and crab-pot catches), Boiler Room (bars, minerals, monster drops), Bulletin Board (cooking, dye,\nfield research, fodder, enchanter goods) and Vault (money). Do what the current season and weather allow; summer,\nfall and winter items have to wait for their season (or come from the Traveling Cart/greenhouse).\nFor animal and artisan bundles, build a Coop and Barn (then Big/Deluxe versions), buy animals from Marnie,\ncare_animals every morning, and craft machines (Furnace, Preserves Jar, Cheese Press, Keg, ...) then operate\nthem. Fruit trees, tappers and fishing also fill bundle slots; check what is still missing before spending\nthe day on something else.
 """
 
 
@@ -76,7 +88,7 @@ MAP_LEGEND = (
 )
 
 # Recipes worth telling the agents about (the rest - paths, fences, ... - are just noise).
-USEFUL_RECIPES = {"Scarecrow", "Chest", "Basic Fertilizer", "Speed-Gro", "Sprinkler", "Quality Sprinkler", "Bee House", "Furnace"}
+USEFUL_RECIPES = {"Scarecrow", "Chest", "Basic Fertilizer", "Speed-Gro", "Sprinkler", "Quality Sprinkler", "Bee House", "Furnace", "Tapper", "Preserves Jar", "Keg", "Cheese Press", "Mayonnaise Machine", "Loom", "Oil Maker"}
 
 
 def format_observation(obs: dict[str, Any], events: str = "", status: str = "") -> str:
@@ -112,6 +124,12 @@ def format_observation(obs: dict[str, Any], events: str = "", status: str = "") 
         )
         + ".",
     ]
+    if obs.get("farm", {}).get("buildings"):
+        lines.append(f"Farm buildings: {', '.join(obs['farm']['buildings'])}.")
+    if obs.get("farm", {}).get("animals"):
+        lines.append(f"Animals: {', '.join(obs['farm']['animals'])}.")
+    if fruit_trees := obs.get("farm", {}).get("fruit_trees"):
+        lines.append(f"Fruit trees: {fruit_trees}.")
     others = obs.get("others") or []
     if others:
         lines.append(
@@ -131,11 +149,23 @@ def format_observation(obs: dict[str, Any], events: str = "", status: str = "") 
         lines.append(f"Pierre sells: {', '.join(seeds)}.")
     if chests := obs.get("chests"):
         lines.append(f"Shared chests ({len(chests)} on the farm, no need to craft more): {merge_chests(chests) or 'all empty'}.")
+    if cc := obs.get("community_center"):
+        lines.append(f"Community Center: {cc.get('done', 'not opened')}.")
+        for room in cc.get("rooms", []):
+            lines.append(f"- {room['room']}: " + "; ".join(room.get("needs", [])))
+        if held := cc.get("in_inventory"):
+            lines.append(f"You are carrying bundle items: {held} - go_to CommunityCenter and donate.")
+        if chest_items := cc.get("in_chests"):
+            lines.append(f"Shared chests have bundle items: {chest_items} - use take item=NAME n=COUNT to get them.")
+        if hint := cc.get("hint"):
+            lines.append(hint)
     if obs.get("forage_here"):
         lines.append(f"There are {obs['forage_here']} forage items here.")
     useful = [r for r in obs.get("recipes", []) if r.split(" (")[0] in USEFUL_RECIPES]
     if useful:
         lines.append(f"Crafting: {', '.join(useful)}.")
+    if machines := obs.get("machines"):
+        lines.append(f"Machines: {'; '.join(machines)}.")
     if obs.get("mine_level"):
         lines.append(f"You're on mine level {obs['mine_level']}. Rocks hide the ladder down (L); monsters (!) attack.")
     if m := obs.get("map"):
