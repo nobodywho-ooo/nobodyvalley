@@ -111,7 +111,7 @@ def format_observation(obs: dict[str, Any], events: str = "", status: str = "") 
     lines += [
         f"[{world['date']}, {world['time']}, {world['weather']}]"
         + (f" Festival today!" if world.get("festival_today") else ""),
-        f"You are at: {me['location']}. Energy {me['energy']}/{me['max_energy']}. Money {me['money']}g."
+        f"Energy {me['energy']}/{me['max_energy']}. Money {me['money']}g."
         + (f" Currently: {me['busy']}." if me.get("busy") else " You're not doing anything."),
         f"Inventory{f' ({len(me["inventory"])}/{me["inventory_size"]} slots)' if me.get('inventory_size') else ''}: "
         f"{', '.join(me['inventory']) or 'empty'}.",
@@ -176,6 +176,7 @@ def format_observation(obs: dict[str, Any], events: str = "", status: str = "") 
     if obs.get("mine_level"):
         lines.append(f"You're on mine level {obs['mine_level']}. Rocks hide the ladder down (L); monsters (!) attack.")
     if m := obs.get("map"):
+        lines.append(f"You are at: {me['location']}.")
         lines.append(f"Map around you (you're @ at {m['you']}; coordinates are offsets):\n{m['grid']}")
         if nearby := m.get("nearby", {}):
             lines.append("Nearest: " + "; ".join(f"{k}: {v}" for k, v in nearby.items()) + ".")
