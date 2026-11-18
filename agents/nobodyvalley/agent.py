@@ -396,7 +396,7 @@ class Agent:
             status_parts.append("No 'say' action this turn.")
         status = " ".join(status_parts)
         observation = prompts.format_observation(obs, events, status)
-        prompt = f"{observation}\n\nYour job: {prompts.persona_parts(self._persona())[1]}. What do you do?"
+        prompt = f"{observation}\n\nWhat do you do?"
 
         t0 = time.monotonic()
         self.print(self.name, "prompt", prompt)

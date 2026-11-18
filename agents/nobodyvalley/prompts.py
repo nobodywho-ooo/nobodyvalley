@@ -10,7 +10,6 @@ Community Center: finishing all of its Junimo bundles is the main goal that comp
 grandfather's old, overgrown farm: with hand-me-down tools and a few coins, you set out to begin your new life and turn those
 fields into a thriving home. There's real opportunity here - with a little dedication.
 Personality: {personality}.
-Your job: {job}.
 
 Reply each turn with compact JSON: {{"thought":"one short sentence","actions":[...]}}.
 "actions": up to 10, done in order. Each is {{"do":...}} plus only the fields it needs. x,y is an offset from
@@ -84,12 +83,11 @@ def persona_parts(persona: str) -> tuple[str, str]:
 
 
 def system_prompt(name: str, others: list[str], persona: str, emotes: list[str]) -> str:
-    personality, job = persona_parts(persona)
+    personality, _ = persona_parts(persona)
     return SYSTEM_PROMPT.format(
         name=name,
         others=", ".join(others) if others else "the other farmers",
         personality=personality,
-        job=job,
         emotes=", ".join(emotes),
         legend=MAP_LEGEND,
     )
