@@ -151,7 +151,7 @@ wait_in_game() { # <log name>: wait until that instance has loaded the world
         fi
         sleep 2
     done
-    echo "$1 didn't get into the game within 2 minutes; see $RUN_DIR/$1.log" >&2
+    echo "$1 didn't get into the game within 2 minutes; see $RUN_DIR/games/$1.log" >&2
     return 1
 }
 
@@ -171,7 +171,7 @@ wait_joined() { # <farmhand>: wait until it's in the game; fails if it gets stuc
         fi
         sleep 1
     done
-    echo "$1 didn't get into the game within 2 minutes; see $RUN_DIR/$1.log" >&2
+    echo "$1 didn't get into the game within 2 minutes; see $RUN_DIR/games/$1.log" >&2
     return 1
 }
 
