@@ -376,13 +376,43 @@ internal static class MoreJobs
 
     // ================================================================ shared chest
 
-    /// <summary>Put items into the nearest chest on the farm (default: everything but tools and seeds).</summary>
+    /// <summary>
+    /// Put items into a chest through its real menu: walk to a chest, open the chest GUI (or use the
+    /// one already open), move the items while it's up, then close it again (default: everything
+    /// but tools and seeds).
+    /// </summary>
     public static IEnumerator Store(Job job, string? itemName)
     {
-        var chest = new Chest?[1];
-        yield return OpenChest(chest);
-        var c = chest[0]!;
+        var opened = Game1.activeClickableMenu is not ItemGrabMenu;
+        try
+        {
+            if (opened)
+            {
+                var holder = new Chest?[1];
+                yield return OpenChest(holder); // walks, locks, opens the real chest GUI
+                var c = holder[0]!;
+                var moved = StoreItems(c, itemName);
+                job.Summary = moved.Count == 0 ? "Nothing to store." : $"Stored {string.Join(", ", moved)} in the chest.";
+            }
+            else
+            {
+                var openChest = (Game1.activeClickableMenu as ItemGrabMenu)?.sourceItem as Chest
+                    ?? (Game1.activeClickableMenu as ItemGrabMenu)?.context as Chest;
+                if (openChest == null)
+                    throw new JobFailed("the open menu can't hold your things - take what it shows (take item) or close it (`answer`)");
+                var moved = StoreItems(openChest, itemName);
+                job.Summary = moved.Count == 0 ? "Nothing to store." : $"Stored {string.Join(", ", moved)} in the chest.";
+            }
+        }
+        finally
+        {
+            // The GUI operation is atomic: the chest menu closes when the job is done.
+            CloseChestGui(opened);
+        }
+    }
 
+    private static List<string> StoreItems(Chest c, string? itemName)
+    {
         var moved = new List<string>();
         foreach (var item in Me.Items.Where(i => i != null).ToList())
         {
@@ -400,48 +430,78 @@ internal static class MoreJobs
                 Me.removeItemFromInventory(item);
             moved.Add($"{stored} {item.DisplayName}");
         }
-        c.mutex.ReleaseLock();
-        job.Summary = moved.Count == 0 ? "Nothing to store." : $"Stored {string.Join(", ", moved)} in the chest.";
+        return moved;
     }
 
-    /// <summary>Take an item out of the chest(s) on the farm.</summary>
+    /// <summary>
+    /// Take an item through the real menu: from the chest/overflow menu that's open right now if
+    /// there is one, otherwise walk to a farm chest, open its GUI, take, and close it again. The
+    /// "items that didn't fit" overflow menu stays open (taking more is fine; closing it drops
+    /// whatever is left).
+    /// </summary>
     public static IEnumerator Take(Job job, string itemName, int count)
     {
-        // Check all the chests first, rather than walking to one and reporting just that one's contents.
-        var all = Game1.getFarm().objects.Values.OfType<Chest>().Where(ch => ch.playerChest.Value).ToList();
-        if (all.Count > 0 && !all.Any(ch => ch.GetItemsForPlayer().Any(i => i != null && i.DisplayName.Contains(itemName, StringComparison.OrdinalIgnoreCase))))
+        var opened = Game1.activeClickableMenu is not ItemGrabMenu;
+        try
         {
-            var have = all.Select(ChestContents).Where(t => t != "nothing").ToList();
-            throw new JobFailed($"none of the {all.Count} chests has '{itemName}'. They have: {(have.Count == 0 ? "nothing" : string.Join("; ", have))}");
+            if (opened)
+            {
+                // Check all the chests first, rather than walking to one and reporting just that one's contents.
+                var all = Game1.getFarm().objects.Values.OfType<Chest>().Where(ch => ch.playerChest.Value).ToList();
+                if (all.Count > 0 && !all.Any(ch => ch.GetItemsForPlayer().Any(i => i != null && i.DisplayName.Contains(itemName, StringComparison.OrdinalIgnoreCase))))
+                {
+                    var have = all.Select(ChestContents).Where(t => t != "nothing").ToList();
+                    throw new JobFailed($"none of the {all.Count} chests has '{itemName}'. They have: {(have.Count == 0 ? "nothing" : string.Join("; ", have))}");
+                }
+                var holder = new Chest?[1];
+                yield return OpenChest(holder, itemName); // walks, locks, opens the real chest GUI
+            }
+            var menuItems = (Game1.activeClickableMenu as ItemGrabMenu)?.ItemsToGrabMenu.actualInventory
+                ?? throw new JobFailed("no menu is open to take from");
+            var item = menuItems.FirstOrDefault(i => i != null && i.DisplayName.Equals(itemName, StringComparison.OrdinalIgnoreCase))
+                ?? menuItems.FirstOrDefault(i => i != null && i.DisplayName.Contains(itemName, StringComparison.OrdinalIgnoreCase));
+            if (item == null)
+                throw new JobFailed($"there's no '{itemName}' in the open menu. It has: {OpenContents(menuItems)}");
+            int n = Math.Min(count, item.Stack);
+            var taken = item.getOne();
+            taken.Stack = n;
+            if (!Me.couldInventoryAcceptThisItem(taken))
+                throw new JobFailed("your inventory is full - store or eat something first");
+            Me.addItemToInventoryBool(taken);
+            if (item.ConsumeStack(n) == null)
+                menuItems.Remove(item);
+            for (int i = menuItems.Count - 1; i >= 0; i--)
+                if (menuItems[i] == null)
+                    menuItems.RemoveAt(i);
+            job.Summary = $"Took {n} {taken.DisplayName} from the open menu.";
         }
-        var chest = new Chest?[1];
-        yield return OpenChest(chest, itemName);
-        var c = chest[0]!;
-        var items = c.GetItemsForPlayer();
-        var item = items.FirstOrDefault(i => i != null && i.DisplayName.Equals(itemName, StringComparison.OrdinalIgnoreCase))
-            ?? items.FirstOrDefault(i => i != null && i.DisplayName.Contains(itemName, StringComparison.OrdinalIgnoreCase));
-        if (item == null)
+        finally
         {
-            c.mutex.ReleaseLock();
-            throw new JobFailed($"there's no '{itemName}' in the chest. It has: {ChestContents(c)}");
+            // Chest menus are atomic (open, take, close). Overflow menus stay open so the agent can
+            // keep taking from them; closing those would drop the leftovers.
+            if (Game1.activeClickableMenu is ItemGrabMenu { sourceItem: Chest } or ItemGrabMenu { context: Chest })
+                CloseChestGui(opened);
         }
-        int n = Math.Min(count, item.Stack);
-        var taken = item.getOne();
-        taken.Stack = n;
-        if (!Me.couldInventoryAcceptThisItem(taken))
-        {
-            c.mutex.ReleaseLock();
-            throw new JobFailed("your inventory is full");
-        }
-        Me.addItemToInventoryBool(taken);
-        if (item.ConsumeStack(n) == null)
-            items.Remove(item);
-        c.clearNulls();
-        c.mutex.ReleaseLock();
-        job.Summary = $"Took {n} {taken.DisplayName} from the chest.";
     }
 
-    /// <summary>Walk to a chest on the farm (preferring one containing <paramref name="containing"/>) and lock it.</summary>
+    /// <summary>Close a chest menu, releasing the lock we took when we opened it ourselves.</summary>
+    private static void CloseChestGui(bool openedByUs)
+    {
+        if (Game1.activeClickableMenu is not ItemGrabMenu menu)
+            return;
+        var chest = menu.sourceItem as Chest ?? menu.context as Chest;
+        menu.exitThisMenu();
+        if (openedByUs && chest != null)
+            chest.mutex.ReleaseLock();
+    }
+
+    private static string OpenContents(IList<Item> items)
+    {
+        var list = items.Where(i => i != null).Select(i => i!.Stack > 1 ? $"{i.DisplayName} x{i.Stack}" : i.DisplayName).ToList();
+        return list.Count == 0 ? "nothing" : string.Join(", ", list);
+    }
+
+    /// <summary>Walk to a chest on the farm (preferring one containing <paramref name="containing"/>), lock it, and open its real menu.</summary>
     private static IEnumerator OpenChest(Chest?[] result, string? containing = null)
     {
         if (Me.currentLocation is not Farm)
@@ -471,6 +531,11 @@ internal static class MoreJobs
             yield return null;
         if (locked != true)
             throw new JobFailed("someone else is using the chest");
+        // Open the actual chest GUI, like a player who just clicked the chest - so the on-screen
+        // state and the transfer go through the game's own menu machinery.
+        chest.ShowMenu();
+        ModEntry.Instance.NoteModOpenedMenu();
+        yield return Wait.Ticks(2);
         result[0] = chest;
     }
 

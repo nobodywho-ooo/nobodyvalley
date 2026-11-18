@@ -67,6 +67,9 @@ internal static class MapView
             }
             sb.Append('\n');
         }
+        // Objects/terrain just outside the drawn 25x17 window (a chest by the door, machines, debris):
+        // without this the nearest-first lists below only cover what's already on the map grid.
+        ScanBeyondView(loc, c, x0, y0, x1, y1, doors, Note);
 
         var nearby = new JObject();
         foreach (var (name, points) in lists)

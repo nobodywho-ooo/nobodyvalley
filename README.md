@@ -126,14 +126,14 @@ pages), after showing each for `MenuDisplaySeconds` (default 5) so spectators ca
 ### The agents (`agents/`, Python)
 
 - **One `nobodywho.Model`, many `ChatAsync`s:** every agent has its own chat (persona, history),
-  all on one loaded model. The default is Qwen3.5-9B (Q4_K_M, 5.4 GB). With 4 agents and 8k
-  context each, the process uses about 7 GB. Use `--model` to try others.
+  all on one loaded model. The default is Qwen3.5-9B (Q4_K_M, 5.4 GB). With 4 agents at 64k
+  context each, the process uses about 14 GB (the demo machine has 24 GB). Use `--model` to try others.
 - **Hybrid actions:** most work verbs take either a map tile (`{"do":"chop","x":63,"y":13}`, picked
   from the map view) or a count for bulk work (`{"do":"water","n":5}`, or no `n` = all).
 - **Compact JSON:** the schema uses llguidance's `"x-guidance": {"whitespace_flexible": false}` and
   only `thought`/`actions` are required, so replies have no whitespace or empty fields (~3× fewer tokens).
-- **Context:** 32k tokens per agent by default (`--n-ctx`). Qwen3.5 is a hybrid model (only 8 of 32
-  layers have a KV cache), so that's ~1 GB per agent.
+- **Context:** 64k tokens per agent by default (`--n-ctx`). Qwen3.5 is a hybrid model (only 8 of 32
+  layers have a KV cache), so that's ~2 GB per agent.
 - **Structured decisions, not tool calls.** Each turn is one generation, constrained by NobodyWho's
   JSON-schema sampler to `{"thought", "actions": [up to 10]}`, with length limits
   on every field. Talking and emoting are actions like the rest: `{"do":"say","text":"..."}`,
@@ -157,13 +157,20 @@ pages), after showing each for `MenuDisplaySeconds` (default 5) so spectators ca
 - **Guards for small models:** at most 10 actions per turn (enforced by the schema). A turn
   without actions gets a nudge. Repeating the same failure gets flagged.
 - **Debugging:** every farmer's full system prompt, turns and replies go to `<run>/<Farmer>.log` (or `agents/prompts/<Farmer>.log` when run by hand). `NV_DEBUG_TOKENS=1 uv run nobodyvalley`
-  echoes every generated token to stderr.
+  echoes every generated token to stderr. `NV_DEBUG_TIMING=1` adds a per-turn timing breakdown (time
+  to first token = queue wait + prefill, decode ms/token, prefill size from `ctx_before`
+  + `prompt_tokens`, slowest token gap) plus the per-day reset time, so you can tell slow
+  generation from slow prefill from cache resets.
 - **Agents talk in-game:** a `say` action is sent through the game's chat box, so it shows up in
   every game window's chat and reaches the other farmers through the normal `chat` event - exactly
   like a message typed by a human. There's no separate agent-only chat any more; the dashboard is
   just the status panels.
-- **Fresh context every morning:** the chats are reset each day; the observation carries the state
-  that matters.
+- **No history compaction:** each turn's observation is a normal user message in the chat, so the
+  KV cache stays warm across turns (no re-prefill every turn). When the context gets full, NobodyWho's
+  context shift trims the oldest turns, and the whole chat is reset fresh each morning anyway.
+- **Day-end ready check:** the multiplayer "waiting for the other players" dialog is reported to the
+  agent (`answer` confirms it), won by the mod's menu janitor after a few seconds, and confirmed by
+  the `sleep` job, so a co-op day never hangs waiting for a farmhand who is already in bed.
 
 Known NobodyWho issue: `ChatAsync.stop_generation()` doesn't stop the generation. The token
 stream just stops yielding, and the next `ask()` waits until the full reply has been generated. So

@@ -20,6 +20,8 @@ internal sealed class ScreenMessages
     private DialogueBox? lastDialogueBox;
     private string? lastDialogueKey;
     private string? lastEventKey;
+    private IClickableMenu? lastMenu; // an open chest/inventory menu we've already told the agent about
+    private IClickableMenu? modOpened; // a chest menu the mod itself opened (store/take) - don't report it
 
     public ScreenMessages(BridgeServer server, IMonitor monitor)
     {
@@ -29,6 +31,9 @@ internal sealed class ScreenMessages
 
     /// <summary>True while a message is waiting for the agent (MenuJanitor leaves the screen alone).</summary>
     public bool Holding => DateTime.UtcNow < holdUntil;
+
+    /// <summary>Mark a menu as mod-opened (e.g. the chest window a store/take job raises); it's reported as a job result, not as a screen message.</summary>
+    public void Ignore(IClickableMenu? menu) => modOpened = menu;
 
     public void ClearHold() => holdUntil = DateTime.MinValue;
 
@@ -58,6 +63,35 @@ internal sealed class ScreenMessages
         }
         lastDialogueBox = null;
         lastDialogueKey = null;
+
+        // An open chest/backpack menu freezes every job, so tell the agent right away (it gets a turn
+        // and can take/store or close it). Reported once per menu instance; observe's "menu" field
+        // keeps it in the Status block afterwards.
+        if (Game1.activeClickableMenu is ItemGrabMenu or GameMenu)
+        {
+            if (ReferenceEquals(Game1.activeClickableMenu, modOpened))
+                return; // the mod opened this menu itself (a store/take job); its job_done tells the agent
+            if (!ReferenceEquals(Game1.activeClickableMenu, lastMenu))
+            {
+                lastMenu = Game1.activeClickableMenu;
+                var text = Observer.OpenMenu() ?? "A menu is open and blocking you - close it with `answer`.";
+                Report(text, "menu", null, Array.Empty<string>(), hold: false,
+                    dedupeKey: "menu:" + RuntimeHelpers.GetHashCode(lastMenu), dedupeSeconds: 600);
+            }
+            return;
+        }
+        lastMenu = null;
+
+        // The multiplayer day-end ready check ("waiting for the other players") is a toggle menu
+        // that freezes the day until everyone confirms. Tell the agent - it should `answer`
+        // (confirm) so the day can end; MenuJanitor confirms anyway once the hold expires.
+        if (Game1.activeClickableMenu is ReadyCheckDialog readyCheck)
+        {
+            Report("Waiting for the other players (ready check). Confirm with `answer` to end the day.",
+                "menu", null, Array.Empty<string>(), hold: true,
+                dedupeKey: "ready:" + RuntimeHelpers.GetHashCode(readyCheck), dedupeSeconds: 600);
+            return;
+        }
 
         if (Game1.CurrentEvent != null && Game1.currentSpeaker?.CurrentDialogue.Count > 0)
         {

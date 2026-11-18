@@ -31,7 +31,7 @@ internal sealed class MenuJanitor
     /// <param name="leaveDialoguesAlone">A job is reading/answering dialogue boxes itself.</param>
     public void Tick(bool leaveDialoguesAlone = false)
     {
-        object? screen = Game1.CurrentEvent is { isFestival: false, skipped: false } ev ? ev : Game1.activeClickableMenu;
+        object? screen = Game1.CurrentEvent is { skipped: false } ev ? ev : Game1.activeClickableMenu;
         if (!ReferenceEquals(screen, current))
         {
             current = screen;
@@ -39,22 +39,42 @@ internal sealed class MenuJanitor
         }
         if (screen == null)
             return;
-        if (holdScreen?.Invoke() == true && screen is DialogueBox or Event)
+        if (holdScreen?.Invoke() == true && screen is DialogueBox or Event or ReadyCheckDialog)
             return;
-        if (++ticksShown < displayTicks())
+        // Festivals get a longer look before they're ended (agents can't do anything useful at one).
+        int grace = screen is Event { isFestival: true } ? displayTicks() * 12 : displayTicks();
+        if (++ticksShown < grace)
             return;
 
         bool acted = screen switch
         {
+            Event { isFestival: true } festival => EndFestival(festival),
             Event e => SkipEvent(e),
             ShippingMenu shipping => DismissShipping(shipping),
             LevelUpMenu levelUp => DismissLevelUp(levelUp),
             DialogueBox { isQuestion: false } box when !leaveDialoguesAlone => Click(box),
             LetterViewerMenu letter => Exit(letter),
+            ReadyCheckDialog ready => Confirm(ready),
             _ => false,
         };
         if (acted)
             ticksShown = 0; // e.g. the next page of a dialogue gets its own few seconds
+    }
+
+    // A festival freezes everyone on its map and the agents can't meaningfully take part, so once
+    // it's been shown for a little while, end it for this player (vanilla warps them back home).
+    private static bool EndFestival(Event ev)
+    {
+        ev.forceEndFestival(Game1.player);
+        return true;
+    }
+
+    // The day-end ready check: nobody's at the keyboard, so confirm it (like its "Ready" button)
+    // once it's been shown long enough, or the co-op day hangs forever on "waiting for players".
+    private static bool Confirm(ReadyCheckDialog dialog)
+    {
+        dialog.confirm();
+        return true;
     }
 
     private bool SkipEvent(Event ev)

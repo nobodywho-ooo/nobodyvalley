@@ -596,15 +596,20 @@ internal static class FarmJobs
         if (items.Count == 0)
             throw new JobFailed(itemName == null ? "you have no crops or forage to ship" : $"you have no '{itemName}'");
 
-        yield return EnsureOnFarm();
         var farm = Game1.getFarm();
-        var bin = farm.buildings.OfType<ShippingBin>().FirstOrDefault() ?? throw new JobFailed("there's no shipping bin");
-        var r = new StepResult();
-        yield return Steps.WalkTo(new Point(bin.tileX.Value, bin.tileY.Value + 1), r, Steps.Up);
-        if (!r.Ok)
-            yield return Steps.WalkTo(new Point(bin.tileX.Value + 1, bin.tileY.Value + 1), r, Steps.Up);
-        if (!r.Ok)
-            throw new JobFailed("can't reach the shipping bin");
+        // An open menu (chest/inventory) blocks movement, but the actual shipping (farm.shipItem) is
+        // just adding to the bin's list, so skip the walk and let the agent free up backpack space.
+        if (Game1.activeClickableMenu == null)
+        {
+            yield return EnsureOnFarm();
+            var bin = farm.buildings.OfType<ShippingBin>().FirstOrDefault() ?? throw new JobFailed("there's no shipping bin");
+            var r = new StepResult();
+            yield return Steps.WalkTo(new Point(bin.tileX.Value, bin.tileY.Value + 1), r, Steps.Up);
+            if (!r.Ok)
+                yield return Steps.WalkTo(new Point(bin.tileX.Value + 1, bin.tileY.Value + 1), r, Steps.Up);
+            if (!r.Ok)
+                throw new JobFailed("can't reach the shipping bin");
+        }
 
         int total = 0, value = 0;
         var names = new List<string>();
@@ -818,6 +823,10 @@ internal static class FarmJobs
 
     public static IEnumerator Sleep(Job job)
     {
+        // The agent asked to sleep and the day-end ready check is already up: confirm it so the
+        // co-op day doesn't wait on this player forever.
+        if (Game1.activeClickableMenu is ReadyCheckDialog ready)
+            ready.confirm();
         if (Game1.activeClickableMenu is ReadyCheckDialog || Me.isInBed.Value && Me.timeWentToBed.Value != 0)
         {
             job.Summary = "You're already in bed, waiting for the others to sleep.";

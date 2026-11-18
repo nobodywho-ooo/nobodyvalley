@@ -40,8 +40,8 @@ def make_printer(log_file: Path | None, prompt_dir: Path | None = None):
     def printer(name: str, kind: str, text: str) -> None:
         stamp = time.strftime("%H:%M:%S")
         if kind in ("system", "prompt", "reply"):
-            # Full system prompts, persistent history, temporary prompts and replies: too long for
-            # the terminal, but needed for debugging. Keep one file per farmer.
+            # Full system prompts, prompts and replies: too long for the terminal, but needed for
+            # debugging. Keep one file per farmer.
             if prompt_dir:
                 prompt_dir.mkdir(parents=True, exist_ok=True)
                 fh_prompt = prompt_files.get(name)
@@ -50,8 +50,8 @@ def make_printer(log_file: Path | None, prompt_dir: Path | None = None):
                     fh_prompt = prompt_files[name] = (prompt_dir / f"{name}.log").open("w")
                 label = {
                     "system": "system prompt (persistent)",
-                    "prompt": "current prompt ([Status] block is temporary; not kept in history)",
-                    "reply": "reply (kept in history)",
+                    "prompt": "current prompt (observation; kept in the chat history)",
+                    "reply": "reply (kept in the chat history)",
                 }[kind]
                 fh_prompt.write(f"===== {stamp} {name} {label}\n{text}\n")
                 fh_prompt.flush()
@@ -147,7 +147,7 @@ async def amain(args: argparse.Namespace) -> None:
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--model", default=DEFAULT_MODEL, help="GGUF path or huggingface: reference")
-    p.add_argument("--n-ctx", type=int, default=32768, help="context size per agent (tokens)")
+    p.add_argument("--n-ctx", type=int, default=65536, help="context size per agent (tokens)")
     p.add_argument("--base-port", type=int, default=8765)
     p.add_argument("--max-instances", type=int, default=8)
     p.add_argument("--personas", type=Path, default=None, help="personas file (default: personas.local.toml if it exists, else personas.toml)")

@@ -22,6 +22,13 @@ internal static class Steps
     {
         var p = Game1.player;
         var loc = p.currentLocation;
+        // An open menu (e.g. a chest or the backpack) blocks all movement and silently froze jobs here
+        // until the timeout; fail right away so the agent hears about it and closes the menu first.
+        if (Game1.activeClickableMenu != null)
+        {
+            r.Fail("there's a menu open (a chest or inventory) - close it first with `answer`");
+            yield break;
+        }
         if (p.TilePoint == tile)
         {
             if (facing >= 0)
@@ -116,6 +123,13 @@ internal static class Steps
             for (int i = 0; i < 300 && Game1.player.currentLocation is StardewValley.Locations.MineShaft; i++)
                 yield return null;
             yield return Wait.Ticks(10);
+        }
+        // A festival has relocated the player to the temporary festival map ("Temp"): normal
+        // navigation can't happen there, so fail fast instead of walking forever.
+        if (Game1.player.currentLocation?.NameOrUniqueName == "Temp")
+        {
+            r.Fail("you're at the festival - walking to another map isn't possible right now; enjoy the festival");
+            yield break;
         }
         for (int hops = 0; hops < 20; hops++)
         {

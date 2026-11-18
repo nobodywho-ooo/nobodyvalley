@@ -131,6 +131,7 @@ MIN_TURN_GAP_SECONDS = 3.0
 # Keep the chat calm: an agent speaks at most this often (unless answering someone who addressed it).
 MIN_SAY_GAP_SECONDS = 90.0
 DEBUG_TOKENS = bool(os.environ.get("NV_DEBUG_TOKENS"))
+DEBUG_TIMING = bool(os.environ.get("NV_DEBUG_TIMING"))
 
 
 def _blank_if_none(value: Any) -> str:
@@ -165,7 +166,6 @@ class Agent:
         self.name = f"port{conn.port}"
         self.others: list[str] = []
         self.chat: ChatAsync | None = None
-        self.history: list[dict[str, str]] = []  # only "what happened" + the model's replies
 
         self.queue: list[Action] = []  # actions waiting to be started
         self.busy: Action | None = None  # job currently running in the game
@@ -175,6 +175,7 @@ class Agent:
         self.wake = asyncio.Event()
         self.last_turn = 0.0
         self.last_failure: str | None = None
+        self.failure_streak = 0
         self.last_say = 0.0
         self.addressed = False  # someone spoke to us by name since our last turn
         self.screen_message: dict[str, Any] | None = None
@@ -304,6 +305,7 @@ class Agent:
             return
         if ev["ok"]:
             self.last_failure = None
+            self.failure_streak = 0
             if ev["action"] == "talk_to":
                 self.report_turn = True  # give the model a chance to summarize the villager's news
                 self.inbox.append("If the villager asked for something or said something useful, summarize it for the others with say.")
@@ -314,11 +316,32 @@ class Agent:
                 return
         else:
             failure = f"{ev['action']}: {ev['summary']}"
-            note = " (This failed the same way last time - do something different!)" if failure == self.last_failure else ""
-            if "inventory is full" in ev["summary"]:
-                note += (" Make room: ship things you don't need (e.g. ship Stone, Clay or Fiber; keep Wood, Coal and "
-                         "seeds), or ship your forage.")
+            self.failure_streak = self.failure_streak + 1 if failure == self.last_failure else 1
             self.last_failure = failure
+            summary = ev.get("summary", "")
+            note_cause: list[str] = []
+            if "there's nothing to" in summary or "no reachable" in summary:
+                # The model keeps aiming at a tile that is empty or that it can't see. Give it the
+                # concrete escape: work an actual tile from the map's points-of-interest list.
+                note_cause.append(" The tile you chose is empty. Re-read the map's Points of interest (they list "
+                                  "exact coordinates) and work one of those tiles, or at whole-row actions you can see.")
+            elif "too big for your basic tools" in summary:
+                note_cause.append(" That needs an upgraded tool you don't have. Leave it and do something your tools "
+                                  "can handle, or get bigger stumps/boulders upgraded at Clint's later.")
+            elif "inventory is full" in summary:
+                note_cause.append(" Make room: store extra items in the shared chest (`store item`, e.g. `store Wood` "
+                                  "or `store Stone`), eat something, or ship things you don't need.")
+            elif "still needed for a Community Center bundle" in summary:
+                item = summary.split(" is still needed")[0].strip()
+                note_cause.append(f" {item} is wanted for a bundle so it can't be shipped; if your backpack is full, "
+                                  f"free space with `store {item}` or `eat`, then donate it.")
+            # A 9B model stuck in a rut repeats the exact same doomed plan for many turns. Once it's
+            # clearly looping, tell it plainly to stop (the earlier "failed the same way" note wasn't
+            # enough on its own).
+            if self.failure_streak >= 3:
+                note_cause.append(" You've now repeated this same failing action over and over. STOP repeating it: "
+                                  "do a different action this turn - not this one.")
+            note = "" + "".join(note_cause)
             if self.queue:
                 note += f" (Cancelled the rest of your plan: {', '.join(a.cmd for a in self.queue)}.)"
                 self.queue.clear()
@@ -328,11 +351,15 @@ class Agent:
     async def _new_day(self, date: str) -> None:
         if self.chat is None:
             return
-        # Compact at the day boundary: reset the full model context (KV cache, temporary
-        # observation, old turns), then keep the compact event/reply history from yesterday.
+        # Fresh context each morning: reset the full model context (KV cache, temporary
+        # observation, old turns). Each turn's observation is a normal message in the chat from
+        # now on (no compaction), so the KV cache stays warm across turns; nobodywho's context
+        # shift trims the oldest turns if a day ever runs long.
+        if DEBUG_TIMING:
+            t = time.monotonic()
         await self.chat.reset(self._system_prompt(), [])
-        if self.history:
-            await self.chat.set_chat_history(self.history)
+        if DEBUG_TIMING:
+            print(f"[t] {self.name} reset (new day): {time.monotonic() - t:.3f}s", file=sys.stderr, flush=True)
         self.print(self.name, "system", self._system_prompt())
         self.queue.clear()
         self.busy, self.busy_id = None, None
@@ -402,7 +429,6 @@ class Agent:
         try:
             raw = await self._ask(prompt)
             self.print(self.name, "reply", raw)
-            await self._remember_turn(events, raw)
             decision = json.loads(raw)
         except Exception as e:  # noqa: BLE001
             self.print(self.name, "info", f"LLM error: {e}")
@@ -435,11 +461,16 @@ class Agent:
         if emote := next((a.get("emote") for a in raw_actions if a.get("do") == "emote"), None):
             await self._send("emote", emote=emote)
 
-        # A real dialogue is blocking the game. If the model ignored it and tried to walk off,
-        # nudge it once to answer/react before running the plan.
-        if (has_screen and self.screen_message is not None
-                and self.screen_message.get("kind") in ("dialogue", "event")
-                and answer is None and not say and not self.screen_message_ignored):
+        # A real dialogue or menu is blocking the game. If the model ignored it and tried to walk
+        # off, nudge it once to answer/react before running the plan. (Talking doesn't handle a
+        # menu, so "say" alone still gets nudged.)
+        kind = self.screen_message.get("kind") if has_screen and self.screen_message is not None else None
+        if kind == "menu" and not answer and not self.screen_message_ignored:
+            self.screen_message_ignored = True
+            self.inbox.append("A menu is blocking you. React first: take/store its items, or answer to close it.")
+            self.wake.set()
+            return
+        if kind in ("dialogue", "event") and not answer and not say and not self.screen_message_ignored:
             self.screen_message_ignored = True
             self.inbox.append("A message is still on screen. React to it first: answer n (or just answer to continue), or say something.")
             self.wake.set()
@@ -474,21 +505,6 @@ class Agent:
             # (14% of the turns were like that, each one delaying the other agents' turns on the model.)
             self.wake.clear()
 
-    async def _remember_turn(self, events: str, reply: str) -> None:
-        """Keep only what happened and the model's reply in the chat history.
-
-        The full observation (map, inventory summary, status, ...) is only needed for this turn;
-        it is not written to the history, so later turns do not accumulate stale maps and lists.
-        """
-        assert self.chat is not None
-        self.history.append({
-            "role": "user",
-            "content": "What happened:\n" + (events or "- Nothing new.") + "\n\nWhat do you do?",
-        })
-        self.history.append({"role": "assistant", "content": reply})
-        if len(self.history) > 40:  # 20 compact turns; the model can still see recent context
-            self.history = self.history[-40:]
-        await self.chat.set_chat_history(self.history)
 
     def _parse_actions(self, raw: list[dict[str, Any]], obs: dict[str, Any]) -> tuple[list[Action], list[str]]:
         actions: list[Action] = []
@@ -571,23 +587,76 @@ class Agent:
             self.inbox.append(f"{cmd} failed: {e}")
 
     async def _ask(self, prompt: str) -> str:
-        """ask().completed(), optionally echoing tokens (NV_DEBUG_TOKENS=1)."""
+        """ask().completed(), optionally timing tokens (NV_DEBUG_TIMING=1) and echoing them (NV_DEBUG_TOKENS=1)."""
         assert self.chat is not None
         # Shown as a spinner on the dashboard. The agents share one model, so a request may first wait
         # for the others' turns ("waiting") before its first token arrives ("thinking").
         self._dash(llm="waiting", llm_since=time.time())
+        if DEBUG_TIMING:
+            # KV-cache position before this ask: the retained history that has to be re-prefilled
+            # if set_chat_history / reset has already invalidated the cache.
+            ctx_before = (await self.chat.stats()).context_used
+            prompt_tokens = len(await self.chat.tokenize(prompt))
+        else:
+            ctx_before, prompt_tokens = 0, 0
         try:
+            t0 = time.monotonic()
             stream = self.chat.ask(prompt)
             parts: list[str] = []
+            arrivals: list[float] = []  # monotonic time each token's text arrived
             while (token := await stream.next_token()) is not None:
+                arrivals.append(time.monotonic())
                 if not parts:
                     self._dash(llm="thinking")
                 parts.append(token)
                 if DEBUG_TOKENS:
                     print(f"[{self.name}] {token!r}", file=sys.stderr, flush=True)
+            if DEBUG_TIMING:
+                self._report_timing(t0, arrivals, ctx_before, prompt_tokens, parts)
             return "".join(parts)
         finally:
             self._dash(llm=None, llm_since=None)
+
+    def _report_timing(self, t0: float, arrivals: list[float], ctx_before: int,
+                       prompt_tokens: int, parts: list[str]) -> None:
+        """
+        Print a per-turn timing breakdown (used with NV_DEBUG_TIMING=1).
+
+        The agents share one model, so a request first waits in queue behind the others' turns
+        ("wait"), then the model re-reads the retained history and the new prompt ("prefill") and
+        Only the combined first token is exposed, so:
+        * tft (time to first token) = queue wait + prefill for the whole prompt.
+        * ms/tok after the first = pure generation speed (decode).
+        * ctx_before + prompt_tokens = the size of what had to be (re-)prefilled.
+        """
+        n = len(parts)
+        if n == 0:
+            out = (f"[t] {self.name} ask: NO TOKENS (total {time.monotonic() - t0:.2f}s)"
+                   f" ctx_before={ctx_before} prompt={prompt_tokens}")
+            print(out, file=sys.stderr, flush=True)
+            return
+        tft = arrivals[0] - t0  # queue wait + prefill of the whole present context
+        # decode time = tokens after the first; use per-token gaps for a faithful ms/tok.
+        gaps = [arrivals[i] - arrivals[i - 1] for i in range(1, n)]
+        if gaps:
+            decode_ms = sum(gaps) / len(gaps) * 1000.0
+        else:
+            decode_ms = float("nan")
+        total = arrivals[-1] - t0
+        # 90th-percentile token gap (a run of fast tokens interrupted by a slow one → schema re-eval).
+        slow = max(gaps) * 1000.0 if gaps else 0.0
+        out = (
+            f"[t] {self.name} ask: {n} tokens total {total:.2f}s | "
+            f"first-token {tft:.2f}s (wait+prefill) | "
+            f"decode {decode_ms:.0f} ms/tok ({1e3 / decode_ms:.1f} tok/s) | "
+            f"slowest-gap {slow:.0f}ms | "
+            f"ctx_before={ctx_before} prompt={prompt_tokens} (prefill {ctx_before + prompt_tokens})"
+        )
+        print(out, file=sys.stderr, flush=True)
+        # Token-by-token deltas: useful to spot where the time actually goes.
+        for i in range(1, n):
+            print(f"[t] {self.name}   tok {i:>3} +{gaps[i - 1] * 1000:6.0f}ms {parts[i]!r}",
+                  file=sys.stderr, flush=True)
 
     def _dash(self, **fields: Any) -> None:
         if self.dashboard:

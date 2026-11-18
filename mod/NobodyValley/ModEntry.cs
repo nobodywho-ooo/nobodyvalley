@@ -118,6 +118,10 @@ internal sealed class ModEntry : Mod
             screenMessages.Tick();
         if (Config.AutoDismissMenus)
             janitor.Tick(leaveDialoguesAlone: jobs.Current?.RunDuringMenus == true);
+        // A festival warp takes over the character: drop any pending job (it can't tick during the
+        // event anyway), so the agent re-plans fresh once the festival is over.
+        if (Game1.CurrentEvent is { isFestival: true } && jobs.Current != null)
+            jobs.Cancel("the festival started");
         jobs.Tick();
     }
 
@@ -127,6 +131,9 @@ internal sealed class ModEntry : Mod
         if (Config.UiScale is { } scale)
             Game1.options.desiredUIScale = Math.Clamp(scale, 0.5f, 1.5f);
     }
+
+    /// <summary>Tell ScreenMessages to ignore the currently open menu (the mod opened it itself).</summary>
+    internal void NoteModOpenedMenu() => screenMessages.Ignore(Game1.activeClickableMenu);
 
     internal void OnChat(string from, string text, bool isPrivate) =>
         server.Broadcast("chat", new JObject { ["from"] = from, ["text"] = text, ["private"] = isPrivate });
@@ -250,6 +257,19 @@ internal sealed class ModEntry : Mod
                 };
             }
 
+            // Testing aid: a chest menu as if a farm chest had been clicked open.
+            static IClickableMenu TestChestMenu()
+            {
+                var chest = Game1.player.currentLocation.objects.Values
+                    .OfType<StardewValley.Objects.Chest>()
+                    .FirstOrDefault(c => c.playerChest.Value)
+                    ?? throw new CommandException("no player chest in this location; craft one first");
+                return new ItemGrabMenu(chest.GetItemsForPlayer(), reverseGrab: false, showReceivingMenu: true,
+                    InventoryMenu.highlightAllItems, null, null, null, snapToBottom: false,
+                    canBeExitedWithKey: true, playRightClickSound: false, allowRightClick: true,
+                    showOrganizeButton: false, source: 1, sourceItem: chest, whichSpecialButton: -1, context: chest);
+            }
+
             case "debug_menu":
             {
                 // Testing aid: open a blocking screen, to check that it gets dismissed.
@@ -265,7 +285,12 @@ internal sealed class ModEntry : Mod
                         new Response("Yes, test it", "Yes"),
                         new Response("No, skip it", "No"),
                     }),
-                    _ => throw new CommandException("kind must be levelup, profession, letter, dialogue or question"),
+                    // Like the "items that didn't fit" menu when the backpack is full.
+                    "itemgrab" => new StardewValley.Menus.ItemGrabMenu(new List<StardewValley.Item>
+                        { StardewValley.ItemRegistry.Create("(O)388", 5), StardewValley.ItemRegistry.Create("(O)335", 2) }),
+                    // A real chest menu, as if the chest had been clicked open (the first farm chest).
+                    "chest" => TestChestMenu(),
+                    _ => throw new CommandException("kind must be levelup, profession, letter, dialogue, question, itemgrab or chest"),
                 };
                 return new JObject { ["opened"] = kind };
             }
@@ -396,8 +421,9 @@ internal sealed class ModEntry : Mod
             }
             case "ship":
             {
+                // Runs while a menu is open too, so a full backpack can be thinned before taking.
                 var item = Str("item");
-                return StartJob(cmd, "shipping produce", j => FarmJobs.Ship(j, item));
+                return StartJob(cmd, "shipping produce", j => FarmJobs.Ship(j, item), runDuringMenus: true);
             }
             case "buy":
             {
@@ -407,8 +433,9 @@ internal sealed class ModEntry : Mod
             }
             case "eat":
             {
+                // Runs while a menu is open too (no walking needed) - frees backpack space for take.
                 var item = Str("item");
-                return StartJob(cmd, "eating", j => FarmJobs.Eat(j, item));
+                return StartJob(cmd, "eating", j => FarmJobs.Eat(j, item), runDuringMenus: true);
             }
             case "sleep":
                 return StartJob(cmd, "going to bed", FarmJobs.Sleep, runDuringMenus: true);
@@ -516,6 +543,22 @@ internal sealed class ModEntry : Mod
                     screenMessages.ClearHold();
                     return new JObject { ["summary"] = "Closed the letter." };
                 }
+                if (Game1.activeClickableMenu is ReadyCheckDialog ready)
+                {
+                    // The multiplayer day-end ready check: confirm it so the co-op day doesn't hang
+                    // waiting for this player (clicking its "Ready" button).
+                    ready.confirm();
+                    screenMessages.ClearHold();
+                    return new JObject { ["summary"] = "Confirmed ready to end the day." };
+                }
+                if (Game1.activeClickableMenu is ItemGrabMenu or GameMenu)
+                {
+                    // A chest/inventory menu: closing it is the same as pressing the menu key in-game
+                    // (vanilla handles the chest's lid and lock on its side).
+                    Game1.activeClickableMenu.exitThisMenu();
+                    screenMessages.ClearHold();
+                    return new JObject { ["summary"] = "Closed the menu." };
+                }
                 throw new CommandException("there's no message on screen to answer");
             }
 
@@ -552,14 +595,16 @@ internal sealed class ModEntry : Mod
                 return StartJob(cmd, "tending the animals", HomesteadJobs.CareAnimals);
             case "store":
             {
+                // Runs while a menu is open too: stores into the open chest instead of walking home.
                 var item = Str("item");
-                return StartJob(cmd, "putting things in the chest", j => MoreJobs.Store(j, item));
+                return StartJob(cmd, "putting things in the chest", j => MoreJobs.Store(j, item), runDuringMenus: true);
             }
             case "take":
             {
+                // Runs while a menu is open too: takes from the open menu/chest instead of walking home.
                 var item = Str("item") ?? throw new CommandException("missing 'item'");
                 int n = Math.Clamp(Int("count", 999), 1, 999);
-                return StartJob(cmd, $"taking {item} from the chest", j => MoreJobs.Take(j, item, n));
+                return StartJob(cmd, $"taking {item} from the chest", j => MoreJobs.Take(j, item, n), runDuringMenus: true);
             }
             case "talk_to":
             {

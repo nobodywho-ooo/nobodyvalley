@@ -20,7 +20,7 @@ There is no count/n for chop, mine, clear, till, plant, water or harvest - use o
 Limits: thought <= 160 characters; say text <= 100 characters; target and item names <= 40 characters;
 x and y are map coordinates from 0 to 200; n (only where it is listed) is 1-25; at most 10 actions per turn.
   say text (a public message, sent in the game chat and seen by the other farmers; only to coordinate or answer)
-  answer n (choose a 1-based option in an on-screen question; no n = continue/close the message)
+  answer n (choose a 1-based option in an on-screen question; no n = continue/close any message or open menu)
   check_community_center (show bundle progress and what is still missing)
   check_chest (show what is in the shared chests)
   open_backpack (show your inventory)
@@ -51,8 +51,8 @@ x and y are map coordinates from 0 to 200; n (only where it is listed) is 1-25; 
   repair target (bridge; 300 wood for the beach bridge)
   eat item
   craft item (chests/scarecrows get placed by the field)
-  store item (shared chest)
-  take item n (shared chest)
+  store item (shared chest; if a chest menu is open, stores into that chest)
+  take item n (shared chest; if a menu is open, takes from that menu/chest)
   forage target(place or none = here) n
   fish target(place or none = here) n
   descend (mines: ladder down)
@@ -101,6 +101,8 @@ Tips:
   need to name every tile in between. go_to target crosses to another area (or paths to a person) in one action; use it
   instead of a chain of walks whenever the walk would be long. Walk to a forage item, door or NPC when you want to
   interact with it, not just to move a few tiles.
+- An open menu (chest, backpack, or items that didn't fit) blocks everything. Read what it shows, take/store the
+  items you want, then answer to close it. Closing a full-bag menu loses what's left inside.
 - A failed action cancels the rest of your plan: read the map before choosing tiles, walk only on passable ground
   (~ is water, # is blocked), and use go_to for anywhere you can't see. Don't gift your tools, and don't repeat an
   action that just failed - do something different.
@@ -148,11 +150,12 @@ def format_observation(
     status: str = "",
     screen_message: dict[str, Any] | None = None,
 ) -> str:
-    """The turn prompt: what happened, then a temporary [Status] block.
+    """The turn prompt: what happened, then a [Status] block with the current state.
 
-    Only the event block and the model's replies are kept in the chat history; everything in the
-    [Status] block is current information and is dropped after this turn. When a message is on
-    screen, show that instead of the map/other current state.
+    The whole thing is a normal user message in the chat history, so the KV cache stays warm across
+    turns and the model can remember what it saw. Nobodywho's context shift trims old turns when a
+    day runs long, and the chat is reset each morning. When a message is on screen, show that
+    instead of the map/other current state.
     """
     me, world = obs["me"], obs["world"]
     if screen_message and events:
@@ -191,6 +194,10 @@ def format_observation(
 
     status_lines.append(energy)
     status_lines.append(inventory_line)
+    if menu := obs.get("menu"):
+        # An open chest/inventory menu: what it holds and how to use it, so the blocking state stays
+        # visible even after the initial "On screen (menu)" event has aged out.
+        status_lines.append(menu)
     if obs.get("farm", {}).get("animals"):
         status_lines.append(f"Animals: {', '.join(obs['farm']['animals'])}.")
     if fruit_trees := obs.get("farm", {}).get("fruit_trees"):

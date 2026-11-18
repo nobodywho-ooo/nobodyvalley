@@ -43,6 +43,13 @@ internal sealed class JobRunner
     private readonly Stack<IEnumerator> stack = new();
     private int waitTicks;
 
+    /// <summary>Abort any job that runs this long without finishing, so a frozen job (e.g. a walk
+    /// when the festival warped the player away, or one waiting forever behind an unanswered
+    /// dialogue) can never leave an agent doing nothing. Generous: the longest legit jobs (long
+    /// walks, bulk clearing) run under a couple of minutes.</summary>
+    private static readonly TimeSpan MaxDuration = TimeSpan.FromSeconds(180);
+    private DateTime startedAt;
+
     public Job? Current { get; private set; }
 
     public JobRunner(IMonitor monitor, Action<Job, bool, string> onFinished)
@@ -57,6 +64,7 @@ internal sealed class JobRunner
         Current = job;
         stack.Push(job.Body(job));
         waitTicks = 0;
+        startedAt = DateTime.UtcNow;
         PlayerState.SetActivity(job.Activity);
     }
 
@@ -74,6 +82,14 @@ internal sealed class JobRunner
     {
         if (Current == null)
             return;
+
+        // A job that never finishes (stuck walk, a menu nobody answers) would otherwise freeze the
+        // agent forever; bail out after a while so it hears about it and re-plans.
+        if (DateTime.UtcNow - startedAt > MaxDuration)
+        {
+            Cancel("it's taking too long - stopped and re-planning");
+            return;
+        }
 
         // Freeze while a menu, cutscene or screen transition is up; resume afterwards.
         if ((Game1.activeClickableMenu != null && !Current.RunDuringMenus) || Game1.eventUp || Game1.isWarping || Game1.fadeToBlack)
