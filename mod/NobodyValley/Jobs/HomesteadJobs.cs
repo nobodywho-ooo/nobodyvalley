@@ -121,6 +121,34 @@ internal static class HomesteadJobs
         return string.Join(", ", parts);
     }
 
+    /// <summary>Buy the next tool upgrade from Clint (Axe, Pickaxe, Hoe, Watering Can).</summary>
+    public static IEnumerator UpgradeTool(Job job, string name)
+    {
+        var stock = ShopBuilder.GetShopStock("ClintUpgrade");
+        var match = stock.FirstOrDefault(x => x.Key.DisplayName.Equals(name, StringComparison.OrdinalIgnoreCase));
+        if (match.Key == null)
+            match = stock.FirstOrDefault(x => NameMatches(x.Key.DisplayName, name));
+        if (match.Key == null)
+            throw new JobFailed($"Clint has no upgrade for '{name}' today. He has: {string.Join(", ", stock.Select(x => x.Key.DisplayName).Distinct())}");
+
+        var r = new StepResult();
+        yield return Steps.GoToLocation("Blacksmith", r);
+        if (!r.Ok)
+            throw new JobFailed(r.Error ?? "couldn't get to the Blacksmith");
+        if (Me.currentLocation.getCharacterFromName("Clint") == null)
+            throw new JobFailed("Clint isn't at the counter (the Blacksmith is open about 9am-5pm)");
+        if (Me.toolBeingUpgraded.Value != null)
+            throw new JobFailed($"your {Me.toolBeingUpgraded.Value.DisplayName} is already being upgraded");
+
+        int price = match.Key.salePrice();
+        if (Me.Money < price)
+            throw new JobFailed($"the {match.Key.DisplayName} upgrade costs {price}g but you only have {Me.Money}g");
+        Me.Money -= price;
+        if (!match.Key.actionWhenPurchased("ClintUpgrade"))
+            throw new JobFailed($"couldn't start the {match.Key.DisplayName} upgrade (do you have the previous tool?)");
+        job.Summary = $"Started upgrading to a {match.Key.DisplayName} for {price}g; Clint will have it ready in 2 days.";
+    }
+
     /// <summary>Buy an animal at Marnie's and put it in a free coop/barn.</summary>
     public static IEnumerator BuyAnimal(Job job, string type)
     {

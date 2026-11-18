@@ -430,6 +430,11 @@ internal sealed class ModEntry : Mod
                 var item = Str("item") ?? throw new CommandException("missing 'item'");
                 return StartJob(cmd, $"building {item}", j => HomesteadJobs.Build(j, item));
             }
+            case "upgrade":
+            {
+                var item = Str("item") ?? throw new CommandException("missing 'item'");
+                return StartJob(cmd, $"upgrading the {item}", j => HomesteadJobs.UpgradeTool(j, item));
+            }
             case "buy_animal":
             {
                 var item = Str("item") ?? throw new CommandException("missing 'item'");

@@ -60,6 +60,7 @@ ACTIONS: dict[str, Spec] = {
     "operate": Spec("operate", xy=True),
     "build": Spec("build", item="item", needs=("item",)),
     "buy_animal": Spec("buy_animal", item="item", needs=("item",)),
+    "upgrade": Spec("upgrade", item="item", needs=("item",)),
     "care_animals": Spec("care_animals"),
     "plant_tree": Spec("plant_tree", item="item"),
     "fruit": Spec("fruit"),

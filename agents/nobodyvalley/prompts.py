@@ -34,6 +34,7 @@ you're shown; actions with x,y walk there and act on that tile. Without x,y, the
   operate x,y (collect from or load a machine; no x,y = nearest machine)
   build item (Coop, Barn, Big Coop, Big Barn, Deluxe Coop, Deluxe Barn, Silo; needs materials)
   buy_animal item (Chicken, Cow, Goat, Duck, Sheep, Rabbit, Pig at Marnie's)
+  upgrade item (Axe, Pickaxe, Hoe or Watering Can at Clint's; 2 days)
   care_animals (pet/feed animals and collect milk, eggs, wool, ...)
   plant_tree item (fruit-tree sapling; needs open farm ground)
   fruit (shake ripe fruit off the fruit trees)
