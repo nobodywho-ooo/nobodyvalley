@@ -14,16 +14,18 @@ internal sealed class MenuJanitor
     private readonly IModHelper helper;
     private readonly IMonitor monitor;
     private readonly Func<int> displayTicks;
+    private readonly Func<bool>? holdScreen;
 
     /// <summary>The screen we're currently timing, and how long it's been up.</summary>
     private object? current;
     private int ticksShown;
 
-    public MenuJanitor(IModHelper helper, IMonitor monitor, Func<int> displayTicks)
+    public MenuJanitor(IModHelper helper, IMonitor monitor, Func<int> displayTicks, Func<bool>? holdScreen = null)
     {
         this.helper = helper;
         this.monitor = monitor;
         this.displayTicks = displayTicks;
+        this.holdScreen = holdScreen;
     }
 
     /// <param name="leaveDialoguesAlone">A job is reading/answering dialogue boxes itself.</param>
@@ -35,7 +37,11 @@ internal sealed class MenuJanitor
             current = screen;
             ticksShown = 0;
         }
-        if (screen == null || ++ticksShown < displayTicks())
+        if (screen == null)
+            return;
+        if (holdScreen?.Invoke() == true && screen is DialogueBox or Event)
+            return;
+        if (++ticksShown < displayTicks())
             return;
 
         bool acted = screen switch

@@ -13,9 +13,12 @@ Personality: {personality}.
 Your job: {job}.
 
 Reply each turn with compact JSON: {{"thought":"one short sentence","actions":[...]}}.
-"actions": up to 10, done in order. Each is {{"do":...}} plus only the fields it needs. x,y is a tile on the map
-you're shown; actions with x,y walk there and act on that tile. Without x,y, they work on the nearest n things.
+"actions": up to 10, done in order. Each is {{"do":...}} plus only the fields it needs. x,y is an offset from
+your tile (you are 0,0), not an absolute map coordinate. The first work action with x,y walks to that relative
+spot; repeated work actions (and count actions) pick the nearest eligible thing again at each step. Without x,y,
+they work on the nearest n things.
   say text (a public message, sent in the game chat and seen by the other farmers; only to coordinate or answer)
+  answer n (choose a 1-based option in an on-screen question; no n = continue/close the message)
   emote ({emotes})
   go_to target (place: Farm, home, Pierre's, Willy's, Saloon, Beach, Town, Forest, Mountain, Mines; or a person)
   walk x,y (door, person, forage item, ...)
@@ -49,9 +52,10 @@ you're shown; actions with x,y walk there and act on that tile. Without x,y, the
   talk_to target(villager) item(optional gift)
   sleep (ends your day)
   stop (cancel plan; first only)
-Example: {{"thought":"Clearing the stone next to the field.","actions":[{{"do":"mine","x":62,"y":17}},{{"do":"till","n":4}}]}}
+Example: {{"thought":"Clearing the stone next to the field.","actions":[{{"do":"mine","x":-2,"y":3}},{{"do":"till","n":4}}]}}
 
-Each turn you see a map of the area around you (x across the top, y down the side) and nearest-first lists of coordinates.
+Each turn you see a map of the area around you (coordinates are offsets from you, so you are 0,0) and nearest-first lists
+of coordinates in the same relative system.
 Map legend: {legend}
 
 Tips: Pierre's is open 9am-5pm, not Wednesdays. Money is shared. Inventories aren't: you can only plant \
@@ -60,6 +64,8 @@ enough for everyone, so craft one only if there are none (or they're all full). 
 Farming 1) keeps crows off crops. Forage is free money. Eat or sleep when energy is low; bed before 1am.
 
 Community Center first: the observation lists every bundle's missing items. Keep those items instead of shipping them;\nwhen you are carrying any, go_to CommunityCenter and donate. Missing crops mean plant their seeds (buy them from\nPierre), missing forage/fish/minerals mean go and collect them, and missing animal/artisan goods need a coop, barn or\ncrafting machine. Check the list before choosing farm work, and tell the others in chat what you are collecting.\nThe six rooms: Pantry (seasonal crops, animal products, artisan goods), Crafts Room (forage, wood/stone/hardwood),\nFish Tank (fish and crab-pot catches), Boiler Room (bars, minerals, monster drops), Bulletin Board (cooking, dye,\nfield research, fodder, enchanter goods) and Vault (money). Do what the current season and weather allow; summer,\nfall and winter items have to wait for their season (or come from the Traveling Cart/greenhouse).\nFor animal and artisan bundles, build a Coop and Barn (then Big/Deluxe versions), buy animals from Marnie,\ncare_animals every morning, and craft machines (Furnace, Preserves Jar, Cheese Press, Keg, ...) then operate\nthem. Fruit trees, tappers and fishing also fill bundle slots; check what is still missing before spending\nthe day on something else.
+When a villager asks for an item, gives you a quest, or tells you something useful, summarize it for the
+others with a say action (e.g. "Pierre wants a cauliflower" or "Marnie asked for 10 hay"). Keep it short.
 """
 
 
@@ -170,7 +176,7 @@ def format_observation(obs: dict[str, Any], events: str = "", status: str = "") 
     if obs.get("mine_level"):
         lines.append(f"You're on mine level {obs['mine_level']}. Rocks hide the ladder down (L); monsters (!) attack.")
     if m := obs.get("map"):
-        lines.append(f"Map around you (you're @ at {m['you']}):\n{m['grid']}")
+        lines.append(f"Map around you (you're @ at {m['you']}; coordinates are offsets):\n{m['grid']}")
         if nearby := m.get("nearby", {}):
             lines.append("Nearest: " + "; ".join(f"{k}: {v}" for k, v in nearby.items()) + ".")
     if me.get("location_id") != "Farm":

@@ -58,6 +58,7 @@ ACTIONS: dict[str, Spec] = {
     "donate": Spec("donate", item="item"),
     "cook": Spec("cook", item="item", needs=("item",)),
     "operate": Spec("operate", xy=True),
+    "answer": Spec("answer", n=True),
     "build": Spec("build", item="item", needs=("item",)),
     "buy_animal": Spec("buy_animal", item="item", needs=("item",)),
     "upgrade": Spec("upgrade", item="item", needs=("item",)),
@@ -169,6 +170,10 @@ class Agent:
         self.last_say = 0.0
         self.idle_turns = 0  # consecutive turns where an idle agent chose to do nothing
         self.addressed = False  # someone spoke to us by name since our last turn
+        self.screen_message: dict[str, Any] | None = None
+        self.screen_message_at = 0.0
+        self.screen_message_ignored = False
+        self.report_turn = False  # just talked to a villager, so allow a summary even during the say gap
 
     # ------------------------------------------------------------------ lifecycle
 
@@ -239,6 +244,28 @@ class Agent:
                 await self._new_day(ev.get("date", "a new day"))
             elif kind == "time":
                 self._on_time(ev)
+            elif kind == "screen_message":
+                self._on_screen_message(ev)
+
+    def _on_screen_message(self, ev: dict[str, Any]) -> None:
+        text = str(ev.get("text", "")).strip()
+        if not text:
+            return
+        kind = ev.get("kind", "message")
+        speaker = ev.get("speaker")
+        options = [str(o) for o in (ev.get("options") or []) if str(o).strip()]
+        label = f"On screen ({kind})"
+        if speaker:
+            label += f" from {speaker}"
+        label += f": \"{text}\""
+        if options:
+            label += " Options: " + "; ".join(f"{i + 1}) {o}" for i, o in enumerate(options))
+        self.inbox.append(label)
+        self.screen_message = ev
+        self.screen_message_at = time.monotonic()
+        self.screen_message_ignored = False
+        self.addressed = True
+        self.wake.set()
 
     def _on_time(self, ev: dict[str, Any]) -> None:
         t = ev.get("time_raw", 0)
@@ -270,6 +297,9 @@ class Agent:
             return
         if ev["ok"]:
             self.last_failure = None
+            if ev["action"] == "talk_to":
+                self.report_turn = True  # give the model a chance to summarize the villager's news
+                self.inbox.append("If the villager asked for something or said something useful, summarize it for the others with say.")
             # Always report it, also mid-plan: e.g. "harvest: Nothing is ready" explains why the "ship" after it fails.
             self.inbox.append(f"Done {ev['action']}: {ev['summary']}")
             if self.queue:
@@ -297,6 +327,8 @@ class Agent:
         self.busy, self.busy_id = None, None
         self.asleep = False
         self.inbox = [f"Good morning! It's {date}. Plan your day."]
+        self.screen_message = None
+        self.report_turn = False
         self.wake.set()
 
     # ------------------------------------------------------------------ turns
@@ -338,15 +370,22 @@ class Agent:
         if self.dashboard:
             self.dashboard.set_world(f"{world['date']}, {world['time']}, {world['weather']} - {me['money']}g")
 
-        may_speak = self.addressed or time.monotonic() - self.last_say > MIN_SAY_GAP_SECONDS
+        has_screen = self.screen_message is not None and time.monotonic() - self.screen_message_at < 30
+        may_speak = self.addressed or self.report_turn or has_screen or time.monotonic() - self.last_say > MIN_SAY_GAP_SECONDS
         self.addressed = False
+        self.report_turn = False
         events = "\n".join(f"- {e}" for e in self.inbox)
         self.inbox.clear()
         busy = bool(self.busy or self.queue)
         running = self.busy  # the job running when the prompt was made
         # No "Working on" note: the model is only asked when its plan is done or failed (or someone
         # addressed it mid-job), so the events and the observation's "Currently: ..." carry that context.
-        status = "" if may_speak else "No 'say' action this turn."
+        status_parts = []
+        if has_screen:
+            status_parts.append("A message is on screen: use answer n (1-based option) to choose/continue it, or react with say.")
+        if not may_speak:
+            status_parts.append("No 'say' action this turn.")
+        status = " ".join(status_parts)
         observation = prompts.format_observation(obs, events, status)
         prompt = f"{observation}\n\nYour job: {prompts.persona_parts(self._persona())[1]}. What do you do?"
 
@@ -365,6 +404,13 @@ class Agent:
         # "say" and "emote" are actions, but they never queue: handled right away (say goes to the
         # game's chat, emote above the head).
         raw_actions = [a for a in decision.get("actions", []) if isinstance(a, dict)]
+        # "answer" is immediate too: it pokes the current dialogue box instead of queueing a job.
+        answer = next((a for a in raw_actions if a.get("do") == "answer"), None)
+        if answer is not None:
+            option = int(answer.get("n") or 0)
+            self.print(self.name, "info", f"answer({option})")
+            await self._send("answer", count=option)
+            self.screen_message = None
         say = " ".join(str(a.get("text", "")) for a in raw_actions if a.get("do") == "say").strip()
         if len(say) >= MAX_SAY_LENGTH:  # hit the limit mid-sentence
             say = say[: say.rfind(" ")].rstrip(",;:") + "…" if " " in say else say
@@ -377,7 +423,17 @@ class Agent:
         if emote := next((a.get("emote") for a in raw_actions if a.get("do") == "emote"), None):
             await self._send("emote", emote=emote)
 
-        actions, errors = self._parse_actions([a for a in raw_actions if a.get("do") not in ("say", "emote")], obs)
+        # A real dialogue is blocking the game. If the model ignored it and tried to walk off,
+        # nudge it once to answer/react before running the plan.
+        if (has_screen and self.screen_message is not None
+                and self.screen_message.get("kind") in ("dialogue", "event")
+                and answer is None and not say and not self.screen_message_ignored):
+            self.screen_message_ignored = True
+            self.inbox.append("A message is still on screen. React to it first: answer n (or just answer to continue), or say something.")
+            self.wake.set()
+            return
+
+        actions, errors = self._parse_actions([a for a in raw_actions if a.get("do") not in ("say", "emote", "answer")], obs)
         self.inbox.extend(errors)
         if actions and actions[0].cmd == "stop":
             await self._send("stop")
@@ -426,6 +482,13 @@ class Agent:
         me = obs.get("me", {})
         tired = me.get("energy", 100) < 0.2 * me.get("max_energy", 270)
         farmers = {n.lower() for n in self.others}
+        # x,y in a decision are offsets from where the farmer stood when the turn started.
+        # The map and its nearest-first lists use the same relative coordinates.
+        base_x, base_y = me.get("tile", [0, 0])
+        map_info = obs.get("map") or {}
+        map_w, map_h = map_info.get("width"), map_info.get("height")
+        repeatable = {"chop", "mine", "clear", "till", "water", "harvest", "plant", "forage", "fish"}
+        seen_cmds: set[str] = set()
         for item in raw:
             cmd = item.get("do", "")
             spec = ACTIONS.get(cmd)
@@ -438,6 +501,19 @@ class Agent:
             if (m := re.fullmatch(r"(.*?)[\s,]+(?:n\s*[:=]\s*|x\s*)(\d+)", thing)) and not item.get("n"):
                 thing, item = m.group(1), {**item, "n": int(m.group(2))}
             has_xy = isinstance(item.get("x"), int) and isinstance(item.get("y"), int)
+            # Once the same work action has been used in this plan, later ones should find the
+            # nearest eligible thing from wherever the farmer is by then, not repeat a stale spot.
+            if has_xy and cmd in repeatable and cmd in seen_cmds:
+                has_xy = False
+                if spec.n and not item.get("n"):
+                    item = {**item, "n": 1}
+            if has_xy and spec.xy:
+                abs_x, abs_y = base_x + item["x"], base_y + item["y"]
+                if map_w is not None and map_h is not None and not (0 <= abs_x < map_w and 0 <= abs_y < map_h):
+                    errors.append(f"Skipped {cmd} at {item['x']},{item['y']}: that is outside this map "\
+                                  f"(it is {map_w}x{map_h}, and you are at 0,0).")
+                    continue
+                item = {**item, "x": abs_x, "y": abs_y}
             missing = [f for f in spec.needs if not {"target": target, "item": thing, "xy": has_xy}[f]]
             if missing:
                 errors.append(f"'{cmd}' needs {' and '.join('x,y' if m == 'xy' else m for m in missing)}, so it was skipped.")
@@ -473,17 +549,8 @@ class Agent:
                     errors.append(f"Skipped till: there are already {empty_tilled} empty tilled tiles waiting for seeds. "
                                   "Plant (or get seeds) instead of tilling more.")
                 continue
-            # Merge bulk repeats like till(4) -> till(4), or water -> water.
-            prev = actions[-1] if actions else None
-            if prev and prev.cmd == cmd and not has_xy and "x" not in prev.args and \
-                    {k: v for k, v in prev.args.items() if k != "count"} == {k: v for k, v in args.items() if k != "count"}:
-                if spec.n:
-                    if "count" in prev.args and "count" in args:
-                        prev.args["count"] = min(25, prev.args["count"] + args["count"])
-                    else:
-                        prev.args.pop("count", None)  # one of them meant "all"
-                continue
             actions.append(Action(cmd, args))
+            seen_cmds.add(cmd)
         if any(a.cmd == "stop" for a in actions[1:]):
             actions = [a for a in actions if a.cmd != "stop"]
         return actions, errors

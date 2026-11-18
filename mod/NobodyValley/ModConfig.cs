@@ -35,4 +35,7 @@ internal sealed class ModConfig
 
     /// <summary>How long such a screen stays up before it's dismissed (so spectators can see it).</summary>
     public float MenuDisplaySeconds { get; set; } = 5f;
+
+    /// <summary>How long a dialogue/event message is held so an agent can see and answer it.</summary>
+    public float MessageReactionSeconds { get; set; } = 20f;
 }

@@ -4,6 +4,28 @@ using StardewValley.Menus;
 
 namespace NobodyValley;
 
+/// <summary>Forward HUD messages (waiting, locked doors, quest hints, ...) to the agent.</summary>
+[HarmonyPatch(typeof(Game1), nameof(Game1.addHUDMessage))]
+internal static class HudMessagePatch
+{
+    private static void Postfix(HUDMessage message)
+    {
+        try { ModEntry.Instance.OnHudMessage(message); }
+        catch (Exception ex) { ModEntry.Instance.Monitor.Log($"HUD message hook failed: {ex}", StardewModdingAPI.LogLevel.Error); }
+    }
+}
+
+/// <summary>Forward direct dialogue text (events and other non-DialogueBox messages) to the agent.</summary>
+[HarmonyPatch(typeof(Game1), nameof(Game1.drawDialogueBox), new[] { typeof(string) })]
+internal static class RawDialoguePatch
+{
+    private static void Prefix(string message)
+    {
+        try { ModEntry.Instance.OnRawScreenText(message); }
+        catch (Exception ex) { ModEntry.Instance.Monitor.Log($"Dialogue hook failed: {ex}", StardewModdingAPI.LogLevel.Error); }
+    }
+}
+
 /// <summary>Forward chat messages from other players to the agent as events.</summary>
 [HarmonyPatch(typeof(ChatBox), nameof(ChatBox.receiveChatMessage))]
 internal static class ChatPatch

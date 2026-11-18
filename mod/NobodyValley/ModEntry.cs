@@ -6,6 +6,7 @@ using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
 using StardewValley.Internal;
+using StardewValley.Menus;
 
 namespace NobodyValley;
 
@@ -19,6 +20,7 @@ internal sealed class ModEntry : Mod
     internal ModConfig Config = null!;
 
     private BridgeServer server = null!;
+    private ScreenMessages screenMessages = null!;
     private JobRunner jobs = null!;
     private MenuJanitor janitor = null!;
     private AutoStart autoStart = null!;
@@ -40,8 +42,9 @@ internal sealed class ModEntry : Mod
             server.Start(pinned, 1);
         else
             server.Start(Config.BasePort, Config.PortRange);
+        screenMessages = new ScreenMessages(server, Monitor);
         jobs = new JobRunner(Monitor, OnJobFinished);
-        janitor = new MenuJanitor(helper, Monitor, () => (int)(Config.MenuDisplaySeconds * 60));
+        janitor = new MenuJanitor(helper, Monitor, () => (int)(Config.MenuDisplaySeconds * 60), () => screenMessages.Holding);
         autoStart = new AutoStart(helper, Monitor);
 
         new Harmony(ModManifest.UniqueID).PatchAll(typeof(ModEntry).Assembly);
@@ -72,6 +75,7 @@ internal sealed class ModEntry : Mod
             server.Broadcast("day_started", new JObject { ["date"] = Observer.Observe(null)["world"]!["date"] });
         };
         helper.Events.GameLoop.DayEnding += (_, _) => jobs.Cancel("the day ended");
+        helper.Events.GameLoop.DayStarted += (_, _) => screenMessages.ClearHold();
         helper.Events.GameLoop.TimeChanged += (_, e) =>
         {
             if (e.NewTime % 100 == 0)
@@ -80,6 +84,7 @@ internal sealed class ModEntry : Mod
         helper.Events.GameLoop.ReturnedToTitle += (_, _) =>
         {
             jobs.Cancel("returned to title");
+            screenMessages.ClearHold();
             WindowPlacement.SetTitle(null);
         };
     }
@@ -107,6 +112,10 @@ internal sealed class ModEntry : Mod
             autoStart.Tick();
             return;
         }
+        // talk_to/sleep read their own dialogue and report it in the job result; every other menu
+        // (locked doors, questions, cutscenes, ...) should reach the agent as a screen_message.
+        if (jobs.Current?.Action is not ("talk_to" or "sleep"))
+            screenMessages.Tick();
         if (Config.AutoDismissMenus)
             janitor.Tick(leaveDialoguesAlone: jobs.Current?.RunDuringMenus == true);
         jobs.Tick();
@@ -121,6 +130,10 @@ internal sealed class ModEntry : Mod
 
     internal void OnChat(string from, string text, bool isPrivate) =>
         server.Broadcast("chat", new JObject { ["from"] = from, ["text"] = text, ["private"] = isPrivate });
+
+    internal void OnHudMessage(HUDMessage message) => screenMessages.Hud(message);
+
+    internal void OnRawScreenText(string text) => screenMessages.Raw(text);
 
     private void OnJobFinished(Job job, bool ok, string summary)
     {
@@ -152,6 +165,13 @@ internal sealed class ModEntry : Mod
         Microsoft.Xna.Framework.Point? Tile() => msg["x"] != null && msg["y"] != null
             ? new Microsoft.Xna.Framework.Point(Int("x", 0), Int("y", 0)) : null;
         var at = Tile();
+        if (at is { } outside)
+        {
+            var loc = Game1.player.currentLocation;
+            int w = loc.map.Layers[0].LayerWidth, h = loc.map.Layers[0].LayerHeight;
+            if (outside.X < 0 || outside.Y < 0 || outside.X >= w || outside.Y >= h)
+                throw new CommandException($"{outside.X},{outside.Y} is outside this map ({w}x{h})");
+        }
         string AtText() => at is { } t ? $" at {t.X},{t.Y}" : "";
 
         switch (cmd)
@@ -240,7 +260,12 @@ internal sealed class ModEntry : Mod
                     "profession" => new StardewValley.Menus.LevelUpMenu(2, 5), // foraging level 5: pick a profession
                     "letter" => new StardewValley.Menus.LetterViewerMenu("Dear farmer,^this is a test letter.^   -NobodyValley"),
                     "dialogue" => new StardewValley.Menus.DialogueBox("This is a test dialogue.#$b#It has two pages."),
-                    _ => throw new CommandException("kind must be levelup, profession, letter or dialogue"),
+                    "question" => new StardewValley.Menus.DialogueBox("Do you want to test?", new[]
+                    {
+                        new Response("Yes, test it", "Yes"),
+                        new Response("No, skip it", "No"),
+                    }),
+                    _ => throw new CommandException("kind must be levelup, profession, letter, dialogue or question"),
                 };
                 return new JObject { ["opened"] = kind };
             }
@@ -411,6 +436,36 @@ internal sealed class ModEntry : Mod
             }
             case "fruit":
                 return StartJob(cmd, "picking fruit", FarmJobs.HarvestFruit);
+            case "answer":
+            {
+                int option = Math.Max(0, Int("count", Int("option", 0)));
+                if (Game1.activeClickableMenu is DialogueBox box)
+                {
+                    if (box.isQuestion && box.responses.Length > 0)
+                    {
+                        int index = Math.Clamp(option <= 0 ? 1 : option, 1, box.responses.Length) - 1;
+                        box.selectedResponse = index;
+                        box.characterIndexInDialogue = Math.Max(0, (box.getCurrentString() ?? "").Length - 1);
+                        box.safetyTimer = 0;
+                        box.receiveLeftClick(0, 0);
+                        screenMessages.ClearHold();
+                        return new JObject { ["summary"] = $"Chose: {box.responses[index].responseText}" };
+                    }
+                    box.characterIndexInDialogue = Math.Max(0, (box.getCurrentString() ?? "").Length - 1);
+                    box.safetyTimer = 0;
+                    box.receiveLeftClick(0, 0);
+                    screenMessages.ClearHold();
+                    return new JObject { ["summary"] = "Continued the message." };
+                }
+                if (Game1.activeClickableMenu is LetterViewerMenu letter)
+                {
+                    letter.exitThisMenu();
+                    screenMessages.ClearHold();
+                    return new JObject { ["summary"] = "Closed the letter." };
+                }
+                throw new CommandException("there's no message on screen to answer");
+            }
+
             case "donate":
             {
                 var item = Str("item");
