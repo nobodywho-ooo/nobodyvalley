@@ -18,13 +18,27 @@ you're shown; actions with x,y walk there and act on that tile. Without x,y, the
   say text (a message to the other farmers, only to coordinate or answer)
   emote ({emotes})
   go_to target (place: Farm, home, Pierre's, Willy's, Saloon, Beach, Town, Forest, Mountain, Mines; or a person)
-  walk x,y | use x,y (door, person, forage item, ...)
-  chop x,y|n (trees) | mine x,y|n (rocks, ore) | clear x,y|n (weeds, stones, twigs)
-  till x,y|n | plant item(seed) x,y|n | water x,y|n (neither = all) | harvest x,y|n (neither = all)
-  ship item (none = all crops & forage; paid overnight) | buy item n (Pierre's seeds; Willy's rods & bait)
-  eat item | craft item (chests/scarecrows get placed by the field) | store item / take item n (shared chest)
-  forage target(place or none = here) n | fish target(place or none = here) n | descend (mines: ladder down)
-  talk_to target(villager) item(optional gift) | sleep (ends your day) | stop (cancel plan; first only)
+  walk x,y (door, person, forage item, ...)
+  use x,y (door, person, forage item, ...)
+  chop x,y|n (trees)
+  mine x,y|n (rocks, ore)
+  clear x,y|n (weeds, stones, twigs)
+  till x,y|n
+  plant item(seed) x,y|n
+  water x,y|n (neither = all)
+  harvest x,y|n (neither = all)
+  ship item (none = all crops & forage; paid overnight)
+  buy item n (Pierre's seeds; Willy's rods & bait)
+  eat item
+  craft item (chests/scarecrows get placed by the field)
+  store item (shared chest)
+  take item n (shared chest)
+  forage target(place or none = here) n
+  fish target(place or none = here) n
+  descend (mines: ladder down)
+  talk_to target(villager) item(optional gift)
+  sleep (ends your day)
+  stop (cancel plan; first only)
 Example: {{"thought":"Clearing the stone next to the field.","actions":[{{"do":"mine","x":62,"y":17}},{{"do":"till","n":4}}]}}
 
 Each turn you see a map of the area around you (x across the top, y down the side) and nearest-first lists of
