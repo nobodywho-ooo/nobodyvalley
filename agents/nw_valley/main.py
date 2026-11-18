@@ -59,19 +59,21 @@ def default_personas_path() -> Path:
     return local if local.exists() else root / "personas.toml"
 
 
-def load_personas(path: Path) -> dict[str, tuple[str, str]]:
-    """Farmer name (lowercase) -> (personality, job). Entries are tables, or "personality | job" strings."""
+def load_personas(path: Path) -> dict[str, str]:
+    """Farmer name (lowercase) -> "personality | job". Entries are tables, or "personality | job" strings."""
     if not path.exists():
         return {}
     data = tomllib.loads(path.read_text())
     personas = {}
     for name, value in data.get("personas", {}).items():
         if isinstance(value, dict):
-            personas[name.lower()] = (value.get("personality", "").strip(),
-                                      value.get("job", "").strip() or "help wherever you're needed")
+            job = value.get("job", "").strip() or "help wherever you're needed"
+            personas[name.lower()] = f"{value.get('personality', '').strip()} | {job}"
         else:
-            personas[name.lower()] = prompts.persona_parts(value)
+            personas[name.lower()] = value
     return personas
+
+
 
 
 async def amain(args: argparse.Namespace) -> None:
@@ -94,20 +96,24 @@ async def amain(args: argparse.Namespace) -> None:
         printer("main", "info", f"dashboard at {dashboard.url}")
         dashboard.open_window(args.dashboard_window)
 
-    personas = load_personas(args.personas or default_personas_path())
+    personas_path = args.personas or default_personas_path()
+    personas = load_personas(personas_path)
     team = Team()
     running: dict[int, asyncio.Task[None]] = {}
 
-    def persona_for(conn: GameConnection, hello: dict) -> tuple[str, str]:
-        # Instances bind ports in launch order (host first), so the port picks a stable default role.
-        index = conn.port - args.base_port
-        return personas.get((hello.get("farmer") or "").lower()) or prompts.DEFAULT_PERSONAS[index % len(prompts.DEFAULT_PERSONAS)]
+    def persona_for(hello: dict) -> str:
+        farmer = hello.get("farmer") or ""
+        persona = personas.get(farmer.lower())
+        if persona is None:
+            sys.exit(f"No persona for farmer {farmer!r}: add a [personas.{farmer}] table to {personas_path} "
+                     f"(or pass --personas), then restart.")
+        return persona
 
     async def start_agent(conn: GameConnection, hello: dict | None = None) -> None:
         hello = hello or await conn.request("hello")
-        persona = persona_for(conn, hello)
+        persona = persona_for(hello)
         if hello.get("farmer"):
-            team.roles[hello["farmer"]] = persona[1]
+            team.roles[hello["farmer"]] = prompts.persona_parts(persona)[1]
         index = conn.port - args.base_port
         agent = Agent(conn, model, persona, args.n_ctx, printer, team=team, start_delay=min(index, 4) * 4.0, dashboard=dashboard)
         running[conn.port] = asyncio.create_task(agent.run())
@@ -116,7 +122,7 @@ async def amain(args: argparse.Namespace) -> None:
     hellos = [await conn.request("hello") for conn in conns]
     for conn, hello in zip(conns, hellos):
         if hello.get("farmer"):
-            team.roles[hello["farmer"]] = persona_for(conn, hello)[1]
+            team.roles[hello["farmer"]] = prompts.persona_parts(persona_for(hello))[1]
     for conn, hello in zip(conns, hellos):
         await start_agent(conn, hello)
 

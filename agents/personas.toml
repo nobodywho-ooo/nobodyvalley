@@ -3,7 +3,6 @@
 #   job          what they do, in terms of the game actions (forage, fish, clear, till, plant, water,
 #                harvest, ship, buy, chop, mine, talk_to). It's repeated at the end of every turn's
 #                prompt, so it steers them the most. The others see it too, to know who does what.
-# Farmers not listed get a default (see DEFAULT_PERSONAS in nw_valley/prompts.py).
 # (The old one-line form, Name = "personality | job", still works.)
 #
 # This is the committed template. Put your own farmers in `personas.local.toml` (gitignored);

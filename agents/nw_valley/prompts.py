@@ -5,14 +5,6 @@ from __future__ import annotations
 import re
 from typing import Any
 
-# Default (personality, job) pairs, by game instance order (host first). personas.toml can override them.
-DEFAULT_PERSONAS = [
-    ("Friendly but bossy; you like organising the others.", "buy seeds at Pierre's and plant them"),
-    ("A quiet hard worker who says little.", "clear debris, till soil, and chop trees for wood"),
-    ("Cheerful and chatty.", "water the crops every morning, then visit villagers with forage as gifts"),
-    ("Thrifty; you love money.", "harvest and ship crops; when nothing's ripe, forage (Forest/Mountain/Beach) and ship it"),
-]
-
 SYSTEM_PROMPT = """\
 You are {name}, a farmer in Stardew Valley, sharing one farm with {others}. Together you grow the farm: \
 clear land, till, plant, water every day, harvest, ship crops for money, buy more seeds.
@@ -43,15 +35,13 @@ Farming 1) keeps crows off crops. Forage is free money. Eat or sleep when energy
 """
 
 
-def persona_parts(persona: str | tuple[str, str]) -> tuple[str, str]:
-    """(personality, job) from a DEFAULT_PERSONAS entry or a personas.toml string ("personality | job")."""
-    if isinstance(persona, tuple):
-        return persona
+def persona_parts(persona: str) -> tuple[str, str]:
+    """(personality, job) from a personas.toml string ("personality | job")."""
     personality, _, job = persona.partition("|")
     return personality.strip(), (job.strip() or "help wherever you're needed")
 
 
-def system_prompt(name: str, others: list[str], persona: str | tuple[str, str], emotes: list[str],
+def system_prompt(name: str, others: list[str], persona: str, emotes: list[str],
                   roles: dict[str, str] | None = None) -> str:
     personality, job = persona_parts(persona)
     team = "".join(f"\n{n}'s job: {r}." for n, r in (roles or {}).items())

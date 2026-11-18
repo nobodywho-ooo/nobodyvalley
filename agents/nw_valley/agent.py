@@ -163,12 +163,12 @@ class Team:
 
 
 class Agent:
-    def __init__(self, conn: GameConnection, model: Model, persona: str | None, n_ctx: int, printer: Callable[[str, str, str], None],
+    def __init__(self, conn: GameConnection, model: Model, persona: str, n_ctx: int, printer: Callable[[str, str, str], None],
                  team: Team | None = None, start_delay: float = 0.0, dashboard: Dashboard | None = None):
         self.dashboard = dashboard
         self.conn = conn
         self.model = model
-        self.persona_override = persona
+        self.persona = persona
         self.n_ctx = n_ctx
         self.print = printer  # (agent name, kind, text)
         self.team = team or Team()
@@ -223,8 +223,8 @@ class Agent:
         finally:
             events.cancel()
 
-    def _persona(self) -> str | tuple[str, str]:
-        return self.persona_override or prompts.DEFAULT_PERSONAS[0]
+    def _persona(self) -> str:
+        return self.persona
 
     def _system_prompt(self) -> str:
         roles = {n: job for n, job in self.team.roles.items() if n != self.name}
