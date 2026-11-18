@@ -123,7 +123,7 @@ window_for() { # <index> -> x,y,w,h (content size; the title bar sits above it)
 # Everything from this run goes into its own folder (logs/latest points at the newest one):
 # the games' output (timestamped), this script's output, and the agents' log and LLM prompts.
 RUN_DIR="$LOG_DIR/runs/$(date +%Y-%m-%d_%H%M%S)"
-mkdir -p "$RUN_DIR"
+mkdir -p "$RUN_DIR/games"
 ln -sfn "runs/$(basename "$RUN_DIR")" "$LOG_DIR/latest"
 exec > >(tee -a "$RUN_DIR/demo.out") 2>&1
 echo "Logs: $RUN_DIR"
@@ -138,15 +138,15 @@ launch() { # <log name> <env assignments...>
     # Timestamp each line (the console output has none). The outer shell's stderr goes to /dev/null, so
     # it doesn't report "Killed: 9" when 'stop' kills the game.
     ( (cd "$GAME_DIR" && env "$@" ./StardewModdingAPI <> "$stdin" 2>&1 \
-        | /usr/bin/perl -MPOSIX -pe 'BEGIN { $| = 1 } print strftime("%H:%M:%S ", localtime)' > "$RUN_DIR/$name.log") \
+        | /usr/bin/perl -MPOSIX -pe 'BEGIN { $| = 1 } print strftime("%H:%M:%S ", localtime)' > "$RUN_DIR/games/$name.log") \
         2> /dev/null & )
-    echo "Started $name (log: logs/latest/$name.log)"
+    echo "Started $name (game log: logs/latest/games/$name.log)"
 }
 
 wait_in_game() { # <log name>: wait until that instance has loaded the world
     for _ in $(seq 1 60); do
-        if grep -q "In game as" "$RUN_DIR/$1.log" 2>/dev/null; then
-            grep "In game as" "$RUN_DIR/$1.log" | sed 's/\x1b\[[0-9;]*m//g'
+        if grep -q "In game as" "$RUN_DIR/games/$1.log" 2>/dev/null; then
+            grep "In game as" "$RUN_DIR/games/$1.log" | sed 's/\x1b\[[0-9;]*m//g'
             return 0
         fi
         sleep 2
@@ -156,7 +156,7 @@ wait_in_game() { # <log name>: wait until that instance has loaded the world
 }
 
 wait_joined() { # <farmhand>: wait until it's in the game; fails if it gets stuck before joining
-    local log="$RUN_DIR/$1.log" asked=""
+    local log="$RUN_DIR/games/$1.log" asked=""
     for _ in $(seq 1 120); do
         if grep -q "In game as" "$log" 2>/dev/null; then
             grep "In game as" "$log" | sed 's/\x1b\[[0-9;]*m//g'
@@ -194,4 +194,4 @@ done
 echo "Everyone's in."
 
 cd "$ROOT/agents"
-exec uv run nobodyvalley --dashboard-window "$DASHBOARD_WINDOW" --log "$RUN_DIR/agents.log" --prompt-log "$RUN_DIR/prompts.log"
+exec uv run nobodyvalley --dashboard-window "$DASHBOARD_WINDOW" --log "$RUN_DIR/agents.log" --prompt-dir "$RUN_DIR"

@@ -9,6 +9,7 @@ import sys
 import time
 import tomllib
 from pathlib import Path
+from typing import Any
 
 from nobodywho import Model
 
@@ -29,18 +30,23 @@ KIND_STYLE = {
 RESET = "\033[0m"
 
 
-def make_printer(log_file: Path | None, prompt_log: Path | None = None):
+def make_printer(log_file: Path | None, prompt_dir: Path | None = None):
     colors: dict[str, str] = {}
     fh = log_file.open("a") if log_file else None
-    ph = prompt_log.open("a") if prompt_log else None
+    prompt_files: dict[str, Any] = {}
 
     def printer(name: str, kind: str, text: str) -> None:
         stamp = time.strftime("%H:%M:%S")
-        if kind in ("prompt", "reply"):
-            # Full LLM prompts and replies: too long for the terminal, but needed for debugging.
-            if ph:
-                ph.write(f"===== {stamp} {name} {kind}\n{text}\n")
-                ph.flush()
+        if kind in ("system", "prompt", "reply"):
+            # Full system prompts, turns and replies: too long for the terminal, but needed for
+            # debugging. Keep one file per farmer (logs/latest/<Name>.log).
+            if prompt_dir:
+                prompt_dir.mkdir(parents=True, exist_ok=True)
+                fh_prompt = prompt_files.get(name)
+                if fh_prompt is None:
+                    fh_prompt = prompt_files[name] = (prompt_dir / f"{name}.log").open("a")
+                fh_prompt.write(f"===== {stamp} {name} {kind}\n{text}\n")
+                fh_prompt.flush()
             return
         color = colors.setdefault(name, COLORS[len(colors) % len(COLORS)])
         print(f"{stamp} {color}{name:>10}{RESET} {kind:>7} {KIND_STYLE.get(kind, '')}{text}{RESET}", flush=True)
@@ -76,7 +82,7 @@ def load_personas(path: Path) -> dict[str, str]:
 
 
 async def amain(args: argparse.Namespace) -> None:
-    printer = make_printer(args.log, args.prompt_log)
+    printer = make_printer(args.log, args.prompt_dir)
 
     conns = await discover(args.base_port, args.max_instances)
     if not conns:
@@ -138,7 +144,7 @@ def main() -> None:
     p.add_argument("--max-instances", type=int, default=8)
     p.add_argument("--personas", type=Path, default=None, help="personas file (default: personas.local.toml if it exists, else personas.toml)")
     p.add_argument("--log", type=Path, default=Path("agents.log"), help="also append everything to this file")
-    p.add_argument("--prompt-log", type=Path, default=Path("prompts.log"), help="append every LLM prompt and reply to this file")
+    p.add_argument("--prompt-dir", type=Path, default=Path("prompts"), help="write each farmer's full system prompt, turns and replies to <dir>/<Name>.log")
     p.add_argument("--dashboard-port", type=int, default=8780)
     p.add_argument("--dashboard-window", metavar="X,Y,W,H", help="where to put the dashboard window (screen points)")
     p.add_argument("--no-dashboard", action="store_true", help="don't serve/open the dashboard")

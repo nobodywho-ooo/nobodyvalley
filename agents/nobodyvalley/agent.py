@@ -196,6 +196,7 @@ class Agent:
             context_shift=ContextShiftOptions(keep_first_turns=0, keep_last_turns=4, target=0.6),
         )
         self.print(self.name, "info", f"connected (port {self.conn.port}, {'host' if hello.get('is_host') else 'farmhand'})")
+        self.print(self.name, "system", self._system_prompt())
         self.inbox.append("You just woke up and are ready to start.")
 
         events = asyncio.create_task(self._event_loop())
@@ -323,6 +324,7 @@ class Agent:
             return
         # Start each day with a fresh context (the observation carries everything that matters).
         await self.chat.reset(self._system_prompt(), [])
+        self.print(self.name, "system", self._system_prompt())
         self.queue.clear()
         self.busy, self.busy_id = None, None
         self.asleep = False

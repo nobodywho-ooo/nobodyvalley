@@ -27,8 +27,8 @@ the save in co-op mode. It then starts the farmhand instances one at a time; eac
 `localhost` as its character. Each instance places its own window in a grid cell, and then the
 agents run in the terminal. A cold start takes about 45 seconds; a farmhand that gets stuck
 joining is restarted after 20 seconds. Each run's logs go to `logs/runs/<date>_<time>/`
-(`logs/latest`): the games' output (timestamped), the launcher's output, `agents.log` and
-`prompts.log` (every LLM prompt and reply).
+(`logs/latest`): the games' output under `games/` (timestamped), the launcher's output, `agents.log`, and
+one file per farmer with their full system prompt, turns and replies (e.g. `logs/latest/Marek.log`).
 
 Configure it with `NV_SAVE`, `NV_FARMHANDS` and `NV_DISPLAY` (see the top of the script; put your
 own values in `scripts/local.env`, gitignored — see `scripts/local.env.example`).
@@ -156,7 +156,7 @@ pages), after showing each for `MenuDisplaySeconds` (default 5) so spectators ca
   an agent takes no turns until morning.
 - **Guards for small models:** at most 10 actions per turn (enforced by the schema). A turn
   without actions gets a nudge. Repeating the same failure gets flagged.
-- **Debugging:** every prompt and reply goes to `prompts.log` (in the run's log folder, or `agents/`). `NV_DEBUG_TOKENS=1 uv run nobodyvalley`
+- **Debugging:** every farmer's full system prompt, turns and replies go to `<run>/<Farmer>.log` (or `agents/prompts/<Farmer>.log` when run by hand). `NV_DEBUG_TOKENS=1 uv run nobodyvalley`
   echoes every generated token to stderr.
 - **Agents talk in-game:** a `say` action is sent through the game's chat box, so it shows up in
   every game window's chat and reaches the other farmers through the normal `chat` event - exactly
