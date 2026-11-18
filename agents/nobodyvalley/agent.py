@@ -143,11 +143,15 @@ def _blank_if_none(value: Any) -> str:
 class Action:
     cmd: str
     args: dict[str, Any] = field(default_factory=dict)
+    # What the agent should see in logs/dashboard: relative coordinates. `args` is what the
+    # mod needs: absolute coordinates.
+    display_args: dict[str, Any] | None = field(default=None, compare=False)
 
     def describe(self) -> str:
-        a = ", ".join(f"{v}" for k, v in self.args.items() if k not in ("x", "y"))
-        if "x" in self.args:
-            a = f"{self.args['x']},{self.args['y']}" + (f", {a}" if a else "")
+        shown = self.display_args if self.display_args is not None else self.args
+        a = ", ".join(f"{v}" for k, v in shown.items() if k not in ("x", "y"))
+        if "x" in shown:
+            a = f"{shown['x']},{shown['y']}" + (f", {a}" if a else "")
         return f"{self.cmd}({a})" if a else self.cmd
 
 
@@ -526,6 +530,7 @@ class Agent:
             if (m := re.fullmatch(r"(.*?)[\s,]+(?:n\s*[:=]\s*|x\s*)(\d+)", thing)) and not item.get("n"):
                 thing, item = m.group(1), {**item, "n": int(m.group(2))}
             has_xy = isinstance(item.get("x"), int) and isinstance(item.get("y"), int)
+            rel_x, rel_y = item.get("x"), item.get("y")
             if has_xy and spec.xy:
                 abs_x, abs_y = base_x + item["x"], base_y + item["y"]
                 if map_w is not None and map_h is not None and not (0 <= abs_x < map_w and 0 <= abs_y < map_h):
@@ -568,7 +573,8 @@ class Agent:
                     errors.append(f"Skipped till: there are already {empty_tilled} empty tilled tiles waiting for seeds. "
                                   "Plant (or get seeds) instead of tilling more.")
                 continue
-            actions.append(Action(cmd, args))
+            display_args = {**args, "x": rel_x, "y": rel_y} if spec.xy and has_xy else None
+            actions.append(Action(cmd, args, display_args))
         if any(a.cmd == "stop" for a in actions[1:]):
             actions = [a for a in actions if a.cmd != "stop"]
         return actions, errors

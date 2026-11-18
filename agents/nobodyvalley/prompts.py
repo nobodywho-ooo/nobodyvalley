@@ -187,7 +187,7 @@ def format_observation(
         status_lines.append(f"You're on mine level {obs['mine_level']}. Rocks hide the ladder down (L); monsters (!) attack.")
     status_lines.append(location)
     if m := obs.get("map"):
-        status_lines.append(f"Map around you:\n{m['grid']}")
+        status_lines.append(f"Map around you (you're @ at {m['you']}; coordinates are offsets):\n{m['grid']}")
         if nearby := m.get("nearby", {}):
             status_lines.append("Points of interest on the map: " + "; ".join(f"{k}: {v}" for k, v in nearby.items()) + ".")
     if status:
