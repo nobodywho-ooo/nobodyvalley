@@ -8,8 +8,6 @@
 #   scripts/start-demo.sh build       # rebuild + deploy the mod only
 #   scripts/start-demo.sh stop        # kill the game instances (and the agents)
 #
-# The old flags still work: --stop, --build, --agents (--build --agents is the default).
-#
 # Configure with environment variables, or in `scripts/local.env` (gitignored; see
 # `scripts/local.env.example`; environment variables win over the file):
 #   NV_SAVE        save folder to host
@@ -33,10 +31,10 @@ BUILD=false
 AGENTS=false
 for arg in "$@"; do
     case "$arg" in
-        stop|--stop) STOP=true ;;
-        build|--build) BUILD=true ;;
-        start|--agents) AGENTS=true ;;
-        *) echo "unknown option $arg" >&2; exit 2 ;;
+        stop) STOP=true ;;
+        build) BUILD=true ;;
+        start) AGENTS=true ;;
+        *) echo "unknown command $arg" >&2; exit 2 ;;
     esac
 done
 
@@ -59,7 +57,7 @@ if [ "$STOP" = true ]; then
     exit 0
 fi
 
-# What to do: no arguments, or --build --agents, means the full cycle (stop, rebuild, start).
+# What to do: the default (no arguments) is the full cycle (stop, rebuild, start).
 MODE=start
 if [ "$BUILD" = true ] && [ "$AGENTS" = true ]; then
     MODE=restart
@@ -138,7 +136,7 @@ launch() { # <log name> <env assignments...>
     local stdin="$LOG_DIR/.$name.stdin"
     rm -f "$stdin" && mkfifo "$stdin"
     # Timestamp each line (the console output has none). The outer shell's stderr goes to /dev/null, so
-    # it doesn't report "Killed: 9" when --stop kills the game.
+    # it doesn't report "Killed: 9" when 'stop' kills the game.
     ( (cd "$GAME_DIR" && env "$@" ./StardewModdingAPI <> "$stdin" 2>&1 \
         | /usr/bin/perl -MPOSIX -pe 'BEGIN { $| = 1 } print strftime("%H:%M:%S ", localtime)' > "$RUN_DIR/$name.log") \
         2> /dev/null & )

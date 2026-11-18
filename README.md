@@ -35,8 +35,7 @@ own values in `scripts/local.env`, gitignored — see `scripts/local.env.example
 `swift scripts/screen-bounds.swift list` lists the displays. The script also takes subcommands:
 `scripts/start-demo.sh build` only builds and deploys the mod, `scripts/start-demo.sh start`
 starts the instances and agents without rebuilding, and `scripts/start-demo.sh stop` kills them
-and keeps a copy of the save with the run's logs (the old `--build`/`--agents`/`--stop` flags
-still work).
+and keeps a copy of the save with the run's logs.
 
 The agents also serve a live dashboard at http://127.0.0.1:8780. It has one panel per agent (what
 it's doing, its latest thought, its plan, the last result) and the chat log. A spinner shows when an agent
