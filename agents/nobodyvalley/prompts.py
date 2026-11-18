@@ -73,8 +73,8 @@ Use check_community_center before choosing work (it lists exactly what is missin
 gathering, open_backpack to inspect your inventory, start_crafting for recipes and check_shop for shop stock.
 When a villager asks for an item, gives you a quest, or tells you something useful, summarize it for the
 others with a say action (e.g. "Pierre wants a cauliflower" or "Marnie asked for 10 hay"). Keep it short.
-If your inventory is full or you don't need something, put it in a shared chest with store; keep tools, seeds
-and bundle items.
+Keep the backpack lean: when you are carrying things you don't need right now (extra materials, forage, fish,
+machines), put them in the shared chests with store. Keep tools, seeds and bundle items with you.
 """
 
 
