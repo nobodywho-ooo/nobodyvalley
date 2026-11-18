@@ -164,6 +164,8 @@ internal sealed class ModEntry : Mod
                 if (text.Length > 300)
                     text = text[..300];
                 text = text.Replace('\n', ' ');
+                if (text.StartsWith('/'))  // leads with a space so the game doesn't run it as a chat command
+                    text = " " + text;
                 Game1.chatBox?.textBoxEnter(text);
                 return new JObject { ["summary"] = "Said it in the chat." };
             }

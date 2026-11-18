@@ -38,7 +38,7 @@ starts the instances and agents without rebuilding, and `scripts/demo.sh stop` k
 and keeps a copy of the save with the run's logs.
 
 The agents also serve a live dashboard at http://127.0.0.1:8780. It has one panel per agent (what
-it's doing, its latest thought, its plan, the last result) and the chat log. A spinner shows when an agent
+it's doing, its latest thought, its plan, the last result). A spinner shows when an agent
 is waiting for the shared model ("waiting for the model" while other agents' turns are ahead of it, then "thinking"). The launcher opens it
 in a native window (the system web view, via pywebview) in a column to the right of the games, 360 points wide
 (`NV_DASHBOARD_WIDTH`), or on another display with `NV_DASHBOARD_DISPLAY=1`.
@@ -96,13 +96,13 @@ other players see the swings.
 | `craft {item}`                                                                                                                                          | Craft a known recipe; placeable things (scarecrow, chest, ...) get placed by the field                                                                                                                                                                                                                                                                |
 | `store {item?}`, `take {item, count}`                                                                                                                   | Put things into / take things out of the shared chest on the farm                                                                                                                                                                                                                                                                                     |
 | `talk_to {target, item?}`                                                                                                                               | Walk to a villager and talk (or give `item` as a gift). Reports their actual dialogue and your friendship                                                                                                                                                                                                                                             |
-| `say {text}`, `emote {emote}`                                                                                                                           | Multiplayer chat message (unused by the agents, which chat via the dashboard); emote above the head                                                                                                                                                                                                                                                   |
+| `say {text}`, `emote {emote}`                                                                                                                           | Multiplayer chat message (this is how the agents talk to each other - it appears in every game window's chat and reaches the other farmers like a human's message); emote above the head                                                                                                                                                                                                                                                   |
 | `stop`                                                                                                                                                  | Cancel the current job                                                                                                                                                                                                                                                                                                                                |
 | `debug_state`, `debug_set_time {time}`, `debug_give {item, count}`, `debug_menu {kind}`, `debug_terrain {target?}`, `debug_trace {ticks}`, `screenshot` | Debugging aids                                                                                                                                                                                                                                                                                                                                        |
 
 Job commands reply right away with a `job_id`. A `job_done` event (`ok`, `summary`) follows when
-the job finishes. Other events: `chat` (a message from another player), `time` (every in-game
-hour), `day_started`, `world_ready`.
+the job finishes. Other events: `chat` (a message from another player in the game chat - human or
+agent), `time` (every in-game hour), `day_started`, `world_ready`.
 
 Coordination between the instances uses `Farmer.modData`, which the game syncs between players.
 Each farmer publishes what it's doing and the tile it's about to work on, so the others skip that
@@ -133,7 +133,7 @@ pages), after showing each for `MenuDisplaySeconds` (default 5) so spectators ca
   The actions then run one after another in the game. We started with tool
   calling, but the models narrated between calls (and invented results), which made turns slow and
   long. A constrained decision is fast, bounded and always valid.
-- **When an agent takes a turn:** when its plan is finished or fails, when a chat message
+- **When an agent takes a turn:** when its plan is finished or fails, when an in-game chat message
   mentions it by name, on the hour if it's idle, or after 20s of idling. Other chat messages are
   collected and shown at its next turn, which keeps the four from chatting endlessly. While a
   plan runs, only being addressed by name gives an agent a turn (which can only reply in chat, or
@@ -150,9 +150,10 @@ pages), after showing each for `MenuDisplaySeconds` (default 5) so spectators ca
   without actions gets a nudge. Repeating the same failure gets flagged.
 - **Debugging:** every prompt and reply goes to `prompts.log` (in the run's log folder, or `agents/`). `NV_DEBUG_TOKENS=1 uv run nobodyvalley`
   echoes every generated token to stderr.
-- **Chat stays out of the game:** agents' `say` messages go from agent to agent inside the Python
-  process (and into the dashboard), so they don't pop up in every game window. Messages typed into
-  the in-game chat by a human still reach the agents.
+- **Agents talk in-game:** a `say` action is sent through the game's chat box, so it shows up in
+  every game window's chat and reaches the other farmers through the normal `chat` event - exactly
+  like a message typed by a human. There's no separate agent-only chat any more; the dashboard is
+  just the status panels.
 - **Fresh context every morning:** the chats are reset each day; the observation carries the state
   that matters.
 

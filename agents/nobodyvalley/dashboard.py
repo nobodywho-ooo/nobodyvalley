@@ -1,4 +1,4 @@
-"""A small live web page showing what every agent is thinking and doing (one panel each, plus the chat).
+"""A small live web page showing what every agent is thinking and doing (one panel each).
 
 Served from the agent process at http://127.0.0.1:8780 (stdlib only). The page polls /state every second.
 """
@@ -12,7 +12,6 @@ import subprocess
 import sys
 import threading
 import time
-from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
@@ -41,16 +40,10 @@ PAGE = """<!doctype html>
   .plan { margin-top: 3px; color: #9fd3a8; font-size: 12px; }
   .result { margin-top: 3px; color: #aaa; font-size: 12px; }
   .result.failed { color: #e99; }
-  #chat { background: #2b2838; border-radius: 6px; padding: 8px 10px; }
-  #chat div { margin: 2px 0; }
-  #chat .who { font-weight: 600; }
-  #chat .t { color: #777; font-size: 11px; margin-right: 4px; }
 </style></head>
 <body>
 <h1 id="title">NobodyValley</h1>
 <div id="agents"></div>
-<h1>Chat</h1>
-<div id="chat"></div>
 <script>
 const colors = ["#5fd0e0", "#d08ae8", "#e8c75f", "#7fd67f", "#7f9fe8", "#e87f7f"];
 const esc = s => (s || "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
@@ -73,9 +66,6 @@ async function refresh() {
       ${a.result ? `<div class="result clamp2 ${a.result_ok ? "" : "failed"}" title="${esc(a.result)}">${esc(a.result)}</div>` : ""}
     </div>`;
   }).join("");
-  document.getElementById("chat").innerHTML = s.chat.slice().reverse().map(m =>
-    `<div><span class="t">${esc(m.time)}</span><span class="who" style="color:${color(m.from)}">${esc(m.from)}:</span> ${esc(m.text)}</div>`
-  ).join("") || "<div style='color:#777'>(quiet)</div>";
 }
 refresh(); setInterval(refresh, 500);
 </script>
@@ -97,7 +87,6 @@ class Dashboard:
         self.port = port
         self.lock = threading.Lock()
         self.agents: dict[str, dict[str, Any]] = {}
-        self.chat: deque[dict[str, str]] = deque(maxlen=40)
         self.world = ""
 
     @property
@@ -110,18 +99,13 @@ class Dashboard:
         with self.lock:
             self.agents.setdefault(name, {}).update(fields)
 
-    def said(self, name: str, text: str) -> None:
-        with self.lock:
-            self.chat.append({"from": name, "text": text, "time": time.strftime("%H:%M")})
-
     def set_world(self, text: str) -> None:
         with self.lock:
             self.world = text
 
     def state(self) -> dict[str, Any]:
         with self.lock:
-            return {"agents": {n: dict(a) for n, a in self.agents.items()}, "chat": list(self.chat),
-                    "world": self.world, "now": time.time()}
+            return {"agents": {n: dict(a) for n, a in self.agents.items()}, "world": self.world, "now": time.time()}
 
     # ---------------------------------------------------------------- serving
 

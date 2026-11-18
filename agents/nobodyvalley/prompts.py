@@ -14,7 +14,7 @@ Your job: {job}.
 Reply each turn with compact JSON: {{"thought":"one short sentence","actions":[...]}}.
 "actions": up to 10, done in order. Each is {{"do":...}} plus only the fields it needs. x,y is a tile on the map
 you're shown; actions with x,y walk there and act on that tile. Without x,y, they work on the nearest n things.
-  say text (a message to the other farmers, only to coordinate or answer)
+  say text (a public message, sent in the game chat and seen by the other farmers; only to coordinate or answer)
   emote ({emotes})
   go_to target (place: Farm, home, Pierre's, Willy's, Saloon, Beach, Town, Forest, Mountain, Mines; or a person)
   walk x,y (door, person, forage item, ...)

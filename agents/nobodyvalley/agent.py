@@ -133,34 +133,15 @@ class Action:
         return f"{self.cmd}({a})" if a else self.cmd
 
 
-class Team:
-    """Shared between all agents in this process: the chat between them.
-
-    The agents' chat stays out of the game (it would pop up in every window); it goes from agent to
-    agent here, and is shown in the dashboard. The agents know nothing about each other beyond what
-    the observation shows (where everyone is and what they're doing); talking is the only way to
-    coordinate.
-    """
-
-    def __init__(self) -> None:
-        self.members: dict[str, "Agent"] = {}
-
-    def say(self, speaker: str, text: str) -> None:
-        for name, agent in self.members.items():
-            if name != speaker:
-                agent.hear(speaker, text)
-
-
 class Agent:
     def __init__(self, conn: GameConnection, model: Model, persona: str, n_ctx: int, printer: Callable[[str, str, str], None],
-                 team: Team | None = None, start_delay: float = 0.0, dashboard: Dashboard | None = None):
+                 start_delay: float = 0.0, dashboard: Dashboard | None = None):
         self.dashboard = dashboard
         self.conn = conn
         self.model = model
         self.persona = persona
         self.n_ctx = n_ctx
         self.print = printer  # (agent name, kind, text)
-        self.team = team or Team()
         self.start_delay = start_delay
 
         self.name = f"port{conn.port}"
@@ -188,7 +169,6 @@ class Agent:
             await self._wait_for_event("world_ready")
             hello = await self.conn.request("hello")
         self.name = hello["farmer"]
-        self.team.members[self.name] = self
 
         obs = await self.conn.request("observe")
         self.others = [o["name"] for o in obs.get("others", [])]
@@ -219,7 +199,7 @@ class Agent:
         return prompts.system_prompt(self.name, self.others, self._persona(), EMOTES)
 
     def hear(self, speaker: str, text: str, private: bool = False) -> None:
-        """A chat message from another farmer (another agent, or a human typing in the game)."""
+        """A chat message from another player in the game (another agent, or a human typing)."""
         self.inbox.append(f"{speaker} says: \"{text}\"")
         # Only interrupt for messages aimed at us; others are read at the next turn.
         if private or self.name.lower() in text.lower():
@@ -241,9 +221,10 @@ class Agent:
             if kind == "job_done":
                 self._on_job_done(ev)
             elif kind == "chat":
-                # Typed into the game's chat (e.g. by a human player); agents talk via the Team.
-                if ev["from"] not in self.team.members:
-                    self.hear(ev["from"], ev["text"], bool(ev.get("private")))
+                # The game's chat: agents talk to each other in-game now (`say` is sent through the
+                # game's chat box), so every message - from another agent or a human player - comes
+                # in through the mod's chat event. The mod filters out each farmer's own messages.
+                self.hear(ev["from"], ev["text"], bool(ev.get("private")))
             elif kind == "day_started":
                 await self._new_day(ev.get("date", "a new day"))
             elif kind == "time":
@@ -372,7 +353,7 @@ class Agent:
         thought = decision.get("thought", "").strip()
         self.print(self.name, "thought", f"{thought}  ({time.monotonic() - t0:.1f}s)")
         # "say" and "emote" are actions, but they never queue: handled right away (say goes to the
-        # other farmers, emote to the game).
+        # game's chat, emote above the head).
         raw_actions = [a for a in decision.get("actions", []) if isinstance(a, dict)]
         say = " ".join(str(a.get("text", "")) for a in raw_actions if a.get("do") == "say").strip()
         if len(say) >= MAX_SAY_LENGTH:  # hit the limit mid-sentence
@@ -380,9 +361,9 @@ class Agent:
         if say and may_speak:
             self.last_say = time.monotonic()
             self.print(self.name, "say", say)
-            if self.dashboard:
-                self.dashboard.said(self.name, say)
-            self.team.say(self.name, say)
+            # Through the game's chat box, so the other farmers (and any spectators) see it; it comes
+            # back to the others as a normal chat event.
+            await self._send("say", text=say)
         if emote := next((a.get("emote") for a in raw_actions if a.get("do") == "emote"), None):
             await self._send("emote", emote=emote)
 

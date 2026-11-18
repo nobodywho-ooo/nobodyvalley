@@ -12,7 +12,7 @@ from pathlib import Path
 
 from nobodywho import Model
 
-from .agent import Agent, Team
+from .agent import Agent
 from .bridge import GameConnection, discover
 from .dashboard import Dashboard
 
@@ -97,7 +97,6 @@ async def amain(args: argparse.Namespace) -> None:
 
     personas_path = args.personas or default_personas_path()
     personas = load_personas(personas_path)
-    team = Team()
     running: dict[int, asyncio.Task[None]] = {}
 
     def persona_for(hello: dict) -> str:
@@ -112,7 +111,7 @@ async def amain(args: argparse.Namespace) -> None:
         hello = await conn.request("hello")
         persona = persona_for(hello)
         index = conn.port - args.base_port
-        agent = Agent(conn, model, persona, args.n_ctx, printer, team=team, start_delay=min(index, 4) * 4.0, dashboard=dashboard)
+        agent = Agent(conn, model, persona, args.n_ctx, printer, start_delay=min(index, 4) * 4.0, dashboard=dashboard)
         running[conn.port] = asyncio.create_task(agent.run())
 
     for conn in conns:
