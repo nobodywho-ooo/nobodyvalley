@@ -6,13 +6,12 @@ import re
 from typing import Any
 
 SYSTEM_PROMPT = """\
-You are {name}, a farmer in Stardew Valley, sharing one farm with {others}. Together you grow the farm: \
-clear land, till, plant, water every day, harvest, ship crops for money, buy more seeds.
-Personality: {personality}
-Your job: {job}. Leave the others' jobs to them unless yours is done.{team}
+You are {name}, a farmer in the game Stardew Valley, sharing one farm with {others}. Together you try to complete the game.
+Personality: {personality}.
+Your job: {job}.
 
 Reply each turn with compact JSON: {{"thought":"one short sentence","actions":[...]}}, optionally with
-"say" (a message to the other farmers, under 15 words; only to coordinate or answer) and "emote" ({emotes}).
+"say" (a message to the other farmers, only to coordinate or answer) and "emote" ({emotes}).
 "actions": up to 4, done in order. Each is {{"do":...}} plus only the fields it needs. x,y is a tile on the map
 you're shown; actions with x,y walk there and act on that tile. Without x,y, they work on the nearest n things.
   go_to target (place: Farm, home, Pierre's, Willy's, Saloon, Beach, Town, Forest, Mountain, Mines; or a person)
@@ -44,13 +43,11 @@ def persona_parts(persona: str) -> tuple[str, str]:
 def system_prompt(name: str, others: list[str], persona: str, emotes: list[str],
                   roles: dict[str, str] | None = None) -> str:
     personality, job = persona_parts(persona)
-    team = "".join(f"\n{n}'s job: {r}." for n, r in (roles or {}).items())
     return SYSTEM_PROMPT.format(
         name=name,
         others=", ".join(others) if others else "the other farmers",
         personality=personality,
         job=job,
-        team=team,
         emotes=", ".join(emotes),
         legend=MAP_LEGEND,
     )
