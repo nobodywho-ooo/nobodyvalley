@@ -70,8 +70,7 @@ class FakeInstance:
                 "world": {"time": f"{w.time // 100}:{w.time % 100:02}", "date": "Mon Spring 1, year 1", "weather": "sunny"},
                 "farm": {"crops": [f"{len(w.crops)} Parsnip"] if w.crops else [], "crops_needing_water": sum(not c["watered"] for c in w.crops),
                          "empty_tilled_soil": w.tilled - len(w.crops), "dead_crops": 0, "debris_near_field": w.debris, "raining": False},
-                "others": [{"name": n, "location": p["location"], "doing": p["doing"] or "nothing in particular",
-                            "inventory": p["inventory"]} for n, p in w.players.items() if n != self.name],
+                "others": [{"name": n, "location": p["location"], "doing": p["doing"] or "nothing in particular"} for n, p in w.players.items() if n != self.name],
                 "nearby_villagers": [],
                 "seeds_for_sale": ["Parsnip Seeds (20g)", "Potato Seeds (50g)", "Cauliflower Seeds (80g)"],
             }

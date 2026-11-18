@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
 SYSTEM_PROMPT = """\
@@ -57,8 +56,7 @@ def persona_parts(persona: str) -> tuple[str, str]:
     return personality.strip(), (job.strip() or "help wherever you're needed")
 
 
-def system_prompt(name: str, others: list[str], persona: str, emotes: list[str],
-                  roles: dict[str, str] | None = None) -> str:
+def system_prompt(name: str, others: list[str], persona: str, emotes: list[str]) -> str:
     personality, job = persona_parts(persona)
     return SYSTEM_PROMPT.format(
         name=name,
@@ -81,11 +79,9 @@ MAP_LEGEND = (
 USEFUL_RECIPES = {"Scarecrow", "Chest", "Basic Fertilizer", "Speed-Gro", "Sprinkler", "Quality Sprinkler", "Bee House", "Furnace"}
 
 
-def format_observation(obs: dict[str, Any], taken: set[str] | None = None, events: str = "",
-                        status: str = "") -> str:
+def format_observation(obs: dict[str, Any], events: str = "", status: str = "") -> str:
     """The observation as prompt text, with the rest of the turn's context merged in as labelled lines.
 
-    `taken`: "x,y" tiles that teammates here will work on (left out of the lists).
     `events`: what happened since the last turn (shown first, only when non-empty).
     `status`: speech rules (shown last, just before the ask).
     """
@@ -123,7 +119,6 @@ def format_observation(obs: dict[str, Any], taken: set[str] | None = None, event
             + "; ".join(
                 f"{o['name']} at {o['location']}" + (f" ({o['distance']} tiles away)" if o.get("distance") is not None else "")
                 + f", {o['doing']}"
-                + (f", inventory: {', '.join(o['inventory']) or 'empty'}" if o.get("inventory") is not None else "")
                 for o in others
             )
             + "."
@@ -145,12 +140,8 @@ def format_observation(obs: dict[str, Any], taken: set[str] | None = None, event
         lines.append(f"You're on mine level {obs['mine_level']}. Rocks hide the ladder down (L); monsters (!) attack.")
     if m := obs.get("map"):
         lines.append(f"Map around you (you're @ at {m['you']}):\n{m['grid']}")
-        raw = m.get("nearby", {})
-        nearby = {k: v for k, v in ((k, _drop_tiles(v, taken or set())) for k, v in raw.items()) if v}
-        if nearby:
-            dropped = any(nearby.get(k) != v for k, v in raw.items())
-            lines.append("Nearest: " + "; ".join(f"{k}: {v}" for k, v in nearby.items()) + "."
-                         + (" (Tiles the others here are about to work on are left out.)" if dropped else ""))
+        if nearby := m.get("nearby", {}):
+            lines.append("Nearest: " + "; ".join(f"{k}: {v}" for k, v in nearby.items()) + ".")
     if me.get("location_id") != "Farm":
         # Otherwise agents waking up in their cabin pick crop coordinates off the cabin's map.
         lines.append("You're not on the farm, so the map and coordinates above are of this place, not the farm. "
@@ -158,14 +149,6 @@ def format_observation(obs: dict[str, Any], taken: set[str] | None = None, event
     if status:
         lines.append(status)
     return "\n".join(lines)
-
-
-def _drop_tiles(coords: str, taken: set[str]) -> str:
-    """Remove taken tiles from a list like "63,17 65,17" (lists with names, like exits, are left alone)."""
-    parts = coords.split(" ")
-    if not taken or not all(re.fullmatch(r"\d+,\d+", p) for p in parts):
-        return coords
-    return " ".join(p for p in parts if p not in taken)
 
 
 def merge_chests(chests: list[str]) -> str:

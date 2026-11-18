@@ -134,27 +134,16 @@ class Action:
 
 
 class Team:
-    """Shared between all agents in this process: their plans, and the chat between them.
+    """Shared between all agents in this process: the chat between them.
 
     The agents' chat stays out of the game (it would pop up in every window); it goes from agent to
-    agent here, and is shown in the dashboard.
+    agent here, and is shown in the dashboard. The agents know nothing about each other beyond what
+    the observation shows (where everyone is and what they're doing); talking is the only way to
+    coordinate.
     """
 
     def __init__(self) -> None:
         self.members: dict[str, "Agent"] = {}
-        self.roles: dict[str, str] = {}  # farmer name -> their job
-
-    def taken_tiles(self, me: str, obs: dict[str, Any]) -> set[str]:
-        """"x,y" tiles that teammates in the same place are working on or plan to (so we leave them alone)."""
-        here = obs.get("me", {}).get("location")
-        same_place = {o["name"] for o in obs.get("others", []) if o.get("location") == here}
-        tiles = set()
-        for name, agent in self.members.items():
-            if name != me and name in same_place:
-                for a in ([agent.busy] if agent.busy else []) + agent.queue:
-                    if "x" in a.args:
-                        tiles.add(f"{a.args['x']},{a.args['y']}")
-        return tiles
 
     def say(self, speaker: str, text: str) -> None:
         for name, agent in self.members.items():
@@ -227,8 +216,7 @@ class Agent:
         return self.persona
 
     def _system_prompt(self) -> str:
-        roles = {n: job for n, job in self.team.roles.items() if n != self.name}
-        return prompts.system_prompt(self.name, self.others, self._persona(), EMOTES, roles)
+        return prompts.system_prompt(self.name, self.others, self._persona(), EMOTES)
 
     def hear(self, speaker: str, text: str, private: bool = False) -> None:
         """A chat message from another farmer (another agent, or a human typing in the game)."""
@@ -368,7 +356,7 @@ class Agent:
         # No "Working on" note: the model is only asked when its plan is done or failed (or someone
         # addressed it mid-job), so the events and the observation's "Currently: ..." carry that context.
         status = "" if may_speak else "No 'say' action this turn."
-        observation = prompts.format_observation(obs, self.team.taken_tiles(self.name, obs), events, status)
+        observation = prompts.format_observation(obs, events, status)
         prompt = f"{observation}\n\nYour job: {prompts.persona_parts(self._persona())[1]}. What do you do?"
 
         t0 = time.monotonic()
