@@ -166,6 +166,7 @@ class Agent:
         self.others: list[str] = []
         self.chat: ChatAsync | None = None
         self.history: list[dict[str, str]] = []  # only "what happened" + the model's replies
+        self.history_logged = 0  # how many history messages are already in the log file
 
         self.queue: list[Action] = []  # actions waiting to be started
         self.busy: Action | None = None  # job currently running in the game
@@ -337,6 +338,7 @@ class Agent:
         self.busy, self.busy_id = None, None
         self.asleep = False
         self.history.clear()
+        self.history_logged = 0
         self.inbox = [f"Good morning! It's {date}. Plan your day."]
         self.screen_message = None
         self.report_turn = False
@@ -401,7 +403,8 @@ class Agent:
         prompt = f"{observation}\n\nWhat do you do?"
 
         t0 = time.monotonic()
-        self.print(self.name, "history", self._history_text())
+        if new_history := self._new_history_text():
+            self.print(self.name, "history", new_history)
         self.print(self.name, "prompt", prompt)
         try:
             raw = await self._ask(prompt)
@@ -488,10 +491,13 @@ class Agent:
             # (14% of the turns were like that, each one delaying the other agents' turns on the model.)
             self.wake.clear()
 
-    def _history_text(self) -> str:
-        if not self.history:
-            return "(empty)"
-        return "\n\n".join(f"[{m['role']}]\n{m['content']}" for m in self.history)
+    def _new_history_text(self) -> str | None:
+        """The history messages added since the last time we logged it."""
+        if self.history_logged >= len(self.history):
+            return None
+        new = self.history[self.history_logged:]
+        self.history_logged = len(self.history)
+        return "\n\n".join(f"[{m['role']}]\n{m['content']}" for m in new)
 
     async def _remember_turn(self, events: str, reply: str) -> None:
         """Keep only what happened and the model's reply in the chat history.
@@ -503,7 +509,9 @@ class Agent:
         self.history.append({"role": "user", "content": "What happened:\n" + (events or "- Nothing new.")})
         self.history.append({"role": "assistant", "content": reply})
         if len(self.history) > 40:  # 20 compact turns; the model can still see recent context
+            dropped = len(self.history) - 40
             self.history = self.history[-40:]
+            self.history_logged = max(0, self.history_logged - dropped)
         await self.chat.set_chat_history(self.history)
 
     def _parse_actions(self, raw: list[dict[str, Any]], obs: dict[str, Any]) -> tuple[list[Action], list[str]]:
