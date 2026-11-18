@@ -33,7 +33,7 @@ sync() { rsync -az "$@"; }
 
 case "${1:-}" in
     --stop)
-        remote 'scripts/start-demo.sh stop'
+        remote 'scripts/demo.sh stop'
         exit 0 ;;
     --status)
         remote 'pgrep -lf "StardewModdingAPI|bin/nobodyvalley" | cut -c1-80; echo; echo "Logs: $(readlink logs/latest)"; tail -n 25 logs/latest/agents.log 2>/dev/null | cut -c1-200'
@@ -70,10 +70,10 @@ if [ "${1:-}" = "--start" ]; then
     fi
     echo "Starting the demo there (about a minute; check with: $0 --status)..."
     # nohup + no terminal: it keeps running after we disconnect.
-    remote 'pkill -f "nv-stop-after" || true; scripts/start-demo.sh stop > /dev/null; nohup scripts/start-demo.sh start > logs/start-demo.out 2>&1 < /dev/null &'
+    remote 'pkill -f "nv-stop-after" || true; scripts/demo.sh stop > /dev/null; nohup scripts/demo.sh start > logs/demo.out 2>&1 < /dev/null &'
     if [ -n "$STOP_AFTER" ]; then
         # A timer there (named, so a new --start cancels it); --stop keeps the save with the run's logs.
-        remote "nohup bash -c ': nv-stop-after; sleep $((STOP_AFTER * 60)); scripts/start-demo.sh stop' > logs/stop-after.out 2>&1 < /dev/null &"
+        remote "nohup bash -c ': nv-stop-after; sleep $((STOP_AFTER * 60)); scripts/demo.sh stop' > logs/stop-after.out 2>&1 < /dev/null &"
         echo "It stops itself in $STOP_AFTER minutes."
     fi
 fi

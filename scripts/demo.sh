@@ -2,11 +2,11 @@
 # Start a co-op session with one Stardew Valley instance per agent, tiled in a grid of windows,
 # plus the NobodyWho agents.
 #
-#   scripts/start-demo.sh             # the default: stop what's running, rebuild + deploy the mod,
+#   scripts/demo.sh             # the default: stop what's running, rebuild + deploy the mod,
 #                                     #   and start the game instances and the agents
-#   scripts/start-demo.sh start       # start the game instances and the agents (no rebuild)
-#   scripts/start-demo.sh build       # rebuild + deploy the mod only
-#   scripts/start-demo.sh stop        # kill the game instances (and the agents)
+#   scripts/demo.sh start       # start the game instances and the agents (no rebuild)
+#   scripts/demo.sh build       # rebuild + deploy the mod only
+#   scripts/demo.sh stop        # kill the game instances (and the agents)
 #
 # Configure with environment variables, or in `scripts/local.env` (gitignored; see
 # `scripts/local.env.example`; environment variables win over the file):
@@ -51,7 +51,7 @@ if [ "$STOP" = true ]; then
     # Keep the game state with the latest run's logs (the save as of the last night).
     if [ -d "$LOG_DIR/latest" ] && [ -d "$HOME/.config/StardewValley/Saves/$SAVE" ]; then
         cp -R "$HOME/.config/StardewValley/Saves/$SAVE" "$LOG_DIR/latest/save-at-stop"
-        date "+Stopped at %Y-%m-%d %H:%M:%S" >> "$LOG_DIR/latest/start-demo.out"
+        date "+Stopped at %Y-%m-%d %H:%M:%S" >> "$LOG_DIR/latest/demo.out"
     fi
     echo "Stopped."
     exit 0
@@ -89,7 +89,7 @@ if [ "$MODE" = build ]; then
     exit 0
 fi
 if [ ! -f "$GAME_DIR/Mods/NobodyValley/NobodyValley.dll" ]; then
-    echo "The NobodyValley mod isn't installed; run 'scripts/start-demo.sh build' (or just './scripts/start-demo.sh', which builds first)." >&2
+    echo "The NobodyValley mod isn't installed; run 'scripts/demo.sh build' (or just './scripts/demo.sh', which builds first)." >&2
     exit 1
 fi
 if pgrep -x StardewModdingAPI > /dev/null; then
@@ -125,7 +125,7 @@ window_for() { # <index> -> x,y,w,h (content size; the title bar sits above it)
 RUN_DIR="$LOG_DIR/runs/$(date +%Y-%m-%d_%H%M%S)"
 mkdir -p "$RUN_DIR"
 ln -sfn "runs/$(basename "$RUN_DIR")" "$LOG_DIR/latest"
-exec > >(tee -a "$RUN_DIR/start-demo.out") 2>&1
+exec > >(tee -a "$RUN_DIR/demo.out") 2>&1
 echo "Logs: $RUN_DIR"
 
 launch() { # <log name> <env assignments...>
