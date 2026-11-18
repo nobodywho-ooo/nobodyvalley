@@ -401,6 +401,7 @@ class Agent:
         prompt = f"{observation}\n\nWhat do you do?"
 
         t0 = time.monotonic()
+        self.print(self.name, "history", self._history_text())
         self.print(self.name, "prompt", prompt)
         try:
             raw = await self._ask(prompt)
@@ -486,6 +487,11 @@ class Agent:
             # until the plan is done; otherwise the agent takes another turn right after starting a plan.
             # (14% of the turns were like that, each one delaying the other agents' turns on the model.)
             self.wake.clear()
+
+    def _history_text(self) -> str:
+        if not self.history:
+            return "(empty)"
+        return "\n\n".join(f"[{m['role']}]\n{m['content']}" for m in self.history)
 
     async def _remember_turn(self, events: str, reply: str) -> None:
         """Keep only what happened and the model's reply in the chat history.
