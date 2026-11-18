@@ -328,13 +328,15 @@ class Agent:
     async def _new_day(self, date: str) -> None:
         if self.chat is None:
             return
-        # Start each day with a fresh context (the observation carries everything that matters).
+        # Compact at the day boundary: reset the full model context (KV cache, temporary
+        # observation, old turns), then keep the compact event/reply history from yesterday.
         await self.chat.reset(self._system_prompt(), [])
+        if self.history:
+            await self.chat.set_chat_history(self.history)
         self.print(self.name, "system", self._system_prompt())
         self.queue.clear()
         self.busy, self.busy_id = None, None
         self.asleep = False
-        self.history.clear()
         self.inbox = [f"Good morning! It's {date}. Plan your day."]
         self.screen_message = None
         self.report_turn = False
