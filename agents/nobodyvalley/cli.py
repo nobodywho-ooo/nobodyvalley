@@ -1,8 +1,8 @@
 """Send commands to one game instance by hand, for testing the mod without an LLM.
 
-    uv run python -m nw_valley.cli observe
-    uv run python -m nw_valley.cli till count=5
-    uv run python -m nw_valley.cli --port 8766 go_to target=Saloon
+    uv run python -m nobodyvalley.cli observe
+    uv run python -m nobodyvalley.cli till count=5
+    uv run python -m nobodyvalley.cli --port 8766 go_to target=Saloon
 
 Job commands wait for the job to finish and print the result.
 """

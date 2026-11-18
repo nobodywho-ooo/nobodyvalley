@@ -1,6 +1,6 @@
 """A tiny stand-in for the NobodyValley mod, for testing the agent loop without running Stardew Valley.
 
-    uv run python -m nw_valley.fake_game --players Alice Bob Carol Dave
+    uv run python -m nobodyvalley.fake_game --players Alice Bob Carol Dave
     uv run nobodyvalley --base-port 9765     # in another terminal
 
 Each fake farmer listens on its own port (9765, 9766, ...; away from the real mod). Jobs just take a few seconds and

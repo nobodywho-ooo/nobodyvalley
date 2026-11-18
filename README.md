@@ -160,11 +160,11 @@ we can't cut off runaway replies, and rely on the schema's length limits instead
 NV_WINDOW=x,y,w,h scripts/test-instance.sh [save]   # single-player test instance on a copy of a save, on port 8790
                                                   # (outside the agents' range, so they don't pick it up)
 cd agents
-uv run python -m nw_valley.cli --port 8790 observe    # poke the mod by hand
-uv run python -m nw_valley.cli till count=5     # waits for the job and prints the result
-uv run python -m nw_valley.cli screenshot       # whole-map screenshot into the game's Screenshots folder
-uv run python -m nw_valley.cli debug_set_time time=900
-uv run python -m nw_valley.fake_game            # fake game on ports 9765+ for testing the agent loop...
+uv run python -m nobodyvalley.cli --port 8790 observe    # poke the mod by hand
+uv run python -m nobodyvalley.cli till count=5     # waits for the job and prints the result
+uv run python -m nobodyvalley.cli screenshot       # whole-map screenshot into the game's Screenshots folder
+uv run python -m nobodyvalley.cli debug_set_time time=900
+uv run python -m nobodyvalley.fake_game            # fake game on ports 9765+ for testing the agent loop...
 uv run nobodyvalley --base-port 9765               # ...without Stardew running
 ```
 

@@ -1,6 +1,6 @@
 """The dashboard in a native window (the system web view, via pywebview).
 
-    python -m nw_valley.dashboard_window URL [X,Y,W,H]
+    python -m nobodyvalley.dashboard_window URL [X,Y,W,H]
 
 A separate process, because pywebview needs the main thread (the agents' main thread runs asyncio).
 It closes itself when the process that started it goes away.

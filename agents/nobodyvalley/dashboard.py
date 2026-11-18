@@ -149,9 +149,9 @@ class Dashboard:
     def open_window(self, geometry: str | None) -> None:
         """Open the dashboard in a native window (the system web view); geometry is "x,y,w,h" in screen points."""
         # Close a dashboard window left over from a previous run.
-        subprocess.run(["pkill", "-f", "--", "python[^ ]* -m nw_valley[.]dashboard_window "], check=False)
+        subprocess.run(["pkill", "-f", "--", "python[^ ]* -m nobodyvalley[.]dashboard_window "], check=False)
         try:
-            subprocess.Popen([sys.executable, "-m", "nw_valley.dashboard_window", self.url, geometry or ""],
+            subprocess.Popen([sys.executable, "-m", "nobodyvalley.dashboard_window", self.url, geometry or ""],
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except OSError:
             if shutil.which("open"):
