@@ -130,6 +130,9 @@ def format_observation(
     screen, show that instead of the map/other current state.
     """
     me, world, farm = obs["me"], obs["world"], obs["farm"]
+    if screen_message and events:
+        # The current on-screen message is shown in the Status block below; don't repeat it here.
+        events = "\n".join(line for line in events.splitlines() if not line.startswith("- On screen"))
     lines: list[str] = []
     if events:
         lines += ["What happened:", events, ""]
