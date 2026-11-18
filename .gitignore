@@ -6,3 +6,5 @@ mod/NobodyValley/bin/
 mod/NobodyValley/obj/
 __pycache__/
 agents/diaries/
+scripts/local.env
+agents/personas.local.toml

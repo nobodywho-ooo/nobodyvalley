@@ -52,6 +52,13 @@ def make_printer(log_file: Path | None, prompt_log: Path | None = None):
     return printer
 
 
+def default_personas_path() -> Path:
+    """personas.local.toml (your own farmers, gitignored) if it exists, else personas.toml."""
+    root = Path(__file__).parent.parent
+    local = root / "personas.local.toml"
+    return local if local.exists() else root / "personas.toml"
+
+
 def load_personas(path: Path) -> dict[str, tuple[str, str]]:
     """Farmer name (lowercase) -> (personality, job). Entries are tables, or "personality | job" strings."""
     if not path.exists():
@@ -87,7 +94,7 @@ async def amain(args: argparse.Namespace) -> None:
         printer("main", "info", f"dashboard at {dashboard.url}")
         dashboard.open_window(args.dashboard_window)
 
-    personas = load_personas(args.personas)
+    personas = load_personas(args.personas or default_personas_path())
     team = Team()
     running: dict[int, asyncio.Task[None]] = {}
 
@@ -132,7 +139,7 @@ def main() -> None:
     p.add_argument("--n-ctx", type=int, default=32768, help="context size per agent (tokens)")
     p.add_argument("--base-port", type=int, default=8765)
     p.add_argument("--max-instances", type=int, default=8)
-    p.add_argument("--personas", type=Path, default=Path(__file__).parent.parent / "personas.toml")
+    p.add_argument("--personas", type=Path, default=None, help="personas file (default: personas.local.toml if it exists, else personas.toml)")
     p.add_argument("--log", type=Path, default=Path("agents.log"), help="also append everything to this file")
     p.add_argument("--prompt-log", type=Path, default=Path("prompts.log"), help="append every LLM prompt and reply to this file")
     p.add_argument("--dashboard-port", type=int, default=8780)

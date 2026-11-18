@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deploy NobodyValley to another Mac (by default the office Mac Mini) and run the demo there.
+# Deploy NobodyValley to another Mac (by default the one configured in scripts/local.env) and run the demo there.
 #
 #   scripts/deploy.sh            # build the mod here; copy the mod and the agents over
 #   scripts/deploy.sh --start    # ...and (re)start the demo there (games + agents), in the background
@@ -9,8 +9,9 @@
 #   scripts/deploy.sh --ssh CMD  # run a command there (in the project folder)
 #   scripts/deploy.sh --fetch    # copy its run logs (logs/runs/*) into logs/remote-runs/ here
 #
-# Configure with environment variables:
-#   NV_REMOTE      user@host to deploy to   (default: nobodywho@nobodywhos-mac-mini.local)
+# Configure with environment variables, or in `scripts/local.env` (gitignored; see
+# `scripts/local.env.example`; environment variables win over the file):
+#   NV_REMOTE      user@host to deploy to
 #   NV_REMOTE_DIR  project folder there, relative to its home (default: nobodyvalley)
 #
 # The remote needs Steam, Stardew Valley + SMAPI (same versions as here) and uv, but not the .NET SDK:
@@ -22,7 +23,9 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-REMOTE="${NV_REMOTE:-nobodywho@nobodywhos-mac-mini.local}"
+# Optional local settings (save name, farmhand names, ...): scripts/local.env (gitignored).
+[ -f "$ROOT/scripts/local.env" ] && source "$ROOT/scripts/local.env"
+REMOTE="${NV_REMOTE:?set NV_REMOTE (or scripts/local.env; see scripts/local.env.example)}"
 REMOTE_DIR="${NV_REMOTE_DIR:-nobodyvalley}"
 GAME_DIR="${NV_GAME_DIR:-$HOME/Library/Application Support/Steam/steamapps/common/Stardew Valley/Contents/MacOS}"
 # Relative to the remote home; backslash-escaped for the remote shell (rsync passes it through one).

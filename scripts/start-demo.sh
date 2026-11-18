@@ -7,9 +7,10 @@
 #   scripts/start-demo.sh --build     # rebuild + deploy the mod first
 #   scripts/start-demo.sh --stop      # kill all game instances (and the agents)
 #
-# Configure with environment variables (defaults match our office save):
-#   NV_SAVE        save folder to host                     (default: Nowhere_454507774)
-#   NV_FARMHANDS   space-separated farmhand names          (default: "Albert Jonathan Marek")
+# Configure with environment variables, or in `scripts/local.env` (gitignored; see
+# `scripts/local.env.example`; environment variables win over the file):
+#   NV_SAVE        save folder to host
+#   NV_FARMHANDS   space-separated farmhand names
 #   NV_DISPLAY     display to tile the windows on; see `swift scripts/screen-bounds.swift list` (default: 0)
 #   NV_DASHBOARD_DISPLAY  display for the agent dashboard window (default: a column on NV_DISPLAY)
 #   NV_DASHBOARD_WIDTH    width of that column, in points (default: 360)
@@ -17,9 +18,11 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# Optional local settings (save name, farmhand names, ...): scripts/local.env (gitignored).
+[ -f "$ROOT/scripts/local.env" ] && source "$ROOT/scripts/local.env"
 GAME_DIR="${NV_GAME_DIR:-$HOME/Library/Application Support/Steam/steamapps/common/Stardew Valley/Contents/MacOS}"
-SAVE="${NV_SAVE:-Nowhere_454507774}"
-read -r -a FARMHANDS <<< "${NV_FARMHANDS:-Albert Jonathan Marek}"
+SAVE="${NV_SAVE:?set NV_SAVE (or scripts/local.env; see scripts/local.env.example)}"
+read -r -a FARMHANDS <<< "${NV_FARMHANDS:?set NV_FARMHANDS (or scripts/local.env; see scripts/local.env.example)}"
 LOG_DIR="$ROOT/logs"
 
 BUILD=false

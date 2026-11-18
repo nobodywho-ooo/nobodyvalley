@@ -7,10 +7,10 @@ agents run in one Python process sharing a single local model.
 ```
 agents/ (Python, one process)                       game instances (one per farmer)
  ├─ NobodyWho Model (loaded once, Metal)
- ├─ Agent "Mads"     (ChatAsync) ── TCP :8765 ──── SMAPI + NobodyValley mod (host)
- ├─ Agent "Albert"   (ChatAsync) ── TCP :8766 ──── SMAPI + NobodyValley mod (farmhand)
- ├─ Agent "Jonathan" (ChatAsync) ── TCP :8767 ──── SMAPI + NobodyValley mod (farmhand)
- └─ Agent "Marek"    (ChatAsync) ── TCP :8768 ──── SMAPI + NobodyValley mod (farmhand)
+ ├─ Agent "Alice"   (ChatAsync) ── TCP :8765 ──── SMAPI + NobodyValley mod (host)
+ ├─ Agent "Bob"     (ChatAsync) ── TCP :8766 ──── SMAPI + NobodyValley mod (farmhand)
+ ├─ Agent "Charlie" (ChatAsync) ── TCP :8767 ──── SMAPI + NobodyValley mod (farmhand)
+ └─ Agent "David"   (ChatAsync) ── TCP :8768 ──── SMAPI + NobodyValley mod (farmhand)
 ```
 
 ## Running the demo
@@ -29,7 +29,8 @@ start takes about 45 seconds; a farmhand that gets stuck joining is restarted af
 Each run's logs go to `logs/runs/<date>_<time>/` (`logs/latest`): the games' output (timestamped),
 the launcher's output, `agents.log` and `prompts.log` (every LLM prompt and reply).
 
-Configure it with `NV_SAVE`, `NV_FARMHANDS` and `NV_DISPLAY` (see the top of the script).
+Configure it with `NV_SAVE`, `NV_FARMHANDS` and `NV_DISPLAY` (see the top of the script; put your
+own values in `scripts/local.env`, gitignored — see `scripts/local.env.example`).
 `swift scripts/screen-bounds.swift list` lists the displays. `scripts/start-demo.sh --stop`
 kills the instances and the agents, and keeps a copy of the save with the run's logs.
 
@@ -43,7 +44,7 @@ The mod sets the in-game UI scale to 60%, so the chat box and menus fit the smal
 `UiScale` in `Mods/NobodyValley/config.json`, or set it to `null` to keep the game's own setting.
 Note that the game saves this in its (shared) options.
 
-To run it on another Mac, e.g. the office Mac Mini, use `scripts/deploy.sh --start`. It builds the mod here, copies
+To run it on another Mac, e.g. a Mac Mini, use `scripts/deploy.sh --start`. It builds the mod here, copies
 the mod and the agents over (the other Mac needs Steam, the game, SMAPI and uv, but not .NET) and starts the demo
 there. `--status`, `--stop` and `--ssh CMD` manage it; `NV_REMOTE=user@host` picks another machine. The saves
 sync through Steam Cloud, so don't run the demo on both machines at once.
@@ -56,7 +57,8 @@ cd agents && uv run nobodyvalley
 ```
 
 Personalities per farmer go in `agents/personas.toml`: a `personality` and a `job` each (see the comments
-there). Every agent also sees the others' jobs.
+there). Every agent also sees the others' jobs. Put your own farmers in `agents/personas.local.toml`
+(gitignored); it's used instead of `personas.toml` when it exists.
 
 Each farmer gets a random look (the character creator's dice), seeded by their name, so it's the same
 every launch. Set `"LookSeed"` in `Mods/NobodyValley/config.json` to roll new looks, or `"RandomLooks": false`
@@ -101,7 +103,7 @@ hour), `day_started`, `world_ready`.
 
 Coordination between the instances uses `Farmer.modData`, which the game syncs between players.
 Each farmer publishes what it's doing and the tile it's about to work on, so the others skip that
-tile and can see e.g. "Albert: watering the crops".
+tile and can see e.g. "Alice: watering the crops".
 
 Environment variables let a launcher skip the title screen and place the window:
 `NOBODYVALLEY_HOST=<save>` (host in co-op), `NOBODYVALLEY_JOIN=<farmhand name>`,
@@ -175,5 +177,5 @@ decompiled game (handy for finding the right game APIs), the NobodyWho docs, and
 ## Status
 
 See "Status" in `.agents/AGENTS.md` for what was done last, what's running where, and the open issues.
-In short: the demo runs (here or on the office Mac Mini via `scripts/deploy.sh`); the last session ended
-with an hour-long run on the Mini whose logs are waiting to be reviewed (`scripts/deploy.sh --fetch`).
+In short: the demo runs (here or on another Mac via `scripts/deploy.sh`); the last session ended
+with an hour-long run there whose logs are waiting to be reviewed (`scripts/deploy.sh --fetch`).

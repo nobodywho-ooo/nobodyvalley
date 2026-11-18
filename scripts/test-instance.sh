@@ -3,9 +3,11 @@
 # without touching the real co-op session. Usage: scripts/test-instance.sh [source save folder]
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# Optional local settings (save name, farmhand names, ...): scripts/local.env (gitignored).
+[ -f "$ROOT/scripts/local.env" ] && source "$ROOT/scripts/local.env"
 GAME_DIR="${NV_GAME_DIR:-$HOME/Library/Application Support/Steam/steamapps/common/Stardew Valley/Contents/MacOS}"
 SAVES="$HOME/.config/StardewValley/Saves"
-SRC="${1:-Nowhere_454507043}"
+SRC="${1:-${NV_TEST_SAVE:?set NV_TEST_SAVE (or scripts/local.env; see scripts/local.env.example)}}"
 ID="${SRC##*_}"
 TEST="NVTest_$ID"
 
