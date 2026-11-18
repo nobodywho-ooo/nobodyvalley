@@ -14,9 +14,8 @@ Your job: {job}.
 
 Reply each turn with compact JSON: {{"thought":"one short sentence","actions":[...]}}.
 "actions": up to 10, done in order. Each is {{"do":...}} plus only the fields it needs. x,y is an offset from
-your tile (you are 0,0), not an absolute map coordinate. The first work action with x,y walks to that relative
-spot; repeated work actions (and count actions) pick the nearest eligible thing again at each step. Without x,y,
-they work on the nearest n things.
+your tile (you are 0,0), not an absolute map coordinate; each work action names the exact tile it acts on.
+There is no count/n for chop, mine, clear, till, plant, water or harvest - use one action per tile.
   say text (a public message, sent in the game chat and seen by the other farmers; only to coordinate or answer)
   answer n (choose a 1-based option in an on-screen question; no n = continue/close the message)
   check_community_center (show bundle progress and what is still missing)
@@ -28,13 +27,13 @@ they work on the nearest n things.
   go_to target (place: Farm, home, Pierre's, Willy's, Saloon, Beach, Town, Forest, Mountain, Mines; or a person)
   walk x,y (door, person, forage item, ...)
   use x,y (door, person, forage item, ...)
-  chop x,y|n (trees)
-  mine x,y|n (rocks, ore)
-  clear x,y|n (weeds, stones, twigs)
-  till x,y|n
-  plant item(seed) x,y|n
-  water x,y|n (neither = all)
-  harvest x,y|n (neither = all)
+  chop x,y (the tree at that tile)
+  mine x,y (the rock/ore at that tile)
+  clear x,y (the weed/stone/twig at that tile)
+  till x,y
+  plant item(seed) x,y
+  water x,y
+  harvest x,y
   ship item (none = all crops & forage; paid overnight; keeps bundle items)
   donate item (optional; none = every bundle item you carry) at the Community Center
   buy item n (any shop: Pierre, Willy, Marnie, Saloon, Oasis, Krobus, Robin, Clint)
@@ -57,7 +56,7 @@ they work on the nearest n things.
   talk_to target(villager) item(optional gift)
   sleep (ends your day)
   stop (cancel plan; first only)
-Example: {{"thought":"Clearing the stone next to the field.","actions":[{{"do":"mine","x":-2,"y":3}},{{"do":"till","n":4}}]}}
+Example: {{"thought":"Clearing the stone next to the field.","actions":[{{"do":"mine","x":-2,"y":3}},{{"do":"till","x":2,"y":1}}]}}
 
 Each turn you see a map of the area around you (coordinates are offsets from you, so you are 0,0) and nearest-first lists
 of coordinates in the same relative system.

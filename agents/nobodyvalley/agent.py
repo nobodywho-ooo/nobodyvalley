@@ -47,13 +47,13 @@ ACTIONS: dict[str, Spec] = {
     "go_to": Spec("go_to", target="target", needs=("target",)),
     "walk": Spec("walk", xy=True, needs=("xy",)),
     "use": Spec("use", xy=True, needs=("xy",)),
-    "clear": Spec("clear_debris", n=True, xy=True),
-    "chop": Spec("chop_trees", n=True, xy=True),
-    "mine": Spec("mine", n=True, xy=True),
-    "till": Spec("till", n=True, xy=True),
-    "plant": Spec("plant", item="seed", n=True, xy=True),
-    "water": Spec("water", n=True, xy=True),
-    "harvest": Spec("harvest", n=True, xy=True),
+    "clear": Spec("clear_debris", xy=True, needs=("xy",)),
+    "chop": Spec("chop_trees", xy=True, needs=("xy",)),
+    "mine": Spec("mine", xy=True, needs=("xy",)),
+    "till": Spec("till", xy=True, needs=("xy",)),
+    "plant": Spec("plant", item="seed", xy=True, needs=("xy",)),
+    "water": Spec("water", xy=True, needs=("xy",)),
+    "harvest": Spec("harvest", xy=True, needs=("xy",)),
     "ship": Spec("ship", item="item"),
     "donate": Spec("donate", item="item"),
     "cook": Spec("cook", item="item", needs=("item",)),
@@ -499,8 +499,6 @@ class Agent:
         base_x, base_y = me.get("tile", [0, 0])
         map_info = obs.get("map") or {}
         map_w, map_h = map_info.get("width"), map_info.get("height")
-        repeatable = {"chop", "mine", "clear", "till", "water", "harvest", "plant", "forage", "fish"}
-        seen_cmds: set[str] = set()
         for item in raw:
             cmd = item.get("do", "")
             spec = ACTIONS.get(cmd)
@@ -513,12 +511,6 @@ class Agent:
             if (m := re.fullmatch(r"(.*?)[\s,]+(?:n\s*[:=]\s*|x\s*)(\d+)", thing)) and not item.get("n"):
                 thing, item = m.group(1), {**item, "n": int(m.group(2))}
             has_xy = isinstance(item.get("x"), int) and isinstance(item.get("y"), int)
-            # Once the same work action has been used in this plan, later ones should find the
-            # nearest eligible thing from wherever the farmer is by then, not repeat a stale spot.
-            if has_xy and cmd in repeatable and cmd in seen_cmds:
-                has_xy = False
-                if spec.n and not item.get("n"):
-                    item = {**item, "n": 1}
             if has_xy and spec.xy:
                 abs_x, abs_y = base_x + item["x"], base_y + item["y"]
                 if map_w is not None and map_h is not None and not (0 <= abs_x < map_w and 0 <= abs_y < map_h):
@@ -562,7 +554,6 @@ class Agent:
                                   "Plant (or get seeds) instead of tilling more.")
                 continue
             actions.append(Action(cmd, args))
-            seen_cmds.add(cmd)
         if any(a.cmd == "stop" for a in actions[1:]):
             actions = [a for a in actions if a.cmd != "stop"]
         return actions, errors
