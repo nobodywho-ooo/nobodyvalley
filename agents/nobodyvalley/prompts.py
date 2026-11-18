@@ -169,24 +169,13 @@ def format_observation(
         status_lines.append(f"Animals: {', '.join(obs['farm']['animals'])}.")
     if fruit_trees := obs.get("farm", {}).get("fruit_trees"):
         status_lines.append(f"Fruit trees: {fruit_trees}.")
-    others = obs.get("others") or []
-    if others:
-        status_lines.append(
-            "Others: "
-            + "; ".join(
-                f"{o['name']} at {o['location']}" + (f" ({o['distance']} tiles away)" if o.get("distance") is not None else "")
-                + f", {o['doing']}"
-                for o in others
-            )
-            + "."
-        )
     if machines := obs.get("machines"):
         status_lines.append(f"Machines: {'; '.join(machines)}.")
     if obs.get("mine_level"):
         status_lines.append(f"You're on mine level {obs['mine_level']}. Rocks hide the ladder down (L); monsters (!) attack.")
     status_lines.append(location)
     if m := obs.get("map"):
-        status_lines.append(f"Map around you (you're @ at {m['you']}):\n{m['grid']}")
+        status_lines.append(f"Map around you at current location (you're @ at {m['you']}):\n{m['grid']}")
         if nearby := m.get("nearby", {}):
             status_lines.append("Points of interest on the map: " + "; ".join(f"{k}: {v}" for k, v in nearby.items()) + ".")
     if status:
