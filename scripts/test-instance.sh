@@ -12,7 +12,7 @@ ID="${SRC##*_}"
 TEST="NVTest_$ID"
 
 for pid in $(pgrep -x StardewModdingAPI || true); do
-    if ps eww "$pid" | grep -q "NOBODYVALLEY_LOAD=$TEST"; then kill -KILL "$pid"; fi # SIGTERM crashes it (see start-demo.sh --stop)
+    if ps eww "$pid" | grep -q "NOBODYVALLEY_LOAD=$TEST"; then kill -KILL "$pid"; fi # SIGTERM crashes it (see start-demo.sh stop)
 done
 sleep 1
 

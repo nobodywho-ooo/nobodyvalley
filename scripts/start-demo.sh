@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 # Start a co-op session with one Stardew Valley instance per agent, tiled in a grid of windows,
-# and (optionally) the NobodyWho agents.
+# plus the NobodyWho agents.
 #
-#   scripts/start-demo.sh             # start the game instances
-#   scripts/start-demo.sh --agents    # ...and then run the agents in this terminal
-#   scripts/start-demo.sh --build     # rebuild + deploy the mod first
-#   scripts/start-demo.sh --stop      # kill all game instances (and the agents)
+#   scripts/start-demo.sh             # the default: stop what's running, rebuild + deploy the mod,
+#                                     #   and start the game instances and the agents
+#   scripts/start-demo.sh start       # start the game instances and the agents (no rebuild)
+#   scripts/start-demo.sh build       # rebuild + deploy the mod only
+#   scripts/start-demo.sh stop        # kill the game instances (and the agents)
+#
+# The old flags still work: --stop, --build, --agents (--build --agents is the default).
 #
 # Configure with environment variables, or in `scripts/local.env` (gitignored; see
 # `scripts/local.env.example`; environment variables win over the file):
@@ -25,45 +28,74 @@ SAVE="${NV_SAVE:?set NV_SAVE (or scripts/local.env; see scripts/local.env.exampl
 read -r -a FARMHANDS <<< "${NV_FARMHANDS:?set NV_FARMHANDS (or scripts/local.env; see scripts/local.env.example)}"
 LOG_DIR="$ROOT/logs"
 
+STOP=false
 BUILD=false
 AGENTS=false
 for arg in "$@"; do
     case "$arg" in
-        --stop)
-            # SIGKILL: on SIGTERM the game aborts in its native teardown (Steam networking, OpenAL),
-            # and macOS's ReportCrashService then spends minutes at 100% CPU on each crash report.
-            # (Nothing is lost: the game only saves overnight.)
-            pkill -KILL -x StardewModdingAPI || true
-            pkill -TERM -f 'bin/nobodyvalley' || true # the agents
-            # Keep the game state with the latest run's logs (the save as of the last night).
-            if [ -d "$LOG_DIR/latest" ] && [ -d "$HOME/.config/StardewValley/Saves/$SAVE" ]; then
-                cp -R "$HOME/.config/StardewValley/Saves/$SAVE" "$LOG_DIR/latest/save-at-stop"
-                date "+Stopped at %Y-%m-%d %H:%M:%S" >> "$LOG_DIR/latest/start-demo.out"
-            fi
-            echo "Stopped."
-            exit 0 ;;
-        --build) BUILD=true ;;
-        --agents) AGENTS=true ;;
+        stop|--stop) STOP=true ;;
+        build|--build) BUILD=true ;;
+        start|--agents) AGENTS=true ;;
         *) echo "unknown option $arg" >&2; exit 2 ;;
     esac
 done
+
+# SIGKILL: on SIGTERM the game aborts in its native teardown (Steam networking, OpenAL), and
+# macOS's ReportCrashService then spends minutes at 100% CPU on each crash report.
+# (Nothing is lost: the game only saves overnight.)
+stop_all() {
+    pkill -KILL -x StardewModdingAPI || true
+    pkill -TERM -f 'bin/nobodyvalley' || true # the agents
+}
+
+if [ "$STOP" = true ]; then
+    stop_all
+    # Keep the game state with the latest run's logs (the save as of the last night).
+    if [ -d "$LOG_DIR/latest" ] && [ -d "$HOME/.config/StardewValley/Saves/$SAVE" ]; then
+        cp -R "$HOME/.config/StardewValley/Saves/$SAVE" "$LOG_DIR/latest/save-at-stop"
+        date "+Stopped at %Y-%m-%d %H:%M:%S" >> "$LOG_DIR/latest/start-demo.out"
+    fi
+    echo "Stopped."
+    exit 0
+fi
+
+# What to do: no arguments, or --build --agents, means the full cycle (stop, rebuild, start).
+MODE=start
+if [ "$BUILD" = true ] && [ "$AGENTS" = true ]; then
+    MODE=restart
+elif [ "$BUILD" = true ]; then
+    MODE=build
+elif [ "$AGENTS" = true ]; then
+    MODE=start
+else
+    MODE=restart
+fi
+
+if [ "$MODE" = restart ]; then
+    echo "Stopping what's running..."
+    stop_all
+fi
 
 if [ ! -x "$GAME_DIR/StardewModdingAPI" ]; then
     echo "SMAPI not found in $GAME_DIR (set NV_GAME_DIR)." >&2
     exit 1
 fi
 
-if [ "$BUILD" = true ]; then
+if [ "$MODE" = build ] || [ "$MODE" = restart ]; then
     echo "Building and deploying the mod..."
     export DOTNET_ROOT="${DOTNET_ROOT:-/opt/homebrew/opt/dotnet/libexec}"
     dotnet build "$ROOT/mod/NobodyValley" -c Release -p:GamePath="$GAME_DIR" | tail -2
 fi
+if [ "$MODE" = build ]; then
+    echo "Built."
+    exit 0
+fi
 if [ ! -f "$GAME_DIR/Mods/NobodyValley/NobodyValley.dll" ]; then
-    echo "The NobodyValley mod isn't installed; run with --build." >&2
+    echo "The NobodyValley mod isn't installed; run 'scripts/start-demo.sh build' (or just './scripts/start-demo.sh', which builds first)." >&2
     exit 1
 fi
 if pgrep -x StardewModdingAPI > /dev/null; then
-    echo "Game instances are already running; stop them first with: $0 --stop" >&2
+    echo "Game instances are already running; run '$0 stop' first (or just '$0' to rebuild and restart)." >&2
     exit 1
 fi
 
@@ -163,7 +195,5 @@ for f in "${FARMHANDS[@]}"; do
 done
 echo "Everyone's in."
 
-if [ "$AGENTS" = true ]; then
-    cd "$ROOT/agents"
-    exec uv run nobodyvalley --dashboard-window "$DASHBOARD_WINDOW" --log "$RUN_DIR/agents.log" --prompt-log "$RUN_DIR/prompts.log"
-fi
+cd "$ROOT/agents"
+exec uv run nobodyvalley --dashboard-window "$DASHBOARD_WINDOW" --log "$RUN_DIR/agents.log" --prompt-log "$RUN_DIR/prompts.log"

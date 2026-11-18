@@ -19,20 +19,24 @@ Prerequisites: Stardew Valley 1.6 + [SMAPI](https://smapi.io) 4.x, a co-op save 
 farmhand, the .NET SDK (`brew install dotnet`) and [uv](https://github.com/astral-sh/uv).
 
 ```sh
-scripts/start-demo.sh --build --agents
+scripts/start-demo.sh
 ```
 
-This builds and installs the mod and starts the host, which loads the save in co-op mode. It then
-starts the farmhand instances one at a time; each auto-joins `localhost` as its character. Each
-instance places its own window in a grid cell, and then the agents run in the terminal. A cold
-start takes about 45 seconds; a farmhand that gets stuck joining is restarted after 20 seconds.
-Each run's logs go to `logs/runs/<date>_<time>/` (`logs/latest`): the games' output (timestamped),
-the launcher's output, `agents.log` and `prompts.log` (every LLM prompt and reply).
+This stops anything already running, builds and installs the mod, and starts the host, which loads
+the save in co-op mode. It then starts the farmhand instances one at a time; each auto-joins
+`localhost` as its character. Each instance places its own window in a grid cell, and then the
+agents run in the terminal. A cold start takes about 45 seconds; a farmhand that gets stuck
+joining is restarted after 20 seconds. Each run's logs go to `logs/runs/<date>_<time>/`
+(`logs/latest`): the games' output (timestamped), the launcher's output, `agents.log` and
+`prompts.log` (every LLM prompt and reply).
 
 Configure it with `NV_SAVE`, `NV_FARMHANDS` and `NV_DISPLAY` (see the top of the script; put your
 own values in `scripts/local.env`, gitignored — see `scripts/local.env.example`).
-`swift scripts/screen-bounds.swift list` lists the displays. `scripts/start-demo.sh --stop`
-kills the instances and the agents, and keeps a copy of the save with the run's logs.
+`swift scripts/screen-bounds.swift list` lists the displays. The script also takes subcommands:
+`scripts/start-demo.sh build` only builds and deploys the mod, `scripts/start-demo.sh start`
+starts the instances and agents without rebuilding, and `scripts/start-demo.sh stop` kills them
+and keeps a copy of the save with the run's logs (the old `--build`/`--agents`/`--stop` flags
+still work).
 
 The agents also serve a live dashboard at http://127.0.0.1:8780. It has one panel per agent (what
 it's doing, its latest thought, its plan, the last result) and the chat log. A spinner shows when an agent
