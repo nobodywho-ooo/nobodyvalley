@@ -168,8 +168,7 @@ def format_observation(obs: dict[str, Any], events: str = "", status: str = "") 
             lines.append("Nearest: " + "; ".join(f"{k}: {v}" for k, v in nearby.items()) + ".")
     if me.get("location_id") != "Farm":
         # Otherwise agents waking up in their cabin pick crop coordinates off the cabin's map.
-        lines.append("You're not on the farm, so the map and coordinates above are of this place, not the farm. "
-                     "Farm work without x,y (e.g. water, harvest n) walks to the farm by itself.")
+        lines.append("You're not on the farm; the map above shows this place. Use go_to Farm to work on the farm.")
     if status:
         lines.append(status)
     return "\n".join(lines)
