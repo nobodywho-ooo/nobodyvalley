@@ -11,7 +11,7 @@
 #
 # Configure with environment variables:
 #   NV_REMOTE      user@host to deploy to   (default: nobodywho@nobodywhos-mac-mini.local)
-#   NV_REMOTE_DIR  project folder there, relative to its home (default: nw-valley)
+#   NV_REMOTE_DIR  project folder there, relative to its home (default: nobodyvalley)
 #
 # The remote needs Steam, Stardew Valley + SMAPI (same versions as here) and uv, but not the .NET SDK:
 # the mod is built here. Saves sync through Steam Cloud (same Steam account); don't run the demo on
@@ -23,7 +23,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 REMOTE="${NV_REMOTE:-nobodywho@nobodywhos-mac-mini.local}"
-REMOTE_DIR="${NV_REMOTE_DIR:-nw-valley}"
+REMOTE_DIR="${NV_REMOTE_DIR:-nobodyvalley}"
 GAME_DIR="${NV_GAME_DIR:-$HOME/Library/Application Support/Steam/steamapps/common/Stardew Valley/Contents/MacOS}"
 # Relative to the remote home; backslash-escaped for the remote shell (rsync passes it through one).
 REMOTE_MODS='Library/Application\ Support/Steam/steamapps/common/Stardew\ Valley/Contents/MacOS/Mods'
@@ -38,7 +38,7 @@ case "${1:-}" in
         remote 'scripts/start-demo.sh --stop'
         exit 0 ;;
     --status)
-        remote 'pgrep -lf "StardewModdingAPI|bin/nw-valley" | cut -c1-80; echo; echo "Logs: $(readlink logs/latest)"; tail -n 25 logs/latest/agents.log 2>/dev/null | cut -c1-200'
+        remote 'pgrep -lf "StardewModdingAPI|bin/nobodyvalley" | cut -c1-80; echo; echo "Logs: $(readlink logs/latest)"; tail -n 25 logs/latest/agents.log 2>/dev/null | cut -c1-200'
         exit 0 ;;
     --fetch)
         mkdir -p "$ROOT/logs/remote-runs"

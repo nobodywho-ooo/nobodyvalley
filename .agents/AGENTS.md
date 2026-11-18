@@ -58,7 +58,7 @@ knowledge.
 
 - **Office Mac Mini** (`nobodywho@nobodywhos-mac-mini.local`; use `.local`, not the Tailscale name): deploy and
   run with `scripts/deploy.sh --start`, check with `--status`, run commands there with `--ssh CMD` (in the
-  project folder `~/nw-valley`). Mads' ssh agent asks him to approve every new connection, so all calls go
+  project folder `~/nobodyvalley`). Mads' ssh agent asks him to approve every new connection, so all calls go
   through one shared connection (ControlMaster); don't call plain `ssh` there. Same game/SMAPI builds as here;
   saves sync via Steam Cloud. One display (Dell, 1920x960 usable). No `rg`. It's an M4 Pro (this laptop:
   M5 Pro), so turns are about twice as slow. Watch its disk and memory: other things run there too (an
@@ -75,15 +75,15 @@ knowledge.
   (run one job at a time; a new job cancels the running one).
   Useful commands: `debug_state`, `debug_give item=Wood count=50`, `debug_set_time time=2200`.
 - Test the agent loop without the game: `uv run python -m nw_valley.fake_game`, then
-  `uv run nw-valley --base-port 9765`.
+  `uv run nobodyvalley --base-port 9765`.
 - Full demo: `nohup scripts/start-demo.sh --build --agents > ideas/tmp/start-demo.out 2>&1 &` (takes about
   a minute; `--stop` stops the games and the agents, and keeps a copy of the save with the logs). Each run
   logs to `logs/runs/<date>_<time>/` (`logs/latest`): the games' output (timestamped), `start-demo.out`,
   `agents.log`, and every LLM prompt and reply in `prompts.log`: read those to tell model confusion from
   bugs. Runs on the Mac Mini: `scripts/deploy.sh --fetch` copies them to `logs/remote-runs/`. The dashboard
   is at http://127.0.0.1:8780.
-- Python-only changes don't need the games restarted: `pkill -TERM -f bin/nw-valley`, then
-  `cd agents && nohup uv run nw-valley --dashboard-window 1152,34,360,948 > ../ideas/tmp/agents.out 2>&1 &`.
+- Python-only changes don't need the games restarted: `pkill -TERM -f bin/nobodyvalley`, then
+  `cd agents && nohup uv run nobodyvalley --dashboard-window 1152,34,360,948 > ../ideas/tmp/agents.out 2>&1 &`.
   (Background processes ignore SIGINT.) Each restart replays the same morning, since the game only saves overnight.
 - Look up game APIs in `ideas/stardew-decompiled/` (decompiled with ilspycmd), rather than
   guessing.
@@ -91,7 +91,7 @@ knowledge.
 ## Status (end of last session, 2026-11-16 evening)
 
 **Running:** the demo was left running on the **Mac Mini** for an hour, with a timer that stops it at about
-20:00 (`scripts/deploy.sh --start --stop-after 60`). Its logs are in `~/nw-valley/logs/runs/2026-11-16_190012/`
+20:00 (`scripts/deploy.sh --start --stop-after 60`). Its logs are in `~/nobodyvalley/logs/runs/2026-11-16_190012/`
 there; `scripts/deploy.sh --fetch` copies them to `logs/remote-runs/` here. **Next: go through those logs**
 (`agents.log` for behaviour, `prompts.log` to see what each agent was shown, the game logs for mod errors),
 and sort what's a bug from what's model confusion. Older runs from that day are all appended in the Mini's

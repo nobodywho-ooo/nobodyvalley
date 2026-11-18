@@ -1,5 +1,5 @@
 [project]
-name = "nw-valley-agents"
+name = "nobodyvalley-agents"
 version = "0.1.0"
 description = "LLM farmers for Stardew Valley co-op, powered by NobodyWho"
 requires-python = ">=3.13"
@@ -9,7 +9,7 @@ dependencies = [
 ]
 
 [project.scripts]
-nw-valley = "nw_valley.main:main"
+nobodyvalley = "nw_valley.main:main"
 
 [build-system]
 requires = ["hatchling"]

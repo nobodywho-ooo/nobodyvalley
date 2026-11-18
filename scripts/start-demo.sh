@@ -31,7 +31,7 @@ for arg in "$@"; do
             # and macOS's ReportCrashService then spends minutes at 100% CPU on each crash report.
             # (Nothing is lost: the game only saves overnight.)
             pkill -KILL -x StardewModdingAPI || true
-            pkill -TERM -f 'bin/nw-valley' || true # the agents
+            pkill -TERM -f 'bin/nobodyvalley' || true # the agents
             # Keep the game state with the latest run's logs (the save as of the last night).
             if [ -d "$LOG_DIR/latest" ] && [ -d "$HOME/.config/StardewValley/Saves/$SAVE" ]; then
                 cp -R "$HOME/.config/StardewValley/Saves/$SAVE" "$LOG_DIR/latest/save-at-stop"
@@ -162,5 +162,5 @@ echo "Everyone's in."
 
 if [ "$AGENTS" = true ]; then
     cd "$ROOT/agents"
-    exec uv run nw-valley --dashboard-window "$DASHBOARD_WINDOW" --log "$RUN_DIR/agents.log" --prompt-log "$RUN_DIR/prompts.log"
+    exec uv run nobodyvalley --dashboard-window "$DASHBOARD_WINDOW" --log "$RUN_DIR/agents.log" --prompt-log "$RUN_DIR/prompts.log"
 fi
