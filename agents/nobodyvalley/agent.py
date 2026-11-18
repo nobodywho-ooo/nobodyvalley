@@ -177,7 +177,6 @@ class Agent:
         self.last_turn = 0.0
         self.last_failure: str | None = None
         self.last_say = 0.0
-        self.idle_turns = 0  # consecutive turns where an idle agent chose to do nothing
         self.addressed = False  # someone spoke to us by name since our last turn
         self.screen_message: dict[str, Any] | None = None
         self.screen_message_at = 0.0
@@ -469,16 +468,6 @@ class Agent:
                 self.queue = actions
                 # Starting a job cancels the running one in the game; that job's job_done is ignored (id mismatch).
                 await self._start_next()
-        elif not busy and not self.queue:
-            self.idle_turns += 1
-            # Nudge once right away; after that, wait for the idle timer instead of spinning.
-            self.inbox.append("You didn't choose any actions, so you're standing around. "
-                              "Check the Community Center's missing items: forage, fish, mine, chop, or gather "
-                              "bundle items, then take them to the Community Center and donate.")
-            if self.idle_turns == 1:
-                self.wake.set()
-        if actions:
-            self.idle_turns = 0
 
         self._dash(thought=thought, plan=self._plan_text(), doing=self.busy.describe() if self.busy else "")
         if (self.busy or self.queue) and not self.addressed:
