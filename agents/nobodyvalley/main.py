@@ -39,7 +39,7 @@ def make_printer(log_file: Path | None, prompt_dir: Path | None = None):
 
     def printer(name: str, kind: str, text: str) -> None:
         stamp = time.strftime("%H:%M:%S")
-        if kind in ("system", "history", "prompt", "reply"):
+        if kind in ("system", "prompt", "reply"):
             # Full system prompts, persistent history, temporary prompts and replies: too long for
             # the terminal, but needed for debugging. Keep one file per farmer.
             if prompt_dir:
@@ -50,7 +50,6 @@ def make_printer(log_file: Path | None, prompt_dir: Path | None = None):
                     fh_prompt = prompt_files[name] = (prompt_dir / f"{name}.log").open("w")
                 label = {
                     "system": "system prompt (persistent)",
-                    "history": "chat history (persistent)",
                     "prompt": "current prompt ([Status] block is temporary; not kept in history)",
                     "reply": "reply (kept in history)",
                 }[kind]
