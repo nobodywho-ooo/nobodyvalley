@@ -479,7 +479,10 @@ class Agent:
         it is not written to the history, so later turns do not accumulate stale maps and lists.
         """
         assert self.chat is not None
-        self.history.append({"role": "user", "content": "What happened:\n" + (events or "- Nothing new.")})
+        self.history.append({
+            "role": "user",
+            "content": "What happened:\n" + (events or "- Nothing new.") + "\n\nWhat do you do?",
+        })
         self.history.append({"role": "assistant", "content": reply})
         if len(self.history) > 40:  # 20 compact turns; the model can still see recent context
             self.history = self.history[-40:]
