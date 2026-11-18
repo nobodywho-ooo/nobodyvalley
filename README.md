@@ -59,8 +59,8 @@ installed are found automatically on ports 8765+):
 cd agents && uv run nobodyvalley
 ```
 
-Personalities per farmer go in `agents/personas.toml`: a `personality` each (the `job` field is still
-accepted, but is no longer sent in the prompt). Put your own farmers in `agents/personas.local.toml`
+Personalities per farmer go in `agents/personas.toml`: a `personality` and a `job` each (the job is
+included in the system prompt, not repeated every turn). Put your own farmers in `agents/personas.local.toml`
 (gitignored); it's used instead of `personas.toml` when it exists.
 
 Each farmer gets a random look (the character creator's dice), seeded by their name, so it's the same
