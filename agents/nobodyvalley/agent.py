@@ -165,6 +165,7 @@ class Agent:
         self.name = f"port{conn.port}"
         self.others: list[str] = []
         self.chat: ChatAsync | None = None
+        self.history: list[dict[str, str]] = []  # only "what happened" + the model's replies
 
         self.queue: list[Action] = []  # actions waiting to be started
         self.busy: Action | None = None  # job currently running in the game
@@ -335,6 +336,7 @@ class Agent:
         self.queue.clear()
         self.busy, self.busy_id = None, None
         self.asleep = False
+        self.history.clear()
         self.inbox = [f"Good morning! It's {date}. Plan your day."]
         self.screen_message = None
         self.report_turn = False
@@ -403,6 +405,7 @@ class Agent:
         try:
             raw = await self._ask(prompt)
             self.print(self.name, "reply", raw)
+            await self._remember_turn(events, raw)
             decision = json.loads(raw)
         except Exception as e:  # noqa: BLE001
             self.print(self.name, "info", f"LLM error: {e}")
@@ -483,6 +486,19 @@ class Agent:
             # until the plan is done; otherwise the agent takes another turn right after starting a plan.
             # (14% of the turns were like that, each one delaying the other agents' turns on the model.)
             self.wake.clear()
+
+    async def _remember_turn(self, events: str, reply: str) -> None:
+        """Keep only what happened and the model's reply in the chat history.
+
+        The full observation (map, inventory summary, status, ...) is only needed for this turn;
+        it is not written to the history, so later turns do not accumulate stale maps and lists.
+        """
+        assert self.chat is not None
+        self.history.append({"role": "user", "content": "What happened:\n" + (events or "- Nothing new.")})
+        self.history.append({"role": "assistant", "content": reply})
+        if len(self.history) > 40:  # 20 compact turns; the model can still see recent context
+            self.history = self.history[-40:]
+        await self.chat.set_chat_history(self.history)
 
     def _parse_actions(self, raw: list[dict[str, Any]], obs: dict[str, Any]) -> tuple[list[Action], list[str]]:
         actions: list[Action] = []
