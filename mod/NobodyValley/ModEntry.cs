@@ -436,6 +436,59 @@ internal sealed class ModEntry : Mod
             }
             case "fruit":
                 return StartJob(cmd, "picking fruit", FarmJobs.HarvestFruit);
+            case "check_community_center":
+            {
+                var cc = CommunityCenterJobs.Observe();
+                var parts = new List<string> { (string?)cc["done"] ?? "Community Center" };
+                foreach (var room in cc["rooms"] as JArray ?? new JArray())
+                    parts.Add($"{room["room"]}: {string.Join("; ", room["needs"] as JArray ?? new JArray())}");
+                if (cc["in_inventory"] is { Type: not JTokenType.Null } inv && !string.IsNullOrWhiteSpace((string?)inv))
+                    parts.Add($"You carry: {inv}");
+                if (cc["in_chests"] is { Type: not JTokenType.Null } chests && !string.IsNullOrWhiteSpace((string?)chests))
+                    parts.Add($"In shared chests: {chests}");
+                if (cc["hint"] is { Type: not JTokenType.Null } hint && !string.IsNullOrWhiteSpace((string?)hint))
+                    parts.Add((string)hint!);
+                return new JObject { ["summary"] = string.Join(". ", parts) };
+            }
+
+            case "check_chest":
+            {
+                var chests = MoreJobs.FarmChestContents();
+                if (chests.Count == 0)
+                    return new JObject { ["summary"] = "There are no shared chests on the farm yet (craft one with 50 wood)." };
+                var parts = chests.Select((c, i) => $"chest {i + 1}: {c}");
+                return new JObject { ["summary"] = string.Join("; ", parts) };
+            }
+
+            case "open_backpack":
+            {
+                var items = Game1.player.Items.Where(i => i != null).Select(i => i!.Stack > 1 ? $"{i.DisplayName} x{i.Stack}" : i.DisplayName);
+                return new JObject
+                {
+                    ["summary"] = $"Inventory ({Game1.player.Items.Count(i => i != null)}/{Game1.player.MaxItems} slots): "
+                        + (string.Join(", ", items) is { Length: > 0 } text ? text : "empty"),
+                };
+            }
+
+            case "start_crafting":
+            {
+                var recipes = MoreJobs.AllRecipes();
+                return new JObject
+                {
+                    ["summary"] = recipes.Count == 0 ? "You don't know any crafting recipes yet." : "Known recipes: " + string.Join("; ", recipes),
+                };
+            }
+
+            case "check_shop":
+            {
+                var target = Str("target");
+                var stock = FarmJobs.ShopStock(target);
+                return new JObject
+                {
+                    ["summary"] = $"{(target ?? "Pierre")} sells: " + (stock.Count == 0 ? "nothing right now" : string.Join(", ", stock)),
+                };
+            }
+
             case "answer":
             {
                 int option = Math.Max(0, Int("count", Int("option", 0)));

@@ -19,6 +19,11 @@ spot; repeated work actions (and count actions) pick the nearest eligible thing 
 they work on the nearest n things.
   say text (a public message, sent in the game chat and seen by the other farmers; only to coordinate or answer)
   answer n (choose a 1-based option in an on-screen question; no n = continue/close the message)
+  check_community_center (show bundle progress and what is still missing)
+  check_chest (show what is in the shared chests)
+  open_backpack (show your inventory)
+  start_crafting (show known recipes and ingredients)
+  check_shop target (show what Pierre/Willy/Marnie/... sells; no target = Pierre)
   emote ({emotes})
   go_to target (place: Farm, home, Pierre's, Willy's, Saloon, Beach, Town, Forest, Mountain, Mines; or a person)
   walk x,y (door, person, forage item, ...)
@@ -64,8 +69,12 @@ enough for everyone, so craft one only if there are none (or they're all full). 
 Farming 1) keeps crows off crops. Forage is free money. Eat or sleep when energy is low; bed before 1am.
 
 Community Center first: the observation lists every bundle's missing items. Keep those items instead of shipping them;\nwhen you are carrying any, go_to CommunityCenter and donate. Missing crops mean plant their seeds (buy them from\nPierre), missing forage/fish/minerals mean go and collect them, and missing animal/artisan goods need a coop, barn or\ncrafting machine. Check the list before choosing farm work, and tell the others in chat what you are collecting.\nThe six rooms: Pantry (seasonal crops, animal products, artisan goods), Crafts Room (forage, wood/stone/hardwood),\nFish Tank (fish and crab-pot catches), Boiler Room (bars, minerals, monster drops), Bulletin Board (cooking, dye,\nfield research, fodder, enchanter goods) and Vault (money). Do what the current season and weather allow; summer,\nfall and winter items have to wait for their season (or come from the Traveling Cart/greenhouse).\nFor animal and artisan bundles, build a Coop and Barn (then Big/Deluxe versions), buy animals from Marnie,\ncare_animals every morning, and craft machines (Furnace, Preserves Jar, Cheese Press, Keg, ...) then operate\nthem. Fruit trees, tappers and fishing also fill bundle slots; check what is still missing before spending\nthe day on something else.
+Use check_community_center before choosing work (it lists exactly what is missing), check_chest before
+gathering, open_backpack to inspect your inventory, start_crafting for recipes and check_shop for shop stock.
 When a villager asks for an item, gives you a quest, or tells you something useful, summarize it for the
 others with a say action (e.g. "Pierre wants a cauliflower" or "Marnie asked for 10 hay"). Keep it short.
+If your inventory is full or you don't need something, put it in a shared chest with store; keep tools, seeds
+and bundle items.
 """
 
 
@@ -113,8 +122,7 @@ def format_observation(obs: dict[str, Any], events: str = "", status: str = "") 
         + (f" Festival today!" if world.get("festival_today") else ""),
         f"Energy {me['energy']}/{me['max_energy']}. Money {me['money']}g."
         + (f" Currently: {me['busy']}." if me.get("busy") else " You're not doing anything."),
-        f"Inventory{f' ({len(me["inventory"])}/{me["inventory_size"]} slots)' if me.get('inventory_size') else ''}: "
-        f"{', '.join(me['inventory']) or 'empty'}.",
+        f"Inventory: {len(me['inventory'])}/{me.get('inventory_size', '?')} slots.",
         "Farm: "
         + "; ".join(
             filter(
@@ -150,27 +158,8 @@ def format_observation(obs: dict[str, Any], events: str = "", status: str = "") 
         )
     if obs.get("nearby_villagers"):
         lines.append(f"Villagers nearby: {', '.join(obs['nearby_villagers'])}.")
-    # Leave out the fruit tree saplings (thousands of gold): just noise early on.
-    seeds = [x for x in obs.get("seeds_for_sale", []) if "Sapling" not in x]
-    if seeds:
-        lines.append(f"Pierre sells: {', '.join(seeds)}.")
-    if chests := obs.get("chests"):
-        lines.append(f"Shared chests ({len(chests)} on the farm, no need to craft more): {merge_chests(chests) or 'all empty'}.")
-    if cc := obs.get("community_center"):
-        lines.append(f"Community Center: {cc.get('done', 'not opened')}.")
-        for room in cc.get("rooms", []):
-            lines.append(f"- {room['room']}: " + "; ".join(room.get("needs", [])))
-        if held := cc.get("in_inventory"):
-            lines.append(f"You are carrying bundle items: {held} - go_to CommunityCenter and donate.")
-        if chest_items := cc.get("in_chests"):
-            lines.append(f"Shared chests have bundle items: {chest_items} - use take item=NAME n=COUNT to get them.")
-        if hint := cc.get("hint"):
-            lines.append(hint)
     if obs.get("forage_here"):
         lines.append(f"There are {obs['forage_here']} forage items here.")
-    useful = [r for r in obs.get("recipes", []) if r.split(" (")[0] in USEFUL_RECIPES]
-    if useful:
-        lines.append(f"Crafting: {', '.join(useful)}.")
     if machines := obs.get("machines"):
         lines.append(f"Machines: {'; '.join(machines)}.")
     if obs.get("mine_level"):

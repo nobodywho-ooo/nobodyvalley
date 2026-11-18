@@ -224,6 +224,26 @@ internal static class MoreJobs
     private static string Ingredients(CraftingRecipe recipe) =>
         string.Join(", ", recipe.recipeList.Select(i => $"{i.Value} {ItemRegistry.GetDataOrErrorItem(i.Key).DisplayName}"));
 
+    /// <summary>All recipes the player knows, with their ingredients (for the start_crafting action).</summary>
+    public static List<string> AllRecipes()
+    {
+        var result = new List<string>();
+        foreach (var name in Me.craftingRecipes.Keys.OrderBy(k => k))
+        {
+            try
+            {
+                var recipe = new CraftingRecipe(name);
+                string suffix = recipe.doesFarmerHaveIngredientsInInventory() ? " (can craft now)" : "";
+                result.Add($"{recipe.DisplayName}: {Ingredients(recipe)}{suffix}");
+            }
+            catch (Exception)
+            {
+                // bad recipe data; ignore
+            }
+        }
+        return result;
+    }
+
     /// <summary>Recipes the player knows, with whether they can craft them now (for the observation).</summary>
     public static List<string> Recipes()
     {

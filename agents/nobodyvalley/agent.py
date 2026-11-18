@@ -59,6 +59,11 @@ ACTIONS: dict[str, Spec] = {
     "cook": Spec("cook", item="item", needs=("item",)),
     "operate": Spec("operate", xy=True),
     "answer": Spec("answer", n=True),
+    "check_community_center": Spec("check_community_center"),
+    "check_chest": Spec("check_chest"),
+    "open_backpack": Spec("open_backpack"),
+    "start_crafting": Spec("start_crafting"),
+    "check_shop": Spec("check_shop", target="target"),
     "build": Spec("build", item="item", needs=("item",)),
     "buy_animal": Spec("buy_animal", item="item", needs=("item",)),
     "upgrade": Spec("upgrade", item="item", needs=("item",)),
@@ -78,6 +83,8 @@ ACTIONS: dict[str, Spec] = {
     "sleep": Spec("sleep"),
     "stop": Spec("stop"),
 }
+INFO_ACTIONS = {"check_community_center", "check_chest", "open_backpack", "start_crafting", "check_shop"}
+
 # Don't till more when this much tilled soil is already waiting for seeds.
 MAX_EMPTY_TILLED = 30
 
@@ -413,6 +420,9 @@ class Agent:
             self.print(self.name, "info", f"answer({option})")
             await self._send("answer", count=option)
             self.screen_message = None
+        info_actions = [a for a in raw_actions if a.get("do") in INFO_ACTIONS]
+        for info in info_actions:
+            await self._query(info.get("do", ""), target=_blank_if_none(info.get("target")))
         say = " ".join(str(a.get("text", "")) for a in raw_actions if a.get("do") == "say").strip()
         if len(say) >= MAX_SAY_LENGTH:  # hit the limit mid-sentence
             say = say[: say.rfind(" ")].rstrip(",;:") + "…" if " " in say else say
@@ -435,7 +445,7 @@ class Agent:
             self.wake.set()
             return
 
-        actions, errors = self._parse_actions([a for a in raw_actions if a.get("do") not in ("say", "emote", "answer")], obs)
+        actions, errors = self._parse_actions([a for a in raw_actions if a.get("do") not in ("say", "emote", "answer") and a.get("do") not in INFO_ACTIONS], obs)
         self.inbox.extend(errors)
         if actions and actions[0].cmd == "stop":
             await self._send("stop")
@@ -556,6 +566,16 @@ class Agent:
         if any(a.cmd == "stop" for a in actions[1:]):
             actions = [a for a in actions if a.cmd != "stop"]
         return actions, errors
+
+    async def _query(self, cmd: str, **args: Any) -> None:
+        """Run an information action now and put its answer in the next inbox."""
+        try:
+            data = await self.conn.request(cmd, **args)
+            summary = str(data.get("summary") or "")
+            self.inbox.append(f"{cmd}: {summary}")
+            self.print(self.name, "info", f"{cmd}: {summary}")
+        except GameError as e:
+            self.inbox.append(f"{cmd} failed: {e}")
 
     async def _ask(self, prompt: str) -> str:
         """ask().completed(), optionally echoing tokens (NV_DEBUG_TOKENS=1)."""

@@ -719,6 +719,41 @@ internal static class FarmJobs
         return null;
     }
 
+    /// <summary>What a named shop sells today (for the check_shop action).</summary>
+    public static List<string> ShopStock(string? target)
+    {
+        var shops = new[]
+        {
+            (key: "pierre", id: "SeedShop", name: "Pierre"),
+            (key: "willy", id: "FishShop", name: "Willy"),
+            (key: "marnie", id: "AnimalShop", name: "Marnie"),
+            (key: "saloon", id: "Saloon", name: "the Saloon"),
+            (key: "sandy", id: "Sandy", name: "Sandy"),
+            (key: "krobus", id: "Sewer", name: "Krobus"),
+            (key: "robin", id: "Carpenter", name: "Robin"),
+            (key: "clint", id: "Blacksmith", name: "Clint"),
+        };
+        var shop = target == null
+            ? shops[0]
+            : shops.FirstOrDefault(s => s.key.Equals(target, StringComparison.OrdinalIgnoreCase)
+                || s.name.Equals(target, StringComparison.OrdinalIgnoreCase));
+        if (shop.id == null)
+            return new List<string> { $"unknown shop '{target}'. Try Pierre, Willy, Marnie, Saloon, Sandy, Krobus, Robin or Clint" };
+        try
+        {
+            return ShopBuilder.GetShopStock(shop.id)
+                .Where(x => x.Key is SObject or Tool)
+                .Select(x => $"{x.Key.DisplayName} ({x.Value.Price}g)")
+                .Distinct()
+                .Take(80)
+                .ToList();
+        }
+        catch (Exception)
+        {
+            return new List<string> { $"couldn't read {shop.name}'s stock right now" };
+        }
+    }
+
     /// <summary>Seeds Pierre sells today, for the observation.</summary>
     public static List<string> SeedsForSale()
     {
