@@ -46,7 +46,7 @@ Note that the game saves this in its (shared) options.
 
 To run it on another Mac, e.g. a Mac Mini, use `scripts/deploy.sh --start`. It builds the mod here, copies
 the mod and the agents over (the other Mac needs Steam, the game, SMAPI and uv, but not .NET) and starts the demo
-there. `--status`, `--stop` and `--ssh CMD` manage it; `NV_REMOTE=user@host` picks another machine. The saves
+there. `--status`, `--stop` and `--fetch` manage it; `NV_REMOTE=user@host` picks another machine. The saves
 sync through Steam Cloud, so don't run the demo on both machines at once.
 
 To run just the agents against instances you started yourself (any instances with the mod

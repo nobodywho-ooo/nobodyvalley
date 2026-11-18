@@ -6,7 +6,6 @@
 #   scripts/deploy.sh --start --stop-after 60   # ...and stop it again after 60 minutes
 #   scripts/deploy.sh --stop     # stop the demo there
 #   scripts/deploy.sh --status   # what's running there, and the latest agent output
-#   scripts/deploy.sh --ssh CMD  # run a command there (in the project folder)
 #   scripts/deploy.sh --fetch    # copy its run logs (logs/runs/*) into logs/remote-runs/ here
 #
 # Configure with environment variables, or in `scripts/local.env` (gitignored; see
@@ -17,9 +16,6 @@
 # The remote needs Steam, Stardew Valley + SMAPI (same versions as here) and uv, but not the .NET SDK:
 # the mod is built here. Saves sync through Steam Cloud (same Steam account); don't run the demo on
 # both machines at once, or the saves conflict.
-#
-# All ssh/rsync calls share one connection (ControlMaster), so an ssh agent that asks for approval per
-# connection only asks once every 30 minutes.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -32,9 +28,8 @@ GAME_DIR="${NV_GAME_DIR:-$HOME/Library/Application Support/Steam/steamapps/commo
 REMOTE_MODS='Library/Application\ Support/Steam/steamapps/common/Stardew\ Valley/Contents/MacOS/Mods'
 
 mkdir -p "$HOME/.ssh"
-SSH_OPTS=(-o ConnectTimeout=10 -o ControlMaster=auto -o "ControlPath=$HOME/.ssh/nv-deploy-%C" -o ControlPersist=30m)
-remote() { ssh "${SSH_OPTS[@]}" "$REMOTE" "cd $REMOTE_DIR 2>/dev/null || true; $*"; }
-sync() { rsync -az -e "ssh ${SSH_OPTS[*]}" "$@"; }
+remote() { ssh "$REMOTE" "cd $REMOTE_DIR 2>/dev/null || true; $*"; }
+sync() { rsync -az "$@"; }
 
 case "${1:-}" in
     --stop)
@@ -47,10 +42,6 @@ case "${1:-}" in
         mkdir -p "$ROOT/logs/remote-runs"
         sync "$REMOTE:$REMOTE_DIR/logs/runs/" "$ROOT/logs/remote-runs/"
         echo "Copied to logs/remote-runs/:"; ls "$ROOT/logs/remote-runs"
-        exit 0 ;;
-    --ssh)
-        shift
-        remote "$@"
         exit 0 ;;
     ""|--start) ;;
     *) echo "unknown option $1" >&2; exit 2 ;;
