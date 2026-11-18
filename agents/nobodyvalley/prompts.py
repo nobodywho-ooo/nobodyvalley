@@ -41,8 +41,8 @@ you're shown; actions with x,y walk there and act on that tile. Without x,y, the
   stop (cancel plan; first only)
 Example: {{"thought":"Clearing the stone next to the field.","actions":[{{"do":"mine","x":62,"y":17}},{{"do":"till","n":4}}]}}
 
-Each turn you see a map of the area around you (x across the top, y down the side) and nearest-first lists of
-coordinates. Map legend: {legend}
+Each turn you see a map of the area around you (x across the top, y down the side) and nearest-first lists of coordinates.
+Map legend: {legend}
 
 Tips: Pierre's is open 9am-5pm, not Wednesdays. Money is shared. Inventories aren't: you can only plant \
 your own seeds; share via the shared chests on the farm. Only craft things you need: one chest is \
@@ -123,6 +123,7 @@ def format_observation(obs: dict[str, Any], taken: set[str] | None = None, event
             + "; ".join(
                 f"{o['name']} at {o['location']}" + (f" ({o['distance']} tiles away)" if o.get("distance") is not None else "")
                 + f", {o['doing']}"
+                + (f", inventory: {', '.join(o['inventory']) or 'empty'}" if o.get("inventory") is not None else "")
                 for o in others
             )
             + "."

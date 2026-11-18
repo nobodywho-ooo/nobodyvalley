@@ -29,7 +29,7 @@ internal static class Observer
                 ["holding"] = me.CurrentItem?.DisplayName,
                 ["busy"] = currentJob?.Activity,
                 ["inventory_size"] = me.MaxItems,
-                ["inventory"] = new JArray(me.Items.Where(i => i != null).Select(i => i.Stack > 1 ? $"{i.DisplayName} x{i.Stack}" : i.DisplayName)),
+                ["inventory"] = Inventory(me),
             },
             ["world"] = new JObject
             {
@@ -48,6 +48,7 @@ internal static class Observer
                     ["location"] = LocationName(f.currentLocation),
                     ["distance"] = f.currentLocation == me.currentLocation ? (int)Vector2.Distance(f.Tile, me.Tile) : null,
                     ["doing"] = PlayerState.GetActivity(f) ?? "nothing in particular",
+                    ["inventory"] = Inventory(f),
                 })),
             ["nearby_villagers"] = new JArray((me.currentLocation?.characters ?? Enumerable.Empty<NPC>())
                 .Where(n => n.IsVillager && !n.IsInvisible)
@@ -62,6 +63,11 @@ internal static class Observer
             ["recipes"] = new JArray(Jobs.MoreJobs.Recipes()),
         };
     }
+
+    /// <summary>A farmer's inventory as prompt text ("Name xN" for stacks). Other online farmers' inventories
+    /// are synced to every client (Farmer.netItems is a net field), so anyone can read what everyone holds.</summary>
+    private static JArray Inventory(Farmer f) => new JArray(f.Items.Where(i => i != null)
+        .Select(i => i.Stack > 1 ? $"{i.DisplayName} x{i.Stack}" : i.DisplayName));
 
     private static JObject FarmSummary(Farm farm)
     {
