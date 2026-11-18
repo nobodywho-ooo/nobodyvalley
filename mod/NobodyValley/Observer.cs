@@ -45,7 +45,7 @@ internal static class Observer
                 .Select(f => new JObject
                 {
                     ["name"] = f.Name,
-                    ["location"] = LocationName(f.currentLocation),
+                    ["location"] = LocationName(f.currentLocation, at: f.TilePoint),
                     ["distance"] = f.currentLocation == me.currentLocation ? (int)Vector2.Distance(f.Tile, me.Tile) : null,
                     ["doing"] = PlayerState.GetActivity(f) ?? "nothing in particular",
                 })),
@@ -121,11 +121,12 @@ internal static class Observer
 
     /// <summary>
     /// A location's name as the agents should see it. Interiors without a name of their own (houses, cabins,
-    /// the greenhouse, ...) report their parent's DisplayName ("Nowhere Farm"), which made agents in their
-    /// cabin think they were out on the farm.
+    /// the greenhouse, ...) report their parent's DisplayName, which made agents in their cabin think they
+    /// were out on the farm.
     /// </summary>
     /// <param name="onFarm">Add "(on the farm)" to buildings on the farm.</param>
-    public static string LocationName(GameLocation? loc, bool onFarm = false)
+    /// <param name="at">The tile to name the relative position from (defaults to the local player).</param>
+    public static string LocationName(GameLocation? loc, bool onFarm = false, Point? at = null)
     {
         if (loc == null)
             return "?";
@@ -140,7 +141,26 @@ internal static class Observer
         var parent = loc.GetParentLocation();
         if (parent != null && loc.DisplayName == parent.DisplayName)
             return loc.Name + suffix; // e.g. Greenhouse, Coop, Barn
+        if (loc is Farm)
+        {
+            // The farm's save name ("Nowhere Farm") is confusing noise; call it "Farm", and say which
+            // side of it the tile is on unless it's the middle ("north-east side of the farm" / "Farm").
+            return RelativePart(loc, at ?? Game1.player.TilePoint) is { } part ? $"{part} side of the farm" : "Farm";
+        }
         return loc.DisplayName;
+    }
+
+    /// <summary>Which third of a location a tile sits in: "north-east", "south", "west", ... (null = the middle).</summary>
+    private static string? RelativePart(GameLocation loc, Point tile)
+    {
+        if (loc.map?.Layers == null || loc.map.Layers.Count == 0)
+            return null;
+        int w = loc.map.Layers[0].LayerWidth, h = loc.map.Layers[0].LayerHeight;
+        string ns = tile.Y < h / 3 ? "north" : tile.Y >= 2 * h / 3 ? "south" : "";
+        string ew = tile.X < w / 3 ? "west" : tile.X >= 2 * w / 3 ? "east" : "";
+        if (ns == "" && ew == "")
+            return null; // the middle
+        return string.Join("-", new[] { ns, ew }.Where(s => s != ""));
     }
 
     /// <summary>What a crop gives. Wild spring onions/ginger are "forage crops", without an indexOfHarvest.</summary>

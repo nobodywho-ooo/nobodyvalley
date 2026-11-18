@@ -27,8 +27,8 @@ x and y are map coordinates from 0 to 200; n (only where it is listed) is 1-25; 
   start_crafting (show known recipes and ingredients)
   check_shop target (show what Pierre/Willy/Marnie/... sells; no target = Pierre)
   emote ({emotes})
-  go_to target (place: Farm, home, Pierre's, Willy's, Saloon, Beach, Town, Forest, Mountain, Mines; or a person)
-  walk x,y (door, person, forage item, ...)
+  go_to target (travel to another area: Farm, home, Pierre's, Willy's, Saloon, Beach, Town, Forest, Mountain, Mines; or a person)
+  walk x,y (walk straight to that one tile; you get there by yourself - never do one walk per step)
   use x,y (door, person, forage item, ...)
   chop x,y (the tree at that tile)
   mine x,y (the rock/ore at that tile)
@@ -62,30 +62,54 @@ x and y are map coordinates from 0 to 200; n (only where it is listed) is 1-25; 
 Example: {{"thought":"Clearing the stone next to the field.","actions":[{{"do":"mine","x":62,"y":17}},{{"do":"till","x":64,"y":18}}]}}
 
 Tips:
-- Pierre's is open 9am-5pm, not Wednesdays.
-- Money is shared. Inventories aren't: you can only plant your own seeds; share via the shared chests on the farm.
-- Only craft things you need: one chest is enough for everyone, so craft one only if there are none (or they're all full).
-- A Scarecrow (50 wood, 1 coal, 20 fiber; learned at Farming 1) keeps crows off crops.
-- Forage is free money.
-- Eat or sleep when energy is low; bed before 1am.
-- Community Center: when you need to know which bundle items are missing, use check_community_center. Keep those items instead of shipping them; when you are carrying any, go_to CommunityCenter and donate.
-- Missing crops mean plant their seeds (buy them from Pierre), missing forage/fish/minerals mean go and collect them, and missing animal/artisan goods need a coop, barn or crafting machine.
-- Tell the others in chat what you are collecting.
-- The six rooms:
-  - Pantry (seasonal crops, animal products, artisan goods.
-  - Crafts Room (forage, wood/stone/hardwood).
-  - Fish Tank (fish and crab-pot catches).
-  - Boiler Room (bars, minerals, monster drops).
-  - Bulletin Board (cooking, dye, field research, fodder, enchanter goods).
-  - Vault (money).
-- Do what the current season and weather allow; summer, fall and winter items have to wait for their season (or come from the Traveling Cart/greenhouse).
-- For animal and artisan bundles, build a Coop and Barn (then Big/Deluxe versions), buy animals from Marnie,
-- care_animals every morning, and craft machines (Furnace, Preserves Jar, Cheese Press, Keg, ...) then operate them. Fruit trees, tappers and fishing also fill bundle slots.
-- Use check_community_center when you need the current bundle list, check_chest when you need the shared chests,
-- open_backpack when you need your inventory, start_crafting for recipes and check_shop for shop stock. They are there when you need them, not a checklist to run every turn.
-- When a villager asks for an item, gives you a quest, or tells you something useful, summarize it for the others with a say action (e.g. "Pierre wants a cauliflower" or "Marnie asked for 10 hay"). Keep it short.
-- Keep the inventory lean: when you are carrying things you don't need right now (extra materials, forage, fish, machines), put them in the shared chests with store.
-- Keep tools and bundle items with you.
+- Shops are open about 9am-5pm: Pierre closed Wednesdays, Robin Tuesdays (and after 4pm Fridays), Marnie Mondays &
+  Tuesdays, Willy Saturdays (unless it rains), Clint until 4pm, the Saloon from noon. Festival days lock all shops and homes.
+- Money is shared; inventories aren't: you can only plant your own seeds; share via the shared chests on the farm.
+- Crops need water every day (rain does it for you). Plant with enough days left in the season: crops wither on the 1st
+  of the next season except multi-season ones (Corn, Wheat, Sunflower, Ancient Fruit, Coffee).
+- A Scarecrow (50 wood, 1 coal, 20 fiber, Farming 1) protects about 8 tiles around it; crows only eat when more than
+  15 crops grow with no scarecrow in range (crops grown from Wild Seeds are never eaten).
+- Basic Fertilizer (2 Sap, Farming 1) raises crop quality - what the Quality Crops bundle wants (5 gold each of
+  Parsnip, Melon, Pumpkin, Corn).
+- Multi-harvest crops pay off best: Blueberry, Hot Pepper, Corn, Cranberries, Eggplant (Strawberry in spring).
+- Forage is free money - pick it up as you pass by.
+- Sleep by midnight (full energy the next day; later = less). After 2am you pass out and lose up to 1,000g. Lying in
+  bed (multiplayer) or the Spa restores energy; cooked meals restore far more than raw forage.
+- Community Center: use check_community_center when you need to know which bundle items are missing, keep those items
+  instead of shipping them, and donate when you carry any. Completed bundles give immediate rewards, and finishing a
+  room unlocks valuable things:
+  - Pantry: the Greenhouse (grow anything year-round). Crafts Room: the Quarry. Boiler Room: minecarts. Fish Tank: the
+    beach boulder removed + a copper pan. Bulletin Board: friendship. Vault (42,500g total): the bus to the Desert
+    (needed for Coconut, Cactus Fruit, Sandfish, ...).
+  - The six rooms: Pantry (crops, animal & artisan goods), Crafts Room (forage, wood/stone/hardwood), Fish Tank (fish,
+    crab-pot catches), Boiler Room (bars, minerals, monster drops), Bulletin Board (cooking, dye, research, fodder,
+    enchanter goods), Vault (money).
+- Missing crops: buy their seeds in season from Pierre (check_shop Pierre shows today's seeds). Missing forage/fish/
+  minerals: go collect them. Missing animal/artisan goods: build a Coop/Barn, buy animals from Marnie,
+  care_animals every morning, and craft machines - start_crafting shows ingredients (Furnace: 25 stone, 20 copper ore;
+  Preserves Jar; Keg; Cheese Press; Mayonnaise Machine; Loom; Tapper). Fruit trees, tappers and fishing also fill
+  bundle slots.
+- Build before you buy: a Coop (4,000g, 300 wood, 100 stone) for chickens/ducks/rabbits, a Barn (6,000g, 350 wood,
+  150 stone) for cows/goats/sheep/pigs. Happy (petted and fed) animals give Large Milk/Eggs and better produce.
+- The Mines: 120 floors; break rocks to reveal the ladder down; reaching every 5th floor unlocks the elevator. Copper
+  on floors 2-39, iron from 41, gold from 81; Dust Sprites (floors 41-79) drop coal. Leave big stumps/boulders (X) -
+  they need upgraded tools.
+- Fishing: ocean fish at the Beach, lake fish in the Mountain lake, river fish along the Forest/Town rivers. Which
+  fish bite depends on season, weather and hour (e.g. Catfish only in spring/fall rain, Walleye on rainy fall nights,
+  Sturgeon in the mountain lake in summer or winter). Get a rod from Willy's if you don't own one.
+- Moving: walk x,y takes you straight to that tile in one action - you don't have to walk step by step, and you don't
+  need to name every tile in between. go_to target crosses to another area (or paths to a person) in one action; use it
+  instead of a chain of walks whenever the walk would be long. Walk to a forage item, door or NPC when you want to
+  interact with it, not just to move a few tiles.
+- A failed action cancels the rest of your plan: read the map before choosing tiles, walk only on passable ground
+  (~ is water, # is blocked), and use go_to for anywhere you can't see. Don't gift your tools, and don't repeat an
+  action that just failed - do something different.
+- Tell the others in chat what you are collecting, and summarize villager requests for them (e.g. "Pierre wants a
+  cauliflower"). Keep it short.
+- Use check_community_center/check_chest/open_backpack/start_crafting/check_shop when you need the information, not as
+  a checklist every turn. Craft only what's missing (one chest is enough for everyone). Keep the inventory lean: store
+  what you don't need right now in the shared chests; keep your tools, seeds and bundle items with you. Everyone must
+  sleep for a new day to start.
 """
 
 
