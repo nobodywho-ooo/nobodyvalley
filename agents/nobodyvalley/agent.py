@@ -206,7 +206,6 @@ class Agent:
         )
         self.print(self.name, "info", f"connected (port {self.conn.port}, {'host' if hello.get('is_host') else 'farmhand'})")
         self.print(self.name, "system", self._system_prompt())
-        self.inbox.append("You just woke up and are ready to start.")
 
         events = asyncio.create_task(self._event_loop())
         # Stagger the first turns, so later agents see what the earlier ones picked.

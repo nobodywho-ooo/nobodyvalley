@@ -190,9 +190,6 @@ def format_observation(
         status_lines.append(f"Map around you (you're @ at {m['you']}; coordinates are offsets):\n{m['grid']}")
         if nearby := m.get("nearby", {}):
             status_lines.append("Points of interest on the map: " + "; ".join(f"{k}: {v}" for k, v in nearby.items()) + ".")
-    if me.get("location_id") != "Farm":
-        # Otherwise agents waking up in their cabin pick crop coordinates off the cabin's map.
-        status_lines.append("You're not on the farm; the map above shows this place. Use go_to Farm to work on the farm.")
     if status:
         status_lines.append(status)
     lines += status_lines
