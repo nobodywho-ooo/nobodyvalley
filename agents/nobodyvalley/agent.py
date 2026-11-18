@@ -393,13 +393,10 @@ class Agent:
         running = self.busy  # the job running when the prompt was made
         # No "Working on" note: the model is only asked when its plan is done or failed (or someone
         # addressed it mid-job), so the events and the observation's "Currently: ..." carry that context.
-        status_parts = []
-        if has_screen:
-            status_parts.append("A message is on screen: use answer n (1-based option) to choose/continue it, or react with say.")
-        if not may_speak:
-            status_parts.append("No 'say' action this turn.")
-        status = " ".join(status_parts)
-        observation = prompts.format_observation(obs, events, status)
+        status = "" if may_speak else "No 'say' action this turn."
+        observation = prompts.format_observation(
+            obs, events, status, self.screen_message if has_screen else None
+        )
         prompt = f"{observation}\n\nWhat do you do?"
 
         t0 = time.monotonic()

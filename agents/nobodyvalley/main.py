@@ -51,7 +51,7 @@ def make_printer(log_file: Path | None, prompt_dir: Path | None = None):
                 label = {
                     "system": "system prompt (persistent)",
                     "history": "chat history (persistent)",
-                    "prompt": "current prompt (temporary; not kept in history)",
+                    "prompt": "current prompt ([Status] block is temporary; not kept in history)",
                     "reply": "reply (kept in history)",
                 }[kind]
                 fh_prompt.write(f"===== {stamp} {name} {label}\n{text}\n")
