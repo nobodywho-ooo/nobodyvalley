@@ -18,12 +18,16 @@ from typing import Any
 PAGE = """<!doctype html>
 <html><head><meta charset="utf-8"><title>NobodyValley</title>
 <style>
-  body { margin: 0; padding: 10px; background: #1d1b26; color: #eee; font: 13px/1.35 -apple-system, sans-serif; }
+  /* The page fills the window (the chat panel is gone), so each agent panel is a quarter of it.
+     The percentage min-height needs the parents to have definite heights, hence the flex chain;
+     longer text stays clamped to a few lines (the full text is in a tooltip). */
+  html, body { height: 100%; }
+  body { margin: 0; padding: 10px; background: #1d1b26; color: #eee; font: 13px/1.35 -apple-system, sans-serif;
+         display: flex; flex-direction: column; box-sizing: border-box; }
   h1 { font-size: 14px; margin: 0 0 8px; color: #f6c86b; }
-  /* Fixed-ish height, so the panels don't jump around as the text changes: room for the usual
-     content, and the longer fields are cut off after a few lines (the full text is in a tooltip). */
-  .agent { background: #2b2838; border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; border-left: 4px solid var(--c);
-           min-height: 13em; box-sizing: border-box; }
+  #agents { min-height: 0; flex: 1; display: flex; flex-direction: column; gap: 8px; }
+  .agent { background: #2b2838; border-radius: 6px; padding: 8px 10px; border-left: 4px solid var(--c);
+           min-height: calc(25% - 6px); flex: 1; box-sizing: border-box; }  /* 6px = a quarter of the 3×8px gaps */
   .clamp2, .clamp3 { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
   .clamp2 { -webkit-line-clamp: 2; }
   .clamp3 { -webkit-line-clamp: 3; }
