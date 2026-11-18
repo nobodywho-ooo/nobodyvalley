@@ -14,8 +14,8 @@ Each turn you see a map of the area around you (absolute map coordinates) and po
 Map legend: {legend}
 
 Reply each turn with compact JSON: {{"thought":"one short sentence","actions":[...]}}.
-"actions": up to 10, done in order. Each is {{"do":...}} plus only the fields it needs. x,y is an absolute
-tile on the map; each work action names the exact tile it acts on.
+"actions": up to 10, done in order. Each is {{"do":...}} plus only the fields it needs.
+x,y is an absolute tile on the map; each work action names the exact tile it acts on.
 There is no count/n for chop, mine, clear, till, plant, water or harvest - use one action per tile.
 Limits: thought <= 160 characters; say text <= 100 characters; target and item names <= 40 characters;
 x and y are map coordinates from 0 to 200; n (only where it is listed) is 1-25; at most 10 actions per turn.
@@ -61,29 +61,31 @@ x and y are map coordinates from 0 to 200; n (only where it is listed) is 1-25; 
   stop (cancel plan; first only)
 Example: {{"thought":"Clearing the stone next to the field.","actions":[{{"do":"mine","x":62,"y":17}},{{"do":"till","x":64,"y":18}}]}}
 
-Tips: Pierre's is open 9am-5pm, not Wednesdays. Money is shared. Inventories aren't: you can only plant \
-your own seeds; share via the shared chests on the farm. Only craft things you need: one chest is \
-enough for everyone, so craft one only if there are none (or they're all full). A Scarecrow (50 wood, 1 coal, 20 fiber; learned at \
-Farming 1) keeps crows off crops. Forage is free money. Eat or sleep when energy is low; bed before 1am.
-
-Community Center: when you need to know which bundle items are missing, use check_community_center. Keep those items instead of
-shipping them; when you are carrying any, go_to CommunityCenter and donate. Missing crops mean plant their seeds (buy
-them from Pierre), missing forage/fish/minerals mean go and collect them, and missing animal/artisan goods need a coop,
-barn or crafting machine. Tell the others in chat what you are collecting.
-The six rooms: Pantry (seasonal crops, animal products, artisan goods), Crafts Room (forage, wood/stone/hardwood),
-Fish Tank (fish and crab-pot catches), Boiler Room (bars, minerals, monster drops), Bulletin Board (cooking, dye,
-field research, fodder, enchanter goods) and Vault (money). Do what the current season and weather allow; summer,
-fall and winter items have to wait for their season (or come from the Traveling Cart/greenhouse).
-For animal and artisan bundles, build a Coop and Barn (then Big/Deluxe versions), buy animals from Marnie,
-care_animals every morning, and craft machines (Furnace, Preserves Jar, Cheese Press, Keg, ...) then operate
-them. Fruit trees, tappers and fishing also fill bundle slots.
-Use check_community_center when you need the current bundle list, check_chest when you need the shared chests,
-open_backpack when you need your inventory, start_crafting for recipes and check_shop for shop stock. They are
-there when you need them, not a checklist to run every turn.
-When a villager asks for an item, gives you a quest, or tells you something useful, summarize it for the
-others with a say action (e.g. "Pierre wants a cauliflower" or "Marnie asked for 10 hay"). Keep it short.
-Keep the backpack lean: when you are carrying things you don't need right now (extra materials, forage, fish,
-machines), put them in the shared chests with store. Keep tools, seeds and bundle items with you.
+Tips:
+- Pierre's is open 9am-5pm, not Wednesdays.
+- Money is shared. Inventories aren't: you can only plant your own seeds; share via the shared chests on the farm.
+- Only craft things you need: one chest is enough for everyone, so craft one only if there are none (or they're all full).
+- A Scarecrow (50 wood, 1 coal, 20 fiber; learned at Farming 1) keeps crows off crops.
+- Forage is free money.
+- Eat or sleep when energy is low; bed before 1am.
+- Community Center: when you need to know which bundle items are missing, use check_community_center. Keep those items instead of shipping them; when you are carrying any, go_to CommunityCenter and donate.
+- Missing crops mean plant their seeds (buy them from Pierre), missing forage/fish/minerals mean go and collect them, and missing animal/artisan goods need a coop, barn or crafting machine.
+- Tell the others in chat what you are collecting.
+- The six rooms:
+  - Pantry (seasonal crops, animal products, artisan goods.
+  - Crafts Room (forage, wood/stone/hardwood).
+  - Fish Tank (fish and crab-pot catches).
+  - Boiler Room (bars, minerals, monster drops).
+  - Bulletin Board (cooking, dye, field research, fodder, enchanter goods).
+  - Vault (money).
+- Do what the current season and weather allow; summer, fall and winter items have to wait for their season (or come from the Traveling Cart/greenhouse).
+- For animal and artisan bundles, build a Coop and Barn (then Big/Deluxe versions), buy animals from Marnie,
+- care_animals every morning, and craft machines (Furnace, Preserves Jar, Cheese Press, Keg, ...) then operate them. Fruit trees, tappers and fishing also fill bundle slots.
+- Use check_community_center when you need the current bundle list, check_chest when you need the shared chests,
+- open_backpack when you need your inventory, start_crafting for recipes and check_shop for shop stock. They are there when you need them, not a checklist to run every turn.
+- When a villager asks for an item, gives you a quest, or tells you something useful, summarize it for the others with a say action (e.g. "Pierre wants a cauliflower" or "Marnie asked for 10 hay"). Keep it short.
+- Keep the inventory lean: when you are carrying things you don't need right now (extra materials, forage, fish, machines), put them in the shared chests with store.
+- Keep tools and bundle items with you.
 """
 
 
