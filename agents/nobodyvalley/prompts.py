@@ -10,16 +10,15 @@ Community Center: finishing all of its Junimo bundles is the main goal that comp
 Personality: {personality}.
 Your job: {job}.
 
-Each turn you see a map of the area around you (coordinates are offsets from you, so you are 0,0) and nearest-first lists
-of coordinates in the same relative system.
+Each turn you see a map of the area around you (absolute map coordinates) and points of interest on that map.
 Map legend: {legend}
 
 Reply each turn with compact JSON: {{"thought":"one short sentence","actions":[...]}}.
-"actions": up to 10, done in order. Each is {{"do":...}} plus only the fields it needs. x,y is an offset from
-your tile (you are 0,0), not an absolute map coordinate; each work action names the exact tile it acts on.
+"actions": up to 10, done in order. Each is {{"do":...}} plus only the fields it needs. x,y is an absolute
+tile on the map; each work action names the exact tile it acts on.
 There is no count/n for chop, mine, clear, till, plant, water or harvest - use one action per tile.
 Limits: thought <= 160 characters; say text <= 100 characters; target and item names <= 40 characters;
-x and y are offsets from -200 to 200; n (only where it is listed) is 1-25; at most 10 actions per turn.
+x and y are map coordinates from 0 to 200; n (only where it is listed) is 1-25; at most 10 actions per turn.
   say text (a public message, sent in the game chat and seen by the other farmers; only to coordinate or answer)
   answer n (choose a 1-based option in an on-screen question; no n = continue/close the message)
   check_community_center (show bundle progress and what is still missing)
@@ -60,7 +59,7 @@ x and y are offsets from -200 to 200; n (only where it is listed) is 1-25; at mo
   talk_to target(villager) item(optional gift)
   sleep (ends your day)
   stop (cancel plan; first only)
-Example: {{"thought":"Clearing the stone next to the field.","actions":[{{"do":"mine","x":-2,"y":3}},{{"do":"till","x":2,"y":1}}]}}
+Example: {{"thought":"Clearing the stone next to the field.","actions":[{{"do":"mine","x":62,"y":17}},{{"do":"till","x":64,"y":18}}]}}
 
 Tips: Pierre's is open 9am-5pm, not Wednesdays. Money is shared. Inventories aren't: you can only plant \
 your own seeds; share via the shared chests on the farm. Only craft things you need: one chest is \
@@ -187,7 +186,7 @@ def format_observation(
         status_lines.append(f"You're on mine level {obs['mine_level']}. Rocks hide the ladder down (L); monsters (!) attack.")
     status_lines.append(location)
     if m := obs.get("map"):
-        status_lines.append(f"Map around you (you're @ at {m['you']}; coordinates are offsets):\n{m['grid']}")
+        status_lines.append(f"Map around you (you're @ at {m['you']}):\n{m['grid']}")
         if nearby := m.get("nearby", {}):
             status_lines.append("Points of interest on the map: " + "; ".join(f"{k}: {v}" for k, v in nearby.items()) + ".")
     if status:

@@ -48,13 +48,17 @@ internal static class MapView
         var lists = new Dictionary<string, List<Point>>();
         void Note(string list, Point p) => (lists.TryGetValue(list, out var l) ? l : lists[list] = new List<Point>()).Add(p);
 
-        // Coordinates are offsets from the farmer. The grid is still a window around them, but
-        // every coordinate the agents see (and every x,y they send) is relative to their tile.
         var sb = new StringBuilder();
-        sb.Append($"     x {x0 - c.X}..{x1 - c.X}, y {y0 - c.Y}..{y1 - c.Y}\n");
+        sb.Append("    ");
+        for (int x = x0; x <= x1; x++)
+            sb.Append(x % 5 == 0 ? (char)('0' + x / 10 % 10) : ' ');
+        sb.Append('\n').Append("    ");
+        for (int x = x0; x <= x1; x++)
+            sb.Append((char)('0' + x % 10));
+        sb.Append('\n');
         for (int y = y0; y <= y1; y++)
         {
-            sb.Append((y - c.Y).ToString().PadLeft(4)).Append(' ');
+            sb.Append(y.ToString().PadLeft(3)).Append(' ');
             for (int x = x0; x <= x1; x++)
             {
                 var p = new Point(x, y);
@@ -68,26 +72,26 @@ internal static class MapView
         foreach (var (name, points) in lists)
         {
             var nearest = points.Distinct().OrderBy(p => Math.Abs(p.X - c.X) + Math.Abs(p.Y - c.Y)).Take(ListLength);
-            nearby[name] = string.Join(" ", nearest.Select(p => $"{p.X - c.X},{p.Y - c.Y}"));
+            nearby[name] = string.Join(" ", nearest.Select(p => $"{p.X},{p.Y}"));
         }
         var peopleList = people.Where(kv => kv.Value.glyph != '@'
                 && kv.Key.X >= x0 && kv.Key.X <= x1 && kv.Key.Y >= y0 && kv.Key.Y <= y1)
             .OrderBy(kv => Math.Abs(kv.Key.X - c.X) + Math.Abs(kv.Key.Y - c.Y)).Take(6)
-            .Select(kv => $"{kv.Value.name} {kv.Key.X - c.X},{kv.Key.Y - c.Y}");
+            .Select(kv => $"{kv.Value.name} {kv.Key.X},{kv.Key.Y}");
         if (peopleList.Any())
             nearby["people"] = string.Join(", ", peopleList);
         var exits = Exits(loc).Where(e => e.at.X >= x0 && e.at.X <= x1 && e.at.Y >= y0 && e.at.Y <= y1)
             .OrderBy(e => Math.Abs(e.at.X - c.X) + Math.Abs(e.at.Y - c.Y)).Take(6)
-            .Select(e => $"{e.name} {e.at.X - c.X},{e.at.Y - c.Y}");
+            .Select(e => $"{e.name} {e.at.X},{e.at.Y}");
         if (exits.Any())
             nearby["exits"] = string.Join(", ", exits);
 
         return new JObject
         {
-            ["you"] = "0,0",
+            ["you"] = $"{c.X},{c.Y}",
             ["width"] = w,
             ["height"] = h,
-            ["view"] = new JArray(x0 - c.X, y0 - c.Y, x1 - c.X, y1 - c.Y),
+            ["view"] = new JArray(x0, y0, x1, y1),
             ["grid"] = sb.ToString().TrimEnd('\n'),
             ["nearby"] = nearby,
         };
