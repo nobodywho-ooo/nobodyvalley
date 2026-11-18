@@ -141,12 +141,8 @@ class Team:
     """
 
     def __init__(self) -> None:
-        self.plans: dict[str, str] = {}
         self.members: dict[str, "Agent"] = {}
         self.roles: dict[str, str] = {}  # farmer name -> their job
-
-    def others(self, me: str) -> str:
-        return "; ".join(f"{name}: {plan}" for name, plan in self.plans.items() if name != me and plan)
 
     def taken_tiles(self, me: str, obs: dict[str, Any]) -> set[str]:
         """"x,y" tiles that teammates in the same place are working on or plan to (so we leave them alone)."""
@@ -286,7 +282,6 @@ class Agent:
         if ev.get("job_id") != self.busy_id:
             return  # a job we replaced or stopped ourselves
         self.busy, self.busy_id = None, None
-        self._publish_plan()
         self.print(self.name, "result", f"{'Done' if ev['ok'] else 'Failed'}: {ev['summary']}")
         self._dash(result=ev["summary"], result_ok=ev["ok"], doing=self.busy.describe() if self.busy else "", plan=self._plan_text())
 
@@ -366,18 +361,15 @@ class Agent:
 
         may_speak = self.addressed or time.monotonic() - self.last_say > MIN_SAY_GAP_SECONDS
         self.addressed = False
-        events = "\n".join(f"- {e}" for e in self.inbox) or "- nothing new"
+        events = "\n".join(f"- {e}" for e in self.inbox)
         self.inbox.clear()
         busy = bool(self.busy or self.queue)
         running = self.busy  # the job running when the prompt was made
-        plan_note = ""
-        if busy:
-            plan_note = (f"\nYou're busy with your plan: {self._plan_text()}. Keep going: leave 'actions' empty "
-                         "(you can still say something), unless you really need to change plans.")
-        team_note = f"\nWhat the others plan: {t}." if (t := self.team.others(self.name)) else ""
-        speak_note = "" if may_speak else "\nYou spoke recently, so no 'say' action this turn."
-        prompt = (f"What happened:\n{events}\n\n{prompts.format_observation(obs, self.team.taken_tiles(self.name, obs))}{team_note}{plan_note}{speak_note}\n\n"
-                  f"Your job: {prompts.persona_parts(self._persona())[1]}. What do you do?")
+        # No "Working on" note: the model is only asked when its plan is done or failed (or someone
+        # addressed it mid-job), so the events and the observation's "Currently: ..." carry that context.
+        status = "" if may_speak else "No 'say' action this turn."
+        observation = prompts.format_observation(obs, self.team.taken_tiles(self.name, obs), events, status)
+        prompt = f"{observation}\n\nYour job: {prompts.persona_parts(self._persona())[1]}. What do you do?"
 
         t0 = time.monotonic()
         self.print(self.name, "prompt", prompt)
@@ -437,7 +429,6 @@ class Agent:
         if actions:
             self.idle_turns = 0
 
-        self._publish_plan()
         self._dash(thought=thought, plan=self._plan_text(), doing=self.busy.describe() if self.busy else "")
         if (self.busy or self.queue) and not self.addressed:
             # Things that woke us while we were thinking (the hour, an old job's result) wait in the inbox
@@ -542,9 +533,6 @@ class Agent:
 
     def _plan_text(self) -> str:
         return " -> ".join(a.describe() for a in ([self.busy] if self.busy else []) + self.queue)
-
-    def _publish_plan(self) -> None:
-        self.team.plans[self.name] = self._plan_text()
 
     async def _start_next(self) -> None:
         if not self.queue:

@@ -67,10 +67,19 @@ MAP_LEGEND = (
 USEFUL_RECIPES = {"Scarecrow", "Chest", "Basic Fertilizer", "Speed-Gro", "Sprinkler", "Quality Sprinkler", "Bee House", "Furnace"}
 
 
-def format_observation(obs: dict[str, Any], taken: set[str] | None = None) -> str:
-    """The observation as prompt text. `taken`: "x,y" tiles that teammates here will work on (left out of the lists)."""
+def format_observation(obs: dict[str, Any], taken: set[str] | None = None, events: str = "",
+                        status: str = "") -> str:
+    """The observation as prompt text, with the rest of the turn's context merged in as labelled lines.
+
+    `taken`: "x,y" tiles that teammates here will work on (left out of the lists).
+    `events`: what happened since the last turn (shown first, only when non-empty).
+    `status`: speech rules (shown last, just before the ask).
+    """
     me, world, farm = obs["me"], obs["world"], obs["farm"]
-    lines = [
+    lines: list[str] = []
+    if events:
+        lines += ["What happened:", events]
+    lines += [
         f"[{world['date']}, {world['time']}, {world['weather']}]"
         + (f" Festival today!" if world.get("festival_today") else ""),
         f"You are at: {me['location']}. Energy {me['energy']}/{me['max_energy']}. Money {me['money']}g."
@@ -131,6 +140,8 @@ def format_observation(obs: dict[str, Any], taken: set[str] | None = None) -> st
         # Otherwise agents waking up in their cabin pick crop coordinates off the cabin's map.
         lines.append("You're not on the farm, so the map and coordinates above are of this place, not the farm. "
                      "Farm work without x,y (e.g. water, harvest n) walks to the farm by itself.")
+    if status:
+        lines.append(status)
     return "\n".join(lines)
 
 
