@@ -71,6 +71,8 @@ ACTIONS: dict[str, Spec] = {
 MAX_EMPTY_TILLED = 30
 
 MAX_ACTIONS_PER_TURN = 4
+# "say" is an action like the rest ({"do":"say","text":"..."}); this limits its text.
+MAX_SAY_LENGTH = 100
 
 DECISION_SCHEMA = {
     "type": "object",
@@ -78,7 +80,6 @@ DECISION_SCHEMA = {
     "x-guidance": {"whitespace_flexible": False},
     "properties": {
         "thought": {"type": "string", "maxLength": 160},
-        "say": {"type": "string", "maxLength": 100},
         "emote": {"enum": EMOTES},
         "actions": {
             "type": "array",
@@ -86,7 +87,9 @@ DECISION_SCHEMA = {
             "items": {
                 "type": "object",
                 "properties": {
-                    "do": {"enum": list(ACTIONS)},
+                    # "say" first, to match the prompt's action list (it's not a mod command).
+                    "do": {"enum": ["say"] + list(ACTIONS)},
+                    "text": {"type": "string", "maxLength": MAX_SAY_LENGTH},
                     "target": {"type": "string", "maxLength": 40},
                     "item": {"type": "string", "maxLength": 40},
                     "x": {"type": "integer", "minimum": 0, "maximum": 200},
@@ -371,7 +374,7 @@ class Agent:
             plan_note = (f"\nYou're busy with your plan: {self._plan_text()}. Keep going: leave 'actions' empty "
                          "(you can still say something), unless you really need to change plans.")
         team_note = f"\nWhat the others plan: {t}." if (t := self.team.others(self.name)) else ""
-        speak_note = "" if may_speak else "\nYou spoke recently, so leave 'say' empty this turn."
+        speak_note = "" if may_speak else "\nYou spoke recently, so no 'say' action this turn."
         prompt = (f"What happened:\n{events}\n\n{prompts.format_observation(obs, self.team.taken_tiles(self.name, obs))}{team_note}{plan_note}{speak_note}\n\n"
                   f"Your job: {prompts.persona_parts(self._persona())[1]}. What do you do?")
 
@@ -387,8 +390,10 @@ class Agent:
 
         thought = decision.get("thought", "").strip()
         self.print(self.name, "thought", f"{thought}  ({time.monotonic() - t0:.1f}s)")
-        say = decision.get("say", "").strip()
-        if len(say) >= DECISION_SCHEMA["properties"]["say"]["maxLength"]:  # hit the limit mid-sentence
+        # "say" is an action, but it never queues: it goes to the other farmers right away.
+        raw_actions = [a for a in decision.get("actions", []) if isinstance(a, dict)]
+        say = " ".join(str(a.get("text", "")) for a in raw_actions if a.get("do") == "say").strip()
+        if len(say) >= MAX_SAY_LENGTH:  # hit the limit mid-sentence
             say = say[: say.rfind(" ")].rstrip(",;:") + "…" if " " in say else say
         if say and may_speak:
             self.last_say = time.monotonic()
@@ -399,7 +404,7 @@ class Agent:
         if emote := decision.get("emote"):
             await self._send("emote", emote=emote)
 
-        actions, errors = self._parse_actions(decision.get("actions", []), obs)
+        actions, errors = self._parse_actions([a for a in raw_actions if a.get("do") != "say"], obs)
         self.inbox.extend(errors)
         if actions and actions[0].cmd == "stop":
             await self._send("stop")

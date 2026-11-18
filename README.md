@@ -124,8 +124,9 @@ pages), after showing each for `MenuDisplaySeconds` (default 5) so spectators ca
 - **Context:** 32k tokens per agent by default (`--n-ctx`). Qwen3.5 is a hybrid model (only 8 of 32
   layers have a KV cache), so that's ~1 GB per agent.
 - **Structured decisions, not tool calls.** Each turn is one generation, constrained by NobodyWho's
-  JSON-schema sampler to `{"thought", "say", "emote", "actions": [up to 4]}`, with length limits
-  on every field. The actions then run one after another in the game. We started with tool
+  JSON-schema sampler to `{"thought", "emote", "actions": [up to 4]}`, with length limits
+  on every field. Saying something is an action like the rest: `{"do":"say","text":"..."}`.
+  The actions then run one after another in the game. We started with tool
   calling, but the models narrated between calls (and invented results), which made turns slow and
   long. A constrained decision is fast, bounded and always valid.
 - **When an agent takes a turn:** when its plan is finished or fails, when a chat message
@@ -133,7 +134,7 @@ pages), after showing each for `MenuDisplaySeconds` (default 5) so spectators ca
   collected and shown at its next turn, which keeps the four from chatting endlessly. While a
   plan runs, only being addressed by name gives an agent a turn (which can only reply in chat, or
   `stop` first); everything else waits for the plan to finish.
-- **Quiet chat:** the prompt asks for `say: ""` unless there's something new to coordinate. Each
+- **Quiet chat:** the prompt asks for no `say` action unless there's something new to coordinate. Each
   agent speaks at most once per 90s unless someone addresses it by name.
 - **Team awareness:** each agent knows the others' jobs, and each prompt includes what they have
   planned, since they all run in the same process. The coordinate lists leave out tiles that
