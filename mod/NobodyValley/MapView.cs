@@ -64,21 +64,21 @@ internal static class MapView
             sb.Append('\n');
         }
 
-        // Things beyond the view are still useful in the lists (e.g. the nearest tree), so scan wider.
-        ScanBeyondView(loc, c, x0, y0, x1, y1, doors, Note);
-
         var nearby = new JObject();
         foreach (var (name, points) in lists)
         {
             var nearest = points.Distinct().OrderBy(p => Math.Abs(p.X - c.X) + Math.Abs(p.Y - c.Y)).Take(ListLength);
             nearby[name] = string.Join(" ", nearest.Select(p => $"{p.X - c.X},{p.Y - c.Y}"));
         }
-        var peopleList = people.Where(kv => kv.Value.glyph != '@')
+        var peopleList = people.Where(kv => kv.Value.glyph != '@'
+                && kv.Key.X >= x0 && kv.Key.X <= x1 && kv.Key.Y >= y0 && kv.Key.Y <= y1)
             .OrderBy(kv => Math.Abs(kv.Key.X - c.X) + Math.Abs(kv.Key.Y - c.Y)).Take(6)
             .Select(kv => $"{kv.Value.name} {kv.Key.X - c.X},{kv.Key.Y - c.Y}");
         if (peopleList.Any())
             nearby["people"] = string.Join(", ", peopleList);
-        var exits = Exits(loc).OrderBy(e => Math.Abs(e.at.X - c.X) + Math.Abs(e.at.Y - c.Y)).Take(6).Select(e => $"{e.name} {e.at.X - c.X},{e.at.Y - c.Y}");
+        var exits = Exits(loc).Where(e => e.at.X >= x0 && e.at.X <= x1 && e.at.Y >= y0 && e.at.Y <= y1)
+            .OrderBy(e => Math.Abs(e.at.X - c.X) + Math.Abs(e.at.Y - c.Y)).Take(6)
+            .Select(e => $"{e.name} {e.at.X - c.X},{e.at.Y - c.Y}");
         if (exits.Any())
             nearby["exits"] = string.Join(", ", exits);
 

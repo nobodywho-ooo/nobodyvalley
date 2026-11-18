@@ -129,7 +129,7 @@ def format_observation(
     [Status] block is current information and is dropped after this turn. When a message is on
     screen, show that instead of the map/other current state.
     """
-    me, world, farm = obs["me"], obs["world"], obs["farm"]
+    me, world = obs["me"], obs["world"]
     if screen_message and events:
         # The current on-screen message is shown in the Status block below; don't repeat it here.
         events = "\n".join(line for line in events.splitlines() if not line.startswith("- On screen"))
@@ -141,9 +141,17 @@ def format_observation(
         " Festival today!" if world.get("festival_today") else ""
     )
     status_lines: list[str] = [header]
+    energy = (
+        f"Energy {me['energy']}/{me['max_energy']}. Money {me['money']}g."
+        + (f" Currently: {me['busy']}." if me.get("busy") else " You're not doing anything.")
+    )
+    inventory = ", ".join(me["inventory"]) or "empty"
+    inventory_line = f"Inventory: {len(me['inventory'])}/{me.get('inventory_size', '?')}: {inventory}."
+    location = f"Location: {me['location']}."
 
     if screen_message:
-        # A dialogue/question is blocking the game; the map and inventory would just distract.
+        # A dialogue/question is blocking the game; keep the essentials but hide the map.
+        status_lines += [energy, inventory_line, location]
         text = str(screen_message.get("text", "")).strip()
         kind = screen_message.get("kind", "message")
         speaker = screen_message.get("speaker")
@@ -156,31 +164,8 @@ def format_observation(
         lines += status_lines
         return "\n".join(lines)
 
-    status_lines.append(
-        f"Energy {me['energy']}/{me['max_energy']}. Money {me['money']}g."
-        + (f" Currently: {me['busy']}." if me.get("busy") else " You're not doing anything.")
-    )
-    inventory = ", ".join(me["inventory"]) or "empty"
-    status_lines.append(f"Inventory: {len(me['inventory'])}/{me.get('inventory_size', '?')}: {inventory}.")
-    status_lines.append(
-        "Farm: "
-        + "; ".join(
-            filter(
-                None,
-                [
-                    f"crops: {', '.join(farm['crops'])}" if farm["crops"] else "no crops yet",
-                    f"{farm['crops_needing_water']} need water" if farm["crops_needing_water"] else None,
-                    f"{farm['empty_tilled_soil']} empty tilled tiles" if farm["empty_tilled_soil"] else None,
-                    f"{farm['dead_crops']} dead crops" if farm["dead_crops"] else None,
-                    f"{farm['debris_near_field']} weeds/stones near the field",
-                    "raining, so the rain waters all the crops today (no need to water)" if farm["raining"] else None,
-                ],
-            )
-        )
-        + "."
-    )
-    if obs.get("farm", {}).get("buildings"):
-        status_lines.append(f"Farm buildings: {', '.join(obs['farm']['buildings'])}.")
+    status_lines.append(energy)
+    status_lines.append(inventory_line)
     if obs.get("farm", {}).get("animals"):
         status_lines.append(f"Animals: {', '.join(obs['farm']['animals'])}.")
     if fruit_trees := obs.get("farm", {}).get("fruit_trees"):
@@ -196,19 +181,15 @@ def format_observation(
             )
             + "."
         )
-    if obs.get("nearby_villagers"):
-        status_lines.append(f"Villagers nearby: {', '.join(obs['nearby_villagers'])}.")
-    if obs.get("forage_here"):
-        status_lines.append(f"There are {obs['forage_here']} forage items here.")
     if machines := obs.get("machines"):
         status_lines.append(f"Machines: {'; '.join(machines)}.")
     if obs.get("mine_level"):
         status_lines.append(f"You're on mine level {obs['mine_level']}. Rocks hide the ladder down (L); monsters (!) attack.")
-    status_lines.append(f"Location: {me['location']}.")
+    status_lines.append(location)
     if m := obs.get("map"):
         status_lines.append(f"Map around you (you're @ at {m['you']}; coordinates are offsets):\n{m['grid']}")
         if nearby := m.get("nearby", {}):
-            status_lines.append("Nearest: " + "; ".join(f"{k}: {v}" for k, v in nearby.items()) + ".")
+            status_lines.append("Points of interest on the map: " + "; ".join(f"{k}: {v}" for k, v in nearby.items()) + ".")
     if me.get("location_id") != "Farm":
         # Otherwise agents waking up in their cabin pick crop coordinates off the cabin's map.
         status_lines.append("You're not on the farm; the map above shows this place. Use go_to Farm to work on the farm.")
