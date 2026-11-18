@@ -16,6 +16,8 @@ Reply each turn with compact JSON: {{"thought":"one short sentence","actions":[.
 "actions": up to 10, done in order. Each is {{"do":...}} plus only the fields it needs. x,y is an offset from
 your tile (you are 0,0), not an absolute map coordinate; each work action names the exact tile it acts on.
 There is no count/n for chop, mine, clear, till, plant, water or harvest - use one action per tile.
+Limits: thought <= 160 characters; say text <= 100 characters; target and item names <= 40 characters;
+x and y are offsets from -200 to 200; n (only where it is listed) is 1-25; at most 10 actions per turn.
   say text (a public message, sent in the game chat and seen by the other farmers; only to coordinate or answer)
   answer n (choose a 1-based option in an on-screen question; no n = continue/close the message)
   check_community_center (show bundle progress and what is still missing)
