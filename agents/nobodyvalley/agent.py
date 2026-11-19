@@ -88,7 +88,7 @@ INFO_ACTIONS = {"check_community_center", "check_chest", "open_backpack", "start
 # Don't till more when this much tilled soil is already waiting for seeds.
 MAX_EMPTY_TILLED = 30
 
-MAX_ACTIONS_PER_TURN = 10
+MAX_ACTIONS_PER_TURN = 5
 # "say" and "emote" are actions like the rest ({"do":"say","text":"..."}); this limits the text.
 MAX_SAY_LENGTH = 100
 
@@ -97,7 +97,7 @@ DECISION_SCHEMA = {
     # Compact JSON: no whitespace, and fields that aren't needed are simply left out (fewer tokens).
     "x-guidance": {"whitespace_flexible": False},
     "properties": {
-        "thought": {"type": "string", "maxLength": 160},
+        "thought": {"type": "string", "maxLength": 80},
         "actions": {
             "type": "array",
             "maxItems": MAX_ACTIONS_PER_TURN,
