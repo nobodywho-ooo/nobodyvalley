@@ -39,7 +39,7 @@ and keeps a copy of the save with the run's logs.
 
 The agents also serve a live dashboard at http://127.0.0.1:8780. It has one panel per agent (what
 it's doing, its latest thought, its plan, the last result). A spinner shows when an agent
-is waiting for the shared model ("waiting for the model" while other agents' turns are ahead of it, then "thinking"). The launcher opens it
+is waiting for the model ("waiting for the model" while it re-reads the history and the new prompt, then "thinking" once its first token arrives). The launcher opens it
 in a native window (the system web view, via pywebview) in a column to the right of the games, 360 points wide
 (`NV_DASHBOARD_WIDTH`), or on another display with `NV_DASHBOARD_DISPLAY=1`.
 
@@ -159,7 +159,7 @@ pages), after showing each for `MenuDisplaySeconds` (default 5) so spectators ca
   Repeating the same failure gets flagged.
 - **Debugging:** every farmer's full system prompt, turns and replies go to `<run>/<Farmer>.log` (or `agents/prompts/<Farmer>.log` when run by hand). `NV_DEBUG_TOKENS=1 uv run nobodyvalley`
   echoes every generated token to stderr. `NV_DEBUG_TIMING=1` adds a per-turn timing breakdown (time
-  to first token = queue wait + prefill, decode ms/token, prefill size from `ctx_before`
+  to first token = prefill, decode ms/token, prefill size from `ctx_before`
   + `prompt_tokens`, slowest token gap) plus the per-day reset time, so you can tell slow
   generation from slow prefill from cache resets.
 - **Agents talk in-game:** a `say` action is sent through the game's chat box, so it shows up in

@@ -565,7 +565,7 @@ class Agent:
         if (self.busy or self.queue) and not self.addressed:
             # Things that woke us while we were thinking (the hour, an old job's result) wait in the inbox
             # until the plan is done; otherwise the agent takes another turn right after starting a plan.
-            # (14% of the turns were like that, each one delaying the other agents' turns on the model.)
+            # (14% of the turns were like that: an extra prefill of the shared model each.)
             self.wake.clear()
 
 
@@ -669,8 +669,10 @@ class Agent:
     async def _ask(self, prompt: str) -> str:
         """ask().completed(), optionally timing tokens (NV_DEBUG_TIMING=1) and echoing them (NV_DEBUG_TOKENS=1)."""
         assert self.chat is not None
-        # Shown as a spinner on the dashboard. The agents share one model, so a request may first wait
-        # for the others' turns ("waiting") before its first token arrives ("thinking").
+        # Shown as a spinner on the dashboard. Each chat runs its own context over the shared model,
+        # so the agents' requests proceed concurrently; "waiting" is the prefill phase (re-reading the
+        # retained history and the new prompt, plus GPU contention with the others) until the first
+        # token arrives, after which it flips to "thinking".
         self._dash(llm="waiting", llm_since=time.time())
         if DEBUG_TIMING:
             # KV-cache position before this ask: the retained history that has to be re-prefilled
@@ -702,10 +704,11 @@ class Agent:
         """
         Print a per-turn timing breakdown (used with NV_DEBUG_TIMING=1).
 
-        The agents share one model, so a request first waits in queue behind the others' turns
-        ("wait"), then the model re-reads the retained history and the new prompt ("prefill") and
+        Each chat runs its own context over the shared model, so the agents' requests overlap; a
+        request still has to re-read the retained history and the new prompt ("prefill") before its
+        first token, and its decodes contend with the other agents for the same GPU.
         Only the combined first token is exposed, so:
-        * tft (time to first token) = queue wait + prefill for the whole prompt.
+        * tft (time to first token) = prefill of the whole present context (+ GPU contention).
         * ms/tok after the first = pure generation speed (decode).
         * ctx_before + prompt_tokens = the size of what had to be (re-)prefilled.
         """
@@ -715,7 +718,7 @@ class Agent:
                    f" ctx_before={ctx_before} prompt={prompt_tokens}")
             print(out, file=sys.stderr, flush=True)
             return
-        tft = arrivals[0] - t0  # queue wait + prefill of the whole present context
+        tft = arrivals[0] - t0  # prefill of the whole present context (+ share of GPU contention)
         # decode time = tokens after the first; use per-token gaps for a faithful ms/tok.
         gaps = [arrivals[i] - arrivals[i - 1] for i in range(1, n)]
         if gaps:
@@ -727,7 +730,7 @@ class Agent:
         slow = max(gaps) * 1000.0 if gaps else 0.0
         out = (
             f"[t] {self.name} ask: {n} tokens total {total:.2f}s | "
-            f"first-token {tft:.2f}s (wait+prefill) | "
+            f"first-token {tft:.2f}s (prefill) | "
             f"decode {decode_ms:.0f} ms/tok ({1e3 / decode_ms:.1f} tok/s) | "
             f"slowest-gap {slow:.0f}ms | "
             f"ctx_before={ctx_before} prompt={prompt_tokens} (prefill {ctx_before + prompt_tokens})"
