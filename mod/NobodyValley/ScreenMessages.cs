@@ -82,12 +82,14 @@ internal sealed class ScreenMessages
         }
         lastMenu = null;
 
-        // The multiplayer day-end ready check ("waiting for the other players") is a toggle menu
-        // that freezes the day until everyone confirms. Tell the agent - it should `answer`
-        // (confirm) so the day can end; MenuJanitor confirms anyway once the hold expires.
+        // The multiplayer day-end ready check ("waiting for the other players") freezes the day
+        // until everyone is ready, then rolls it over by itself (ReadyCheckDialog.update confirms
+        // when every farmer is ready). There's nothing to answer - confirming manually would break
+        // the coordinated handshake and deadlock the co-op - so just tell the agent to wait.
         if (Game1.activeClickableMenu is ReadyCheckDialog readyCheck)
         {
-            Report("Waiting for the other players (ready check). Confirm with `answer` to end the day.",
+            Report("The day is ending: waiting for the other players (ready check). The new day starts on its own once "
+                    + "everyone is ready - no action needed.",
                 "menu", null, Array.Empty<string>(), hold: true,
                 dedupeKey: "ready:" + RuntimeHelpers.GetHashCode(readyCheck), dedupeSeconds: 600);
             return;

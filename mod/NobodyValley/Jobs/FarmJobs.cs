@@ -823,11 +823,16 @@ internal static class FarmJobs
 
     public static IEnumerator Sleep(Job job)
     {
-        // The agent asked to sleep and the day-end ready check is already up: confirm it so the
-        // co-op day doesn't wait on this player forever.
-        if (Game1.activeClickableMenu is ReadyCheckDialog ready)
-            ready.confirm();
-        if (Game1.activeClickableMenu is ReadyCheckDialog || Me.isInBed.Value && Me.timeWentToBed.Value != 0)
+        // The agent asked to sleep while the day-end ready check is up. Nothing to do: confirm()
+        // here (like MenuJanitor/`answer` used to) drops this machine out of the coordinated
+        // day-end handshake and deadlocks the whole co-op at 2 AM. The dialog confirms itself
+        // once every farmer is ready; just report the wait.
+        if (Game1.activeClickableMenu is ReadyCheckDialog)
+        {
+            job.Summary = "The day is ending (ready check) - waiting for the other players; it rolls over on its own.";
+            yield break;
+        }
+        if (Me.isInBed.Value && Me.timeWentToBed.Value != 0)
         {
             job.Summary = "You're already in bed, waiting for the others to sleep.";
             yield break;

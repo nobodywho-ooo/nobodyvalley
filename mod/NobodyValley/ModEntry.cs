@@ -545,8 +545,16 @@ internal sealed class ModEntry : Mod
                 }
                 if (Game1.activeClickableMenu is ReadyCheckDialog ready)
                 {
-                    // The multiplayer day-end ready check: confirm it so the co-op day doesn't hang
-                    // waiting for this player (clicking its "Ready" button).
+                    if (ready.checkName == "sleep")
+                    {
+                        // The day-end ready check. Do NOT call confirm(): that's what deadlocks the
+                        // co-op - this machine drops out of the vanilla handshake and starts its
+                        // new-day transition before the others, so no one ever rolls over. The
+                        // dialog confirms itself once everyone is ready; just acknowledge it.
+                        screenMessages.ClearHold();
+                        return new JObject { ["summary"] = "The day is ending (ready check) - waiting for the other players; it rolls over on its own." };
+                    }
+                    // Other ready checks (festival etc.) are safe to confirm like clicking "Ready".
                     ready.confirm();
                     screenMessages.ClearHold();
                     return new JObject { ["summary"] = "Confirmed ready to end the day." };

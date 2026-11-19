@@ -28,7 +28,9 @@ from .dashboard import Dashboard
 
 log = logging.getLogger(__name__)
 
-EMOTES = ["happy", "sad", "heart", "exclamation", "question", "angry", "laugh", "surprised", "hi", "music", "yes", "no", "sleep"]
+# No "sleep" emote: small models pick it when they mean the "sleep" end-of-day action, then the
+# day never ends because nobody actually sleeps. The game shows the Zzz itself when an agent is asleep.
+EMOTES = ["happy", "sad", "heart", "exclamation", "question", "angry", "laugh", "surprised", "hi", "music", "yes", "no"]
 
 @dataclass(frozen=True)
 class Spec:
@@ -200,6 +202,8 @@ class Agent:
         self.busy: Action | None = None  # job currently running in the game
         self.busy_id: int | None = None  # the mod's id for that job
         self.asleep = False  # in bed; no turns until the next morning
+        self.waiting_day_end = False  # a day-end ready check is up; no turns until the new day
+        self._in_turn = False  # an LLM turn is in flight (guards against overlapping turns)
         self.inbox: list[str] = []  # things that happened since the last turn
         self.wake = asyncio.Event()
         self.last_turn = 0.0
@@ -397,6 +401,7 @@ class Agent:
         self.queue.clear()
         self.busy, self.busy_id = None, None
         self.asleep = False
+        self.waiting_day_end = False
         # A new day clearly means the game is up and talking again: reset any unresponsive state.
         self.dead = False
         self.observe_fail_streak = 0
@@ -413,7 +418,7 @@ class Agent:
             try:
                 await asyncio.wait_for(self.wake.wait(), timeout=IDLE_TURN_SECONDS)
             except asyncio.TimeoutError:
-                if self.busy is not None or self.queue or self.asleep:
+                if self.busy is not None or self.queue or self.asleep or self.waiting_day_end:
                     continue
                 self.inbox.append("You're idle. What next?")
             self.wake.clear()
@@ -432,7 +437,13 @@ class Agent:
             if self.conn.closed.is_set():
                 self.print(self.name, "info", "game disconnected")
                 return
-            await self._take_turn()
+            if self._in_turn:
+                continue  # an overlapping turn is still in flight; don't pile another one on
+            try:
+                self._in_turn = True
+                await self._take_turn()
+            finally:
+                self._in_turn = False
 
     async def _take_turn(self) -> None:
         assert self.chat is not None
@@ -470,6 +481,15 @@ class Agent:
         self._dash(where=f"{me['location']} - energy {me['energy']}/{me['max_energy']}")
         if self.dashboard:
             self.dashboard.set_world(f"{world['date']}, {world['time']}, {world['weather']} - {me['money']}g")
+
+        # A day-end (or festival) ready check is up: every action is refused by the game and the
+        # day rolls over by itself once everyone is ready. Skip the model and just wait for the
+        # new day instead of re-planning doomed actions on every wake.
+        menu = obs.get("menu")
+        if menu and "ready check" in str(menu):
+            self.waiting_day_end = True
+            self.print(self.name, "info", str(menu))
+            return
 
         has_screen = self.screen_message is not None and time.monotonic() - self.screen_message_at < 30
         may_speak = self.addressed or self.report_turn or has_screen or time.monotonic() - self.last_say > MIN_SAY_GAP_SECONDS

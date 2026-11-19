@@ -64,11 +64,18 @@ internal static class Observer
         };
     }
 
-    /// <summary>What's blocking the game right now (an open chest/inventory menu), or null if nothing is.</summary>
+    /// <summary>What's blocking the game right now (an open chest/inventory menu or the day-end ready
+    /// check), or null if nothing is.</summary>
     public static string? OpenMenu()
     {
         if (Game1.activeClickableMenu == null)
             return null;
+        // The day-end/festival ready check. Kept in the status so agents can see it's up even after
+        // the one-off screen message grows stale, and wait for the new day instead of re-planning.
+        if (Game1.activeClickableMenu is ReadyCheckDialog readyCheck)
+            return readyCheck.checkName == "sleep"
+                ? "The day is ending: waiting for the other players (ready check)."
+                : $"A ready check is up ({readyCheck.checkName}): waiting for the other players.";
         if (Game1.activeClickableMenu is not ItemGrabMenu menu)
             return Game1.activeClickableMenu is GameMenu ? "Your backpack menu is open and blocks you - close it with `answer`." : null;
 

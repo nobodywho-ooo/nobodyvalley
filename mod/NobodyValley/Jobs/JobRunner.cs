@@ -1,6 +1,7 @@
 using System.Collections;
 using StardewModdingAPI;
 using StardewValley;
+using StardewValley.Menus;
 
 namespace NobodyValley.Jobs;
 
@@ -88,6 +89,15 @@ internal sealed class JobRunner
         if (DateTime.UtcNow - startedAt > MaxDuration)
         {
             Cancel("it's taking too long - stopped and re-planning");
+            return;
+        }
+
+        // A ready check freezes every work job for everyone (and would otherwise stall for the whole
+        // 180s timeout). Fail fast with a plain reason so the agent hears the day is ending and
+        // waits for the new day instead of re-planning useless actions.
+        if (!Current.RunDuringMenus && Game1.activeClickableMenu is ReadyCheckDialog)
+        {
+            Cancel("the day is ending (ready check) - no more actions this turn");
             return;
         }
 

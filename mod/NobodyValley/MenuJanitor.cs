@@ -54,6 +54,7 @@ internal sealed class MenuJanitor
             LevelUpMenu levelUp => DismissLevelUp(levelUp),
             DialogueBox { isQuestion: false } box when !leaveDialoguesAlone => Click(box),
             LetterViewerMenu letter => Exit(letter),
+            ReadyCheckDialog { checkName: "sleep" } => LeaveDayEndReadyCheck(),
             ReadyCheckDialog ready => Confirm(ready),
             _ => false,
         };
@@ -69,8 +70,21 @@ internal sealed class MenuJanitor
         return true;
     }
 
-    // The day-end ready check: nobody's at the keyboard, so confirm it (like its "Ready" button)
-    // once it's been shown long enough, or the co-op day hangs forever on "waiting for players".
+    // The day-end "sleep" ready check must NOT be force-confirmed, and there's no need to:
+    // ReadyCheckDialog.update() marks the local player ready every tick and confirms itself the
+    // moment every required farmer is ready. That self-confirm is the coordinated multiplayer
+    // handshake - all machines run doSleep()/NewDay() together, then sync the new day. Force-
+    // confirming early (or via `answer`) drops one machine out of the handshake: it starts its
+    // new-day transition on its own and the whole game deadlocks at 2 AM (farmhands frozen
+    // "waiting for the other players", the day never rolls).
+    private static bool LeaveDayEndReadyCheck()
+    {
+        return false;
+    }
+
+    // Other ready checks (festival start/end, group events) confirm themselves the same way once
+    // everyone's ready; confirming them early is harmless, but for symmetry we leave the vanilla
+    // flow alone wherever possible.
     private static bool Confirm(ReadyCheckDialog dialog)
     {
         dialog.confirm();
