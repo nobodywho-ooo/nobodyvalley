@@ -51,7 +51,7 @@ ACTIONS: dict[str, Spec] = {
     "chop": Spec("chop_trees", xy=True, needs=("xy",)),
     "mine": Spec("mine", xy=True, needs=("xy",)),
     "till": Spec("till", xy=True, needs=("xy",)),
-    "plant": Spec("plant", item="seed", xy=True, needs=("xy",)),
+    "plant": Spec("plant", item="seed", xy=True, needs=("xy", "item")),
     "water": Spec("water", xy=True, needs=("xy",)),
     "harvest": Spec("harvest", xy=True, needs=("xy",)),
     "ship": Spec("ship", item="item"),
@@ -128,10 +128,34 @@ DECISION_SCHEMA = {
 IDLE_TURN_SECONDS = 20.0
 # Minimum time between two turns of the same agent.
 MIN_TURN_GAP_SECONDS = 3.0
+# An observe that gets no reply at all (the game's main loop is stuck, or we lost the socket)
+# means the instance is unresponsive: back off instead of hammering it, and give up after a few.
+OBSERVE_TIMEOUT = 30.0
+FAILURES_BEFORE_DEAD = 3
+MAX_OBSERVE_BACKOFF = 300.0
 # Keep the chat calm: an agent speaks at most this often (unless answering someone who addressed it).
 MIN_SAY_GAP_SECONDS = 90.0
 DEBUG_TOKENS = bool(os.environ.get("NV_DEBUG_TOKENS"))
 DEBUG_TIMING = bool(os.environ.get("NV_DEBUG_TIMING"))
+
+
+def _canonical_item(name: str) -> str:
+    """Names as comparable strings: lowercased, punctuation stripped, trailing plural 's' dropped
+    (so 'Parsnip Seed', 'Parsnip Seeds' and 'Parsnip Seeds x4' all line up)."""
+    n = re.sub(r"[^a-z0-9]+", "", name.lower())
+    return n[:-1] if n.endswith("s") and len(n) > 3 else n
+
+
+def _carried_items(inventory: list[str]) -> set[str]:
+    """What we carry now: the observation lists 'Axe', 'Parsnip Seeds x4', ... as display names
+    (a count suffix only appears when the stack is >1)."""
+    names = set()
+    for entry in inventory:
+        name, sep, _ = entry.rpartition(" x")
+        if not sep:  # no ' x<count>' suffix: the entry is just the item name
+            name = entry
+        names.add(_canonical_item(name))
+    return names
 
 
 def _blank_if_none(value: Any) -> str:
@@ -166,6 +190,11 @@ class Agent:
         self.name = f"port{conn.port}"
         self.others: list[str] = []
         self.chat: ChatAsync | None = None
+        # Health/liveness: set by the turn loop; the main monitor (watchdog) acts on it.
+        self.dead = False  # game unresponsive beyond recovery; stop taking turns
+        self.observe_fail_streak = 0
+        self.health = "ok"  # "ok" | "stale" | "dead" - shown on the dashboard
+        self.is_host = False  # tells the watchdog never to kill the host's process
 
         self.queue: list[Action] = []  # actions waiting to be started
         self.busy: Action | None = None  # job currently running in the game
@@ -182,6 +211,10 @@ class Agent:
         self.screen_message_at = 0.0
         self.screen_message_ignored = False
         self.report_turn = False  # just talked to a villager, so allow a summary even during the say gap
+
+    def _set_health(self, health: str, detail: Any = None) -> None:
+        self.health = health
+        self._dash(health=health, health_detail=str(detail or ""))
 
     # ------------------------------------------------------------------ lifecycle
 
@@ -279,9 +312,9 @@ class Agent:
         t = ev.get("time_raw", 0)
         if self.asleep or (self.busy is not None and self.busy.cmd == "sleep"):
             return
-        if t >= 2500:
-            # Past 1am: don't leave it to the model, or everyone passes out at 2am.
-            self.print(self.name, "info", "it's very late; sending them to bed")
+        if t >= 2400:
+            # Midnight: don't leave it to the model, or everyone dawdles into the 2am pass-out.
+            self.print(self.name, "info", "it's past midnight; sending them to bed")
             self.queue = [Action("sleep")]
             self.busy, self.busy_id = None, None
             asyncio.create_task(self._start_next())
@@ -364,6 +397,10 @@ class Agent:
         self.queue.clear()
         self.busy, self.busy_id = None, None
         self.asleep = False
+        # A new day clearly means the game is up and talking again: reset any unresponsive state.
+        self.dead = False
+        self.observe_fail_streak = 0
+        self._set_health("ok")
         self.inbox = [f"Good morning! It's {date}. Plan your day."]
         self.screen_message = None
         self.report_turn = False
@@ -386,6 +423,9 @@ class Agent:
                 await asyncio.sleep(gap)
             await asyncio.sleep(0.5)  # let simultaneous events pile up into one turn
             self.wake.clear()
+            if self.dead:
+                # Repeated no-answers: stop taking turns; the watchdog decides what happens next.
+                return
             if self.asleep:
                 self.inbox.clear()
                 continue
@@ -398,10 +438,33 @@ class Agent:
         assert self.chat is not None
         self.last_turn = time.monotonic()
         try:
-            obs = await self.conn.request("observe")
-        except (GameError, asyncio.TimeoutError) as e:
+            obs = await self.conn.request("observe", timeout=OBSERVE_TIMEOUT)
+        except GameError as e:
+            # The game answered, just not with what we asked - not a health problem.
+            self.observe_fail_streak = 0
+            self._set_health("ok")
             self.print(self.name, "info", f"observe failed: {e}")
             return
+        except asyncio.TimeoutError:
+            # No reply at all: the game's main loop is stuck, or we lost the socket. Back off (the
+            # watchdog looks at this too) instead of printing the same misleading empty line forever.
+            self.observe_fail_streak += 1
+            self._set_health("stale" if self.observe_fail_streak < FAILURES_BEFORE_DEAD else "dead",
+                             f"{self.observe_fail_streak} observe timeouts")
+            backoff = min(MAX_OBSERVE_BACKOFF, IDLE_TURN_SECONDS * (1 << min(self.observe_fail_streak - 1, 4)))
+            self.print(self.name, "warn",
+                       f"observe timed out after {OBSERVE_TIMEOUT}s: the game isn't answering"
+                       + (f" ({self.observe_fail_streak} in a row, retrying in {backoff:.0f}s)" if backoff else ""))
+            if self.observe_fail_streak >= FAILURES_BEFORE_DEAD:
+                self.dead = True
+                self.print(self.name, "warn",
+                           "MARKED DEAD: no game response; the watchdog will probe this instance, "
+                           "reconnect when it answers again, and kill it if it keeps hanging.")
+            else:
+                await asyncio.sleep(backoff)
+            return
+        self.observe_fail_streak = 0
+        self._set_health("ok")
         self.others = [o["name"] for o in obs.get("others", [])]
         me, world = obs["me"], obs["world"]
         self._dash(where=f"{me['location']} - energy {me['energy']}/{me['max_energy']}")
@@ -516,6 +579,10 @@ class Agent:
         me = obs.get("me", {})
         tired = me.get("energy", 100) < 0.2 * me.get("max_energy", 270)
         farmers = {n.lower() for n in self.others}
+        carried = _carried_items(me.get("inventory") or [])
+
+        def carries(thing: str) -> bool:
+            return _canonical_item(thing) in carried
         # x,y in a decision are absolute map coordinates.
         map_info = obs.get("map") or {}
         map_w, map_h = map_info.get("width"), map_info.get("height")
@@ -552,6 +619,17 @@ class Agent:
                 errors.append(f"Skipped talk_to {target}: that's a fellow farmer - use 'say' to talk to them. "
                               "talk_to is for villagers.")
                 continue
+            if cmd in ("plant", "donate", "ship") and thing and not carries(thing):
+                # The model repeats doomed 'plant/donate what I don't have' turns for a long time;
+                # catch it before the game does, without failing the rest of the plan.
+                if cmd == "plant":
+                    hint = f"you don't have {thing}. Take the seeds from a chest (take {thing}) or buy them first."
+                elif cmd == "donate":
+                    hint = f"you're not carrying {thing}. Collect/grow it (or take it from a chest) before donating."
+                else:
+                    hint = f"you're not carrying {thing} - nothing to ship."
+                errors.append(f"Skipped {cmd} {thing}: {hint}")
+                continue
             if cmd == "sleep" and t < 1800 and not tired:
                 errors.append(f"Skipped sleep: it's only {world.get('time')} and you have energy left. "
                               "Keep working; go to bed in the evening.")
@@ -585,6 +663,8 @@ class Agent:
             self.print(self.name, "info", f"{cmd}: {summary}")
         except GameError as e:
             self.inbox.append(f"{cmd} failed: {e}")
+        except (asyncio.TimeoutError, ConnectionError):
+            self.print(self.name, "warn", f"{cmd}: no reply - game not responding")
 
     async def _ask(self, prompt: str) -> str:
         """ask().completed(), optionally timing tokens (NV_DEBUG_TIMING=1) and echoing them (NV_DEBUG_TOKENS=1)."""
@@ -678,6 +758,20 @@ class Agent:
             self.queue.clear()
             self.inbox.append(f"Couldn't {action.describe()}: {e}")
             self.wake.set()
+        except (asyncio.TimeoutError, ConnectionError):
+            # The game didn't answer at all - unresponsive. Count it like an observe failure and
+            # stop taking turns once it's clearly hopeless, instead of crashing the agent task.
+            self.busy = None
+            self.queue.clear()
+            self.observe_fail_streak += 1
+            self.dead = self.dead or self.observe_fail_streak >= FAILURES_BEFORE_DEAD
+            self._set_health("dead" if self.dead else "stale", f"no reply {self.observe_fail_streak}")
+            self.print(self.name, "warn",
+                       f"couldn't start {action.describe()}: no reply - the game isn't responding")
+            if self.dead:
+                self.print(self.name, "warn",
+                           "MARKED DEAD: no game response; the watchdog will probe this instance.")
+            self.wake.set()
 
     async def _send(self, cmd: str, **args: Any) -> None:
         """Fire-and-forget command (say, emote, stop)."""
@@ -685,3 +779,5 @@ class Agent:
             await self.conn.request(cmd, **args)
         except GameError as e:
             self.inbox.append(f"Couldn't {cmd}: {e}")
+        except (asyncio.TimeoutError, ConnectionError):
+            self.print(self.name, "warn", f"couldn't {cmd}: no reply - game not responding")

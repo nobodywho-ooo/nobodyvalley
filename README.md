@@ -152,7 +152,7 @@ pages), after showing each for `MenuDisplaySeconds` (default 5) so spectators ca
   and what they're doing right now (synced through the game). No jobs, plans or inventories are
   shared; coordinating happens by chatting (`say`). Tile jobs claim their tile in the game, so two
   farmers don't work the same spot.
-- **Bedtime:** from 11pm agents are told to go to bed; after 1am the code sends them. Once in bed,
+- **Bedtime:** from 11pm agents are told to go to bed; at midnight the code sends them. Once in bed,
   an agent takes no turns until morning.
 - **Guards for small models:** at most 10 actions per turn (enforced by the schema). A turn
   without actions gets a nudge. Repeating the same failure gets flagged.
@@ -171,12 +171,26 @@ pages), after showing each for `MenuDisplaySeconds` (default 5) so spectators ca
 - **Day-end ready check:** the multiplayer "waiting for the other players" dialog is reported to the
   agent (`answer` confirms it), won by the mod's menu janitor after a few seconds, and confirmed by
   the `sleep` job, so a co-op day never hangs waiting for a farmhand who is already in bed.
+- **Watchdog:** the agent process tracks how long each game instance has gone without answering
+  (any reply or event counts). After 5 minutes of silence (`NV_STALE_AFTER`) it warns, probes the
+  instance with a `hello`, and reconnects the agent the moment the game answers again. A farmhand
+  whose instance is confirmed hung gets killed (opt-in: `NV_WATCHDOG_KILL=1`) so it can't deadlock
+  the whole co-op at the next day transition; the host is never killed. Agents also back off and
+  give up (instead of looping forever) when their game stops answering - see "MARKED DEAD" in the
+  logs or the red badge on the dashboard.
 
 Known NobodyWho issue: `ChatAsync.stop_generation()` doesn't stop the generation. The token
 stream just stops yielding, and the next `ask()` waits until the full reply has been generated. So
 we can't cut off runaway replies, and rely on the schema's length limits instead.
 
 ## Development
+
+Watchdog knobs (also settable through `scripts/local.env`):
+
+```sh
+NV_STALE_AFTER=300     # seconds of total silence before an instance counts as hung (default 300)
+NV_WATCHDOG_KILL=1    # 1 = kill a hung farmhand's process so the co-op continues without it
+```
 
 ```sh
 NV_WINDOW=x,y,w,h scripts/test-instance.sh [save]   # single-player test instance on a copy of a save, on port 8790

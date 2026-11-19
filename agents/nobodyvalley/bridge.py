@@ -6,6 +6,7 @@ import asyncio
 import itertools
 import json
 import logging
+import time
 from typing import Any
 
 log = logging.getLogger(__name__)
@@ -26,6 +27,9 @@ class GameConnection:
         self._writer: asyncio.StreamWriter | None = None
         self._read_task: asyncio.Task[None] | None = None
         self.closed = asyncio.Event()
+        # Monotonic time of the last message (event or reply) this connection received. Anything at
+        # all proves the game is alive, so the watchdog uses it to spot hung instances.
+        self.last_live = time.monotonic()
 
     async def connect(self, timeout: float = 1.0) -> None:
         self._reader, self._writer = await asyncio.wait_for(
@@ -65,6 +69,7 @@ class GameConnection:
                 except json.JSONDecodeError:
                     log.warning("port %s: bad json from game: %r", self.port, line[:200])
                     continue
+                self.last_live = time.monotonic()
                 if "event" in msg:
                     await self.events.put(msg)
                 elif (fut := self._pending.get(msg.get("id"))) and not fut.done():

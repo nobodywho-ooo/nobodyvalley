@@ -44,6 +44,9 @@ PAGE = """<!doctype html>
   .plan { margin-top: 3px; color: #9fd3a8; font-size: 12px; }
   .result { margin-top: 3px; color: #aaa; font-size: 12px; }
   .result.failed { color: #e99; }
+  .health { margin-top: 4px; font-size: 11px; font-weight: 600; }
+  .health.stale { color: #e8c75f; }
+  .health.dead { color: #ff6688; }
 </style></head>
 <body>
 <h1 id="title">NobodyValley</h1>
@@ -68,6 +71,8 @@ async function refresh() {
       ${a.thought ? `<div class="thought clamp3" title="${esc(a.thought)}">"${esc(a.thought)}"</div>` : ""}
       ${a.plan ? `<div class="plan clamp2" title="${esc(a.plan)}">Plan: ${esc(a.plan)}</div>` : ""}
       ${a.result ? `<div class="result clamp2 ${a.result_ok ? "" : "failed"}" title="${esc(a.result)}">${esc(a.result)}</div>` : ""}
+      ${a.health && a.health !== "ok" ? `<div class="health ${a.health}">${a.health === "dead"
+          ? "Unresponsive - watchdog on it" : "No game response - watchdog on it"}${a.health_detail ? ` (${esc(a.health_detail)})` : ""}</div>` : ""}
     </div>`;
   }).join("");
 }
