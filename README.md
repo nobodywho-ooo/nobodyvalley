@@ -154,8 +154,9 @@ pages), after showing each for `MenuDisplaySeconds` (default 5) so spectators ca
   farmers don't work the same spot.
 - **Bedtime:** from 11pm agents are told to go to bed; at midnight the code sends them. Once in bed,
   an agent takes no turns until morning.
-- **Guards for small models:** at most 10 actions per turn (enforced by the schema). A turn
-  without actions gets a nudge. Repeating the same failure gets flagged.
+- **Guards for small models:** at most 5 actions per turn and a thought of at most 80 characters
+  (both enforced by the schema) to keep reasoning cheap. A turn without actions gets a nudge.
+  Repeating the same failure gets flagged.
 - **Debugging:** every farmer's full system prompt, turns and replies go to `<run>/<Farmer>.log` (or `agents/prompts/<Farmer>.log` when run by hand). `NV_DEBUG_TOKENS=1 uv run nobodyvalley`
   echoes every generated token to stderr. `NV_DEBUG_TIMING=1` adds a per-turn timing breakdown (time
   to first token = queue wait + prefill, decode ms/token, prefill size from `ctx_before`
