@@ -265,7 +265,7 @@ async def amain(args: argparse.Namespace) -> None:
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--model", default=DEFAULT_MODEL, help="GGUF path or huggingface: reference")
-    p.add_argument("--n-ctx", type=int, default=65536, help="context size per agent (tokens)")
+    p.add_argument("--n-ctx", type=int, default=16384, help="context size per agent (tokens)")
     p.add_argument("--base-port", type=int, default=8765)
     p.add_argument("--max-instances", type=int, default=8)
     p.add_argument("--personas", type=Path, default=None, help="personas file (default: personas.local.toml if it exists, else personas.toml)")

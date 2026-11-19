@@ -126,14 +126,14 @@ pages), after showing each for `MenuDisplaySeconds` (default 5) so spectators ca
 ### The agents (`agents/`, Python)
 
 - **One `nobodywho.Model`, many `ChatAsync`s:** every agent has its own chat (persona, history),
-  all on one loaded model. The default is Qwen3.5-9B (Q4_K_M, 5.4 GB). With 4 agents at 64k
-  context each, the process uses about 14 GB (the demo machine has 24 GB). Use `--model` to try others.
+  all on one loaded model. The default is Qwen3.5-9B (Q4_K_M, 5.4 GB). With 4 agents at 16k
+  context each, the process uses about 8 GB (the demo machine has 24 GB). Use `--model` to try others.
 - **Hybrid actions:** most work verbs take either a map tile (`{"do":"chop","x":63,"y":13}`, picked
   from the map view) or a count for bulk work (`{"do":"water","n":5}`, or no `n` = all).
 - **Compact JSON:** the schema uses llguidance's `"x-guidance": {"whitespace_flexible": false}` and
   only `thought`/`actions` are required, so replies have no whitespace or empty fields (~3× fewer tokens).
-- **Context:** 64k tokens per agent by default (`--n-ctx`). Qwen3.5 is a hybrid model (only 8 of 32
-  layers have a KV cache), so that's ~2 GB per agent.
+- **Context:** 16k tokens per agent by default (`--n-ctx`). Qwen3.5 is a hybrid model (only 8 of 32
+  layers have a KV cache), so that's ~500 MB per agent. Pass `--n-ctx 65536` for the old 64k setting.
 - **Structured decisions, not tool calls.** Each turn is one generation, constrained by NobodyWho's
   JSON-schema sampler to `{"thought", "actions": [up to 10]}`, with length limits
   on every field. Talking and emoting are actions like the rest: `{"do":"say","text":"..."}`,
