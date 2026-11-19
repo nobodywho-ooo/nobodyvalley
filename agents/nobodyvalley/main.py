@@ -156,7 +156,7 @@ async def amain(args: argparse.Namespace) -> None:
             await conn.connect(timeout=2.0)
             await conn.request("hello", timeout=5.0)
             return True
-        except (OSError, asyncio.TimeoutError):
+        except (OSError, asyncio.TimeoutError, GameError):
             return False
         finally:
             await conn.close()
@@ -203,44 +203,52 @@ async def amain(args: argparse.Namespace) -> None:
             try:
                 await asyncio.sleep(10)
                 now = time.monotonic()
-                # Agents whose task ended (crashed, or marked itself dead after repeated no-answers):
-                # restart them if the game answers a hello again; otherwise the stale loop below keeps
-                # probing and (optionally) kills the hung process.
+                # Clean up ended agent tasks (crashed, or marked itself dead after repeated
+                # no-answers). The per-port handling below then restores or kills the instance.
                 for port, task in list(running.items()):
                     if not task.done():
                         continue
                     if not task.cancelled() and (exc := task.exception()):
                         printer("main", "info", f"agent on port {port} stopped: {exc!r}")
-                    del running[port]
                     agent = agents.get(port)
-                    if agent is None:
-                        continue
-                    await agent.conn.close()
-                    if await probe_alive(port):
-                        printer("main", "info", f"port {port}: game answers again, restarting its agent")
-                        await restart_agent(port)
-                # Unresponsive instances: warn periodically, reconnect when they come back, and kill
-                # dead farmhands (never the host) once NV_WATCHDOG_KILL is on.
+                    if agent is not None:
+                        await agent.conn.close()
+                    del running[port]
+                # Every known port, agent up or down: re-hire a down agent as soon as its game
+                # answers again, and (opt-in) kill a farmhand whose game is genuinely hung - even
+                # one whose agent already gave up - so the co-op keeps going instead of hanging at
+                # the next day transition.
                 for port, agent in list(agents.items()):
                     if port in killed:
                         continue
                     stale = now - agent.conn.last_live
-                    if stale < STALE_AFTER:
-                        last_warn.pop(port, None)
+                    hungry = stale >= STALE_AFTER
+                    down = port not in running
+                    if hungry:
+                        if now - last_warn.get(port, 0) >= STALE_AFTER:
+                            printer("main", "warn",
+                                    f"port {port} ({agent.name}): no game response for {stale:.0f}s - "
+                                    "instance looks hung")
+                            last_warn[port] = now
+                        if KILL_DEAD and not agent.is_host:
+                            await kill_instance(port)
+                            killed.add(port)
+                            await stop_agent(port, agent)
+                            continue
+                        if await probe_alive(port):
+                            # Game answers but our link is stale/broken: reconnect over a fresh one.
+                            printer("main", "info", f"port {port}: answered a hello - reconnecting its agent")
+                            await stop_agent(port, agent)
+                            await restart_agent(port)
                         continue
-                    if now - last_warn.get(port, 0) >= STALE_AFTER:
-                        printer("main", "warn", f"port {port} ({agent.name}): no game response for {stale:.0f}s - "
-                                                "instance looks hung")
-                        last_warn[port] = now
-                    if await probe_alive(port):
-                        printer("main", "info", f"port {port}: answered a hello - the old connection was broken; reconnecting")
-                        await stop_agent(port, agent)  # cancel the stuck agent first
-                        await restart_agent(port)
+                    if down:
+                        # Agent is down (crashed / marked dead / just finished): bring it back the
+                        # moment the game replies, without waiting for a staleness threshold.
+                        if await probe_alive(port):
+                            printer("main", "info", f"port {port}: game answers again, restarting its agent")
+                            await restart_agent(port)
                         continue
-                    if KILL_DEAD and not agent.is_host:
-                        await kill_instance(port)
-                        killed.add(port)
-                        await stop_agent(port, agent)
+                    last_warn.pop(port, None)
             except Exception as e:  # noqa: BLE001 - the watchdog itself must never die silently
                 printer("main", "info", f"watchdog error: {e!r}")
 
