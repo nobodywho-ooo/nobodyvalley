@@ -5,8 +5,9 @@
 #                prompt, so it steers them the most. The others see it too, to know who does what.
 #   model        which model THIS farmer runs (optional): gemma4-e2b, gemma4-12b, qwen3.5-9b,
 #                qwen3.8-flash-next, or a GGUF path / huggingface: reference. Without it, the farmer
-#                uses --model / NV_MODEL. Every local farmer loads its own copy of the weights, so
-#                mind total RAM: ~3 GB (Gemma4-E2B), ~6 GB (Qwen3.5-9B), ~7 GB (Gemma4-12B) each.
+#                uses --model / NV_MODEL. Each *distinct* local model is loaded once and shared by
+#                the farmers on it; different models add up in RAM: ~3 GB (Gemma4-E2B), ~6 GB
+#                (Qwen3.5-9B), ~7 GB (Gemma4-12B) per distinct model.
 # (The old one-line form, Name = "personality | job", still works; it has no model.)
 #
 # This is the committed template. Put your own farmers in `personas.local.toml` (gitignored);

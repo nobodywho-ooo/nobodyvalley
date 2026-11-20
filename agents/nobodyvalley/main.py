@@ -1,9 +1,9 @@
 """Run one LLM agent per connected Stardew Valley instance, each on its own model.
 
 A farmer's model comes from the `model` key in their persona (see personas.toml), falling back
-to --model / NV_MODEL. Local models: each agent loads its own NobodyWho Model instance (its own
-weights, so N farmers need N copies of the weights in RAM). qwen3.8-flash-next has no local
-weights: the agents share one client to the ASCENTs' vLLM.
+to --model / NV_MODEL. Local models are loaded once per *distinct* model (one NobodyWho Model
+instance, shared by all farmers on that model — the sizes of the different models in use add up
+in RAM). qwen3.8-flash-next has no local weights: the agents share one client to the ASCENTs' vLLM.
 """
 
 from __future__ import annotations
@@ -133,13 +133,25 @@ async def amain(args: argparse.Namespace) -> None:
                  "Is the NobodyValley mod installed and the game running?")
     printer("main", "info", f"found {len(conns)} game instance(s) on ports {', '.join(str(c.port) for c in conns)}")
 
-    # One shared remote backend (one vLLM client) for every farmer on qwen3.8-flash-next;
-    # local backends are created per agent, and each loads its own model when it connects.
+    # One backend per *distinct* model: remote = the shared ASCENTs client; local = one
+    # LocalBackend per ref, whose NobodyWho Model is loaded once and shared by all farmers on it.
     remote_backend: RemoteBackend | None = None
+    local_backends: dict[str, LocalBackend] = {}
 
     async def resolve_backend(model_arg: str, who: str) -> Backend:
-        """The backend for one farmer: remote = the shared ASCENTs client, local = a fresh
-        LocalBackend with its own model instance (loaded at connect time)."""
+        """The backend for one farmer: remote = the shared ASCENTs client; local = the cached
+        backend for that ref (a new model is only loaded when the ref hasn't been seen yet)."""
+        if (model_arg not in MODEL_PRESETS and model_arg != REMOTE_MODEL
+                and "/" not in model_arg and not model_arg.lower().endswith(".gguf")):
+            sys.exit(f"unknown model {model_arg!r} for {who}: choose from "
+                     "gemma4-e2b, gemma4-12b, qwen3.5-9b, qwen3.8-flash-next, "
+                     "or a GGUF path / huggingface: reference (see personas.toml / --model)")
+        kind, ref = resolve_model(model_arg)
+        if kind != "remote":
+            backend = local_backends.get(ref)
+            if backend is None:
+                backend = local_backends[ref] = LocalBackend(ref, DECISION_SCHEMA)
+            return backend
         if (model_arg not in MODEL_PRESETS and model_arg != REMOTE_MODEL
                 and "/" not in model_arg and not model_arg.lower().endswith(".gguf")):
             sys.exit(f"unknown model {model_arg!r} for {who}: choose from "

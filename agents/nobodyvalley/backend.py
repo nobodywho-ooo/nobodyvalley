@@ -2,15 +2,17 @@
 OpenAI-compatible endpoint (qwen3.8-flash-next on the ASCENT cluster, see ../on-prem).
 
 Both implement the small surface agent.py uses (ask / reset / stats / tokenize), so the agent
-loop itself doesn't care where the tokens come from. The local backend keeps the existing
-behaviour: one nobodywho.ChatAsync per agent over one shared, loaded Model. The remote backend
-keeps each agent's history here (the server is stateless between requests) and shapes the same
-JSON-schema-constrained decision request over the OpenAI API, with vLLM's guided decoding in
-place of NobodyWho's llguidance sampler.
+loop itself doesn't care where the tokens come from. The local backend loads each **distinct**
+model once (farmers on the same model share its one NobodyWho Model; farmers on different models
+each get their own) and gives every agent its own nobodywho.ChatAsync over it. The remote
+backend keeps each agent's history here (the server is stateless between requests) and shapes the
+same JSON-schema-constrained decision request over the OpenAI API, with vLLM's guided decoding
+in place of NobodyWho's llguidance sampler.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -34,8 +36,8 @@ class Stats:
 
 
 class Backend(Protocol):
-    """Provides one Chat per agent. Local backends load their own NobodyWho Model per chat
-    (each agent runs its own weights); the remote backend is one shared vLLM client."""
+    """Provides one Chat per agent. Local backends load one NobodyWho Model per *distinct*
+    model (shared by the farmers on it); the remote backend is one shared vLLM client."""
 
     kind: str
     label: str  # shown when the agent starts
@@ -83,19 +85,29 @@ class LocalChat:
 
 
 class LocalBackend:
-    """One NobodyWho Model **per chat**: each agent loads (and keeps) its own copy of the
-    weights on this Mac (Metal), so up to N agents share the GPU but not a model instance.
-    Loading happens when the agent connects; pick a ref small enough that N copies fit."""
+    """One NobodyWho Model per distinct ref, loaded once and shared by every farmer on it
+    (each still gets its own ChatAsync: persona, history, KV context). Distinct models load
+    separately, so the sizes of the *different* models in use add up in RAM."""
 
     kind = "local"
 
     def __init__(self, ref: str, schema: dict[str, Any]):
         self.ref = ref
         self.schema = schema
-        self.label = f"{ref} (own model)"
+        self.label = ref
+        self._model_task: asyncio.Task[Model] | None = None  # one load per ref, ever
+
+    async def _model(self) -> Model:
+        """The shared Model for this ref: the first agent to need it loads it, the rest await it."""
+        if self._model_task is None:
+            self._model_task = asyncio.ensure_future(self._load())
+        return await self._model_task
+
+    async def _load(self) -> Model:
+        return await Model.load_model_async(self.ref) if hasattr(Model, "load_model_async") else Model(self.ref)
 
     async def create_chat(self, system_prompt: str, n_ctx: int) -> LocalChat:
-        model = await Model.load_model_async(self.ref) if hasattr(Model, "load_model_async") else Model(self.ref)
+        model = await self._model()
         return LocalChat(ChatAsync(
             model,
             n_ctx=n_ctx,
