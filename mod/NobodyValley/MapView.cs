@@ -23,7 +23,7 @@ internal static class MapView
     private static readonly HashSet<string> OreIds = new() { "751", "290", "764", "765", "95", "843", "844", "849", "850", "VolcanoGoldNode", "VolcanoCoalNode0", "VolcanoCoalNode1" };
 
     public const string Legend =
-        "@ you, A-Z other farmers, & villager, ! monster, T tree, t sapling, X big stump/boulder, s stone, O ore, " +
+        "@ you, A-Z other farmers, & villager, ! monster, T tree, t sapling, X big stump/boulder, x dead crop, s stone, O ore, " +
         "w weed, k twig, f forage, g grass, , tilled, ; tilled+watered, p crop (needs water), P crop (watered), * ripe crop, " +
         "~ water, = path, D door, L ladder down, U ladder up, B shipping bin, C chest, o object, # wall/blocked, . ground";
 
@@ -154,6 +154,7 @@ internal static class MapView
                         note("tilled soil ready for seeds", p);
                         return dirt.isWatered() ? ';' : ',';
                     }
+                    if (dirt.crop.dead.Value) { note("dead crops (scythe them away)", p); return 'x'; }
                     if (dirt.readyForHarvest()) { note("ripe crops", p); return '*'; }
                     if (dirt.needsWatering() && !dirt.isWatered()) { note("crops needing water", p); return 'p'; }
                     return 'P';

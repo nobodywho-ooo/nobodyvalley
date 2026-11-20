@@ -421,7 +421,8 @@ internal sealed class ModEntry : Mod
             }
             case "scythe":
             {
-                // Bulk hay only: for a single weed/grass tile, `clear_debris` already swings the scythe.
+                if (at is { } t)
+                    return StartJob(cmd, $"swinging the scythe{AtText()}", j => TileJobs.Scythe(j, t));
                 int n = Math.Clamp(Int("count", 10), 1, 25);
                 return StartJob(cmd, "cutting grass for hay", j => FarmJobs.CutGrass(j, n));
             }

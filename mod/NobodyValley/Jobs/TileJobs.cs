@@ -1,6 +1,7 @@
 using System.Collections;
 using Microsoft.Xna.Framework;
 using StardewValley;
+using StardewValley.GameData.Crops;
 using StardewValley.Menus;
 using StardewValley.TerrainFeatures;
 using StardewValley.Tools;
@@ -197,6 +198,72 @@ internal static class TileJobs
         Me.Items.ReduceId(seeds.ItemId, 1);
         yield return Wait.Ticks(15);
         job.Summary = $"Planted {seeds.DisplayName} at {tile.X},{tile.Y}.";
+    }
+
+    /// <summary>Just swing the scythe at a tile: cuts grass (hay into the silo), clears weeds, removes dead crops,
+    /// or harvests scythe crops (wheat, fiber, ...). Unlike <see cref="Hit"/>, it never switches tools - it only
+    /// ever uses the scythe, so it works on things the scythe itself can do.</summary>
+    public static IEnumerator Scythe(Job job, Point tile)
+    {
+        var loc = Me.currentLocation;
+        var v = new Vector2(tile.X, tile.Y);
+        var scythe = Steps.FindScythe() ?? throw new JobFailed("you don't have a scythe");
+
+        if (ScytheTarget(loc, v) is not { } target)
+        {
+            string hint = loc.terrainFeatures.TryGetValue(v, out var tf) && tf is HoeDirt { crop: { } live } && !live.dead.Value
+                ? $"the scythe does nothing to the growing {Observer.CropName(live)} at {tile.X},{tile.Y} - wait until it's ripe and harvest it"
+                : Describe(loc, v) is { } other
+                    ? $"there's a {other} at {tile.X},{tile.Y} - the scythe only cuts grass, weeds, dead crops and scythe crops like wheat; use clear/chop/mine for the {other}"
+                    : $"there's nothing for the scythe at {tile.X},{tile.Y}";
+            throw new JobFailed(hint);
+        }
+        if (PlayerState.OthersClaims().Contains(v))
+            throw new JobFailed($"someone else is already working on the {target.Name} at {tile.X},{tile.Y}");
+        PlayerState.SetClaim(v);
+
+        int hayBefore = Game1.getFarm().piecesOfHay.Value;
+        var walk = new StepResult();
+        yield return Steps.WalkAdjacent(tile, walk);
+        if (!walk.Ok)
+            throw new JobFailed(walk.Error ?? $"can't reach {tile.X},{tile.Y}");
+
+        for (int swing = 0; swing < 8 && !target.Done(); swing++)
+            yield return Steps.Swing(scythe);
+        if (!target.Done())
+            throw new JobFailed($"the scythe didn't finish the {target.Name} at {tile.X},{tile.Y}");
+
+        // Scythed crops (wheat, fiber, ...) drop next to the tile; step onto them to pick them up.
+        if (target.Kind == "ripe crop" && Steps.IsStandable(loc, tile))
+            yield return Steps.WalkTo(tile, new StepResult());
+
+        int hay = Game1.getFarm().piecesOfHay.Value - hayBefore;
+        job.Summary = target.Kind switch
+        {
+            "grass" => hay > 0
+                ? $"Scythed the grass at {tile.X},{tile.Y}; {hay} hay went into the silo."
+                : $"Scythed the grass at {tile.X},{tile.Y} (no hay - is the silo full? feed the animals or build another one).",
+            "weeds" => $"Cleared the weeds at {tile.X},{tile.Y} with the scythe.",
+            "dead crop" => $"Scythed away the {target.Name} at {tile.X},{tile.Y}; the soil is clear for replanting.",
+            _ => $"Harvested the {target.Name} at {tile.X},{tile.Y} with the scythe.",
+        };
+    }
+
+    /// <summary>What a scythe can do at a tile: the kind, a description, and an "is it done" check.</summary>
+    private static (string Kind, string Name, Func<bool> Done)? ScytheTarget(GameLocation loc, Vector2 v)
+    {
+        if (loc.terrainFeatures.TryGetValue(v, out var tf) && tf is Grass)
+            return ("grass", "grass", () => !loc.terrainFeatures.ContainsKey(v));
+        if (loc.objects.TryGetValue(v, out var obj) && obj.IsWeeds())
+            return ("weeds", obj.DisplayName.ToLowerInvariant(), () => !loc.objects.ContainsKey(v));
+        if (loc.terrainFeatures.TryGetValue(v, out var cropTf) && cropTf is HoeDirt { crop: { } crop })
+        {
+            if (crop.dead.Value)
+                return ("dead crop", $"dead {Observer.CropName(crop)}", () => !loc.terrainFeatures.TryGetValue(v, out var now) || now is not HoeDirt { crop: not null });
+            if (crop.GetHarvestMethod() == HarvestMethod.Scythe)
+                return ("ripe crop", Observer.CropName(crop), () => !loc.terrainFeatures.TryGetValue(v, out var now) || now is not HoeDirt { crop: not null });
+        }
+        return null;
     }
 
     public static IEnumerator Harvest(Job job, Point tile)
