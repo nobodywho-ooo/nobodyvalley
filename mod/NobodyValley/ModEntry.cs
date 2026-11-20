@@ -13,6 +13,8 @@ namespace NobodyValley;
 /// <summary>
 /// Lets an external agent control the local farmer of this game instance.
 /// Run one game instance per agent (joined over LAN co-op); each instance's mod listens on its own port.
+/// The command surface is deliberately thin: the mod moves the farmer and clicks things (tiles,
+/// tools, menu buttons); the agents read the screen (the observation) and decide, like a player.
 /// </summary>
 internal sealed class ModEntry : Mod
 {
@@ -35,6 +37,7 @@ internal sealed class ModEntry : Mod
     {
         Instance = this;
         Config = helper.ReadConfig<ModConfig>();
+        MenuAgent.Reflection = helper.Reflection;
 
         server = new BridgeServer(Monitor);
         // NOBODYVALLEY_PORT pins the port (e.g. for a test instance the agents shouldn't pick up).
@@ -114,10 +117,11 @@ internal sealed class ModEntry : Mod
         }
         // talk_to/sleep read their own dialogue and report it in the job result; every other menu
         // (locked doors, questions, cutscenes, ...) should reach the agent as a screen_message.
-        if (jobs.Current?.Action is not ("talk_to" or "sleep"))
+        if (jobs.Current?.Action is not ("sleep"))
             screenMessages.Tick();
-        if (Config.AutoDismissMenus)
-            janitor.Tick(leaveDialoguesAlone: jobs.Current?.RunDuringMenus == true);
+        // Day-end screens (ready check, shipping summary, festivals) are dismissed so a co-op day
+        // never hangs; interactive menus (shops, chests, dialogs) are left for the agent.
+        janitor.Tick(leaveDialoguesAlone: true);
         // A festival warp takes over the character: drop any pending job (it can't tick during the
         // event anyway), so the agent re-plans fresh once the festival is over.
         if (Game1.CurrentEvent is { isFestival: true } && jobs.Current != null)
@@ -168,7 +172,7 @@ internal sealed class ModEntry : Mod
 
         string? Str(string key) => string.IsNullOrWhiteSpace((string?)msg[key]) ? null : ((string?)msg[key])!.Trim();
         int Int(string key, int def) => msg[key]?.Type == JTokenType.Integer ? (int)msg[key]! : int.TryParse((string?)msg[key], out var v) ? v : def;
-        // Most work commands take an optional map tile (x, y): then they act on just that tile.
+        // Tile commands take an optional map tile (x, y).
         Microsoft.Xna.Framework.Point? Tile() => msg["x"] != null && msg["y"] != null
             ? new Microsoft.Xna.Framework.Point(Int("x", 0), Int("y", 0)) : null;
         var at = Tile();
@@ -209,7 +213,6 @@ internal sealed class ModEntry : Mod
 
             case "screenshot":
             {
-                // Debug aid: whole-map screenshot of the current location (saved in the game's Screenshots folder).
                 float scale = msg["scale"]?.Type is JTokenType.Float or JTokenType.Integer ? (float)msg["scale"]! : 0.25f;
                 var name = Game1.game1.takeMapScreenshot(scale, $"nobodyvalley_{Game1.player.Name}", null);
                 return new JObject { ["file"] = name, ["dir"] = Path.Combine(Game1.game1.GetScreenshotFolder(), "") };
@@ -236,87 +239,8 @@ internal sealed class ModEntry : Mod
                 };
             }
 
-            case "debug_terrain":
-            {
-                // Testing aid: which "Type" values the Back layer of a location uses (path preferences).
-                var loc = Navigation.GetLocation(Str("target") ?? Game1.player.currentLocation.NameOrUniqueName)
-                    ?? throw new CommandException("unknown location");
-                var layer = loc.map.Layers[0];
-                var counts = new Dictionary<string, int>();
-                for (int x = 0; x < layer.LayerWidth; x++)
-                for (int y = 0; y < layer.LayerHeight; y++)
-                {
-                    var type = loc.doesTileHaveProperty(x, y, "Type", "Back") ?? "(none)";
-                    counts[type] = counts.GetValueOrDefault(type) + 1;
-                }
-                var p = Game1.player.TilePoint;
-                return new JObject
-                {
-                    ["types"] = JObject.FromObject(counts),
-                    ["here"] = Game1.player.currentLocation.doesTileHaveProperty(p.X, p.Y, "Type", "Back"),
-                };
-            }
-
-            // Testing aid: a chest menu as if a farm chest had been clicked open.
-            static IClickableMenu TestChestMenu()
-            {
-                var chest = Game1.player.currentLocation.objects.Values
-                    .OfType<StardewValley.Objects.Chest>()
-                    .FirstOrDefault(c => c.playerChest.Value)
-                    ?? throw new CommandException("no player chest in this location; craft one first");
-                return new ItemGrabMenu(chest.GetItemsForPlayer(), reverseGrab: false, showReceivingMenu: true,
-                    InventoryMenu.highlightAllItems, null, null, null, snapToBottom: false,
-                    canBeExitedWithKey: true, playRightClickSound: false, allowRightClick: true,
-                    showOrganizeButton: false, source: 1, sourceItem: chest, whichSpecialButton: -1, context: chest);
-            }
-
-            case "debug_menu":
-            {
-                // Testing aid: open a blocking screen, to check that it gets dismissed.
-                var kind = Str("kind") ?? "levelup";
-                Game1.activeClickableMenu = kind switch
-                {
-                    "levelup" => new StardewValley.Menus.LevelUpMenu(2, 1), // foraging level 1
-                    "profession" => new StardewValley.Menus.LevelUpMenu(2, 5), // foraging level 5: pick a profession
-                    "letter" => new StardewValley.Menus.LetterViewerMenu("Dear farmer,^this is a test letter.^   -NobodyValley"),
-                    "dialogue" => new StardewValley.Menus.DialogueBox("This is a test dialogue.#$b#It has two pages."),
-                    "question" => new StardewValley.Menus.DialogueBox("Do you want to test?", new[]
-                    {
-                        new Response("Yes, test it", "Yes"),
-                        new Response("No, skip it", "No"),
-                    }),
-                    // Like the "items that didn't fit" menu when the backpack is full.
-                    "itemgrab" => new StardewValley.Menus.ItemGrabMenu(new List<StardewValley.Item>
-                        { StardewValley.ItemRegistry.Create("(O)388", 5), StardewValley.ItemRegistry.Create("(O)335", 2) }),
-                    // A real chest menu, as if the chest had been clicked open (the first farm chest).
-                    "chest" => TestChestMenu(),
-                    _ => throw new CommandException("kind must be levelup, profession, letter, dialogue, question, itemgrab or chest"),
-                };
-                return new JObject { ["opened"] = kind };
-            }
-
-            case "debug_finish_buildings":
-            {
-                // Testing aid: finish all construction/upgrades on the farm immediately.
-                foreach (var b in Game1.getFarm().buildings)
-                {
-                    if (b.daysOfConstructionLeft.Value > 0 || b.daysUntilUpgrade.Value > 0)
-                        b.FinishConstruction();
-                }
-                return new JObject { ["finished"] = true };
-            }
-
-            case "debug_money":
-            {
-                // Testing aid: set the player's money.
-                int amount = Math.Max(0, Int("amount", 100000));
-                Game1.player.Money = amount;
-                return new JObject { ["money"] = amount };
-            }
-
             case "debug_give":
             {
-                // Testing aid: add an item (by display name or id) to the inventory.
                 var name = Str("item") ?? throw new CommandException("missing 'item'");
                 int n = Math.Clamp(Int("count", 1), 1, 999);
                 var id = Game1.objectData.FirstOrDefault(o => (o.Value.Name ?? "").Equals(name, StringComparison.OrdinalIgnoreCase)).Key ?? name;
@@ -325,144 +249,136 @@ internal sealed class ModEntry : Mod
                 return new JObject { ["gave"] = $"{n} {item.DisplayName}" };
             }
 
-            case "debug_look":
-                // Testing aid: roll a look with another seed.
-                Looks.Randomize(Monitor, Int("seed", Config.LookSeed));
-                return new JObject { ["hair"] = Game1.player.hair.Value, ["skin"] = Game1.player.skin.Value, ["shirt"] = Game1.player.shirtItem.Value?.ItemId };
+            case "debug_money":
+                Game1.player.Money = Math.Max(0, Int("amount", 100000));
+                return new JObject { ["money"] = Game1.player.Money };
+
+            case "debug_set_time":
+            {
+                int t = Int("time", 900);
+                Game1.timeOfDay = t;
+                return new JObject { ["time"] = Observer.FormatTime(t) };
+            }
+
+            case "debug_finish_buildings":
+            {
+                foreach (var b in Game1.getFarm().buildings)
+                    if (b.daysOfConstructionLeft.Value > 0 || b.daysUntilUpgrade.Value > 0)
+                        b.FinishConstruction();
+                return new JObject { ["finished"] = true };
+            }
 
             case "debug_trace":
                 traceTicks = Math.Clamp(Int("ticks", 300), 1, 3600);
                 return new JObject { ["tracing_ticks"] = traceTicks };
 
-            case "debug_set_time":
+            case "debug_actions":
             {
-                // Testing aid: jump the clock (single-player / host only).
-                int t = Int("time", 900);
-                Game1.timeOfDay = t;
-                return new JObject { ["time"] = Observer.FormatTime(t) };
+                // Debug aid: every Action-tagged tile in the current location.
+                var loc = Game1.player.currentLocation;
+                var layer = loc.map.GetLayer("Buildings");
+                var list = new List<string>();
+                for (int x = 0; layer != null && x < layer.LayerWidth; x++)
+                for (int y = 0; layer != null && y < layer.LayerHeight; y++)
+                {
+                    var action = loc.doesTileHaveProperty(x, y, "Action", "Buildings");
+                    if (action != null)
+                        list.Add($"{x},{y}: {action}");
+                }
+                return new JObject { ["actions"] = string.Join("\n", list) };
             }
 
             case "stop":
                 jobs.Cancel("stopped");
                 return new JObject { ["summary"] = "Stopped." };
 
-            case "go_to":
-            {
-                var target = Str("target") ?? throw new CommandException("missing 'target'");
-                return StartJob(cmd, $"walking to {target}", j => FarmJobs.GoTo(j, target));
-            }
             case "walk":
             {
                 var t = at ?? throw new CommandException("missing x, y");
                 return StartJob(cmd, $"walking to {t.X},{t.Y}", j => TileJobs.Walk(j, t));
             }
+
+            case "go_to":
+            {
+                var target = Str("target") ?? throw new CommandException("missing 'target'");
+                return StartJob(cmd, $"walking to {target}", j => FarmJobs.GoTo(j, target));
+            }
+
+            // Click the tile like a player's right-click: villagers, doors, ripe crops, forage,
+            // machines, chests, shop counters, the shipping bin, the bed...
+            // Opening a shop/chest/dialogue blocks jobs (the game pauses for menus); the `use` job
+            // itself must keep ticking to finish after the menu pops up.
             case "use":
             {
                 var t = at ?? throw new CommandException("missing x, y");
                 return StartJob(cmd, $"using {t.X},{t.Y}", j => TileJobs.Use(j, t), runDuringMenus: true);
             }
-            case "chop_trees":
+
+            // Left-click with the held item (equip it first): plant seeds, place things...
+            case "place":
             {
-                if (at is { } t)
-                    return StartJob(cmd, $"swinging the axe{AtText()}", j => TileJobs.Chop(j, t));
-                int n = Math.Clamp(Int("count", 1), 1, 5);
-                return StartJob(cmd, "chopping trees", j => MoreJobs.ChopTrees(j, n));
+                var t = at ?? throw new CommandException("missing x, y");
+                return StartJob(cmd, $"placing {t.X},{t.Y}", j => TileJobs.Place(j, t));
             }
-            case "mine":
+
+            // Swing one named tool at the tile - the vanilla use-tool action, nothing more.
+            case "swing":
             {
-                if (at is { } t)
-                    return StartJob(cmd, $"swinging the pickaxe{AtText()}", j => TileJobs.Mine(j, t));
-                int n = Math.Clamp(Int("count", 10), 1, 25);
-                return StartJob(cmd, "breaking rocks", j => AdventureJobs.MineRocks(j, n));
+                var tool = Str("tool") ?? throw new CommandException("missing 'tool' (axe, pickaxe, hoe, watering_can, scythe)");
+                var t = at ?? throw new CommandException("missing x, y");
+                return StartJob(cmd, $"swinging the {tool}{AtText()}", j => TileJobs.Swing(j, t, tool));
             }
-            case "descend":
-                return StartJob(cmd, "heading down into the mines", AdventureJobs.Descend);
-            case "fish":
-            {
-                var where = Str("target");
-                int n = Math.Clamp(Int("count", 3), 1, 10);
-                return StartJob(cmd, where == null ? "fishing" : $"fishing at {where}", j => AdventureJobs.Fish(j, where, n));
-            }
-            case "till":
-            {
-                if (at is { } t)
-                    return StartJob(cmd, $"tilling{AtText()}", j => TileJobs.Till(j, t));
-                int n = Math.Clamp(Int("count", 10), 1, 25);
-                return StartJob(cmd, "tilling soil in the field", j => FarmJobs.Till(j, n));
-            }
-            case "plant":
-            {
-                var seed = Str("seed");
-                if (at is { } t)
-                    return StartJob(cmd, $"planting {seed ?? "seeds"}{AtText()}", j => TileJobs.Plant(j, t, seed));
-                int n = Math.Clamp(Int("count", 99), 1, 200);
-                return StartJob(cmd, $"planting {seed ?? "seeds"}", j => FarmJobs.Plant(j, seed, n));
-            }
-            case "water":
-            {
-                if (at is { } t)
-                    return StartJob(cmd, $"watering{AtText()}", j => TileJobs.Water(j, t));
-                int n = Math.Clamp(Int("count", int.MaxValue), 1, int.MaxValue);
-                return StartJob(cmd, "watering the crops", j => FarmJobs.Water(j, n));
-            }
-            case "harvest":
-            {
-                if (at is { } t)
-                    return StartJob(cmd, $"harvesting{AtText()}", j => TileJobs.Harvest(j, t));
-                int n = Math.Clamp(Int("count", int.MaxValue), 1, int.MaxValue);
-                return StartJob(cmd, "harvesting crops", j => FarmJobs.Harvest(j, n));
-            }
+
+            case "axe":
+            case "pickaxe":
+            case "hoe":
+            case "watering_can":
             case "scythe":
             {
-                if (at is { } t)
-                    return StartJob(cmd, $"swinging the scythe{AtText()}", j => TileJobs.Scythe(j, t));
-                int n = Math.Clamp(Int("count", 10), 1, 25);
-                return StartJob(cmd, "cutting grass for hay", j => FarmJobs.CutGrass(j, n));
+                var t = at ?? throw new CommandException("missing x, y");
+                return StartJob(cmd, $"swinging the {cmd}{AtText()}", j => TileJobs.Swing(j, t, cmd));
             }
-            case "ship":
-            {
-                // Runs while a menu is open too, so a full backpack can be thinned before taking.
-                var item = Str("item");
-                return StartJob(cmd, "shipping produce", j => FarmJobs.Ship(j, item), runDuringMenus: true);
-            }
-            case "buy":
+
+            // Select an inventory item (the hand), like picking a toolbar slot. "nothing" = empty hand.
+            case "equip":
             {
                 var item = Str("item") ?? throw new CommandException("missing 'item'");
-                int n = Int("count", 1);
-                return StartJob(cmd, $"buying {item} at Pierre's", j => FarmJobs.Buy(j, item, n));
+                var p = Game1.player;
+                if (item.Equals("nothing", StringComparison.OrdinalIgnoreCase) || item.Equals("none", StringComparison.OrdinalIgnoreCase)
+                    || item.Equals("empty", StringComparison.OrdinalIgnoreCase))
+                {
+                    for (int i = 0; i < p.Items.Count; i++)
+                    {
+                        if (p.Items[i] == null)
+                        {
+                            p.CurrentToolIndex = i;
+                            return new JObject { ["summary"] = "Your hand is empty." };
+                        }
+                    }
+                    throw new CommandException("your backpack is completely full - there's no empty slot to put the tool away");
+                }
+                var found = p.Items.FirstOrDefault(i => i != null && i.DisplayName.Contains(item, StringComparison.OrdinalIgnoreCase));
+                if (found == null)
+                    throw new CommandException($"you don't carry '{item}'");
+                int idx = p.Items.IndexOf(found);
+                p.CurrentToolIndex = idx;
+                return new JObject { ["summary"] = $"Equipped {found.DisplayName} - it's in your hand now." };
             }
-            case "eat":
+
+            // The menus: answer pop-ups (dialogues, letters, questions), click buttons in real
+            // menus (shops, chests, the shipping bin, level-ups), close menus.
+            case "answer":
+                return Answer(Int("count", Int("option", 1)));
+
+            case "click":
             {
-                // Runs while a menu is open too (no walking needed) - frees backpack space for take.
-                var item = Str("item");
-                return StartJob(cmd, "eating", j => FarmJobs.Eat(j, item), runDuringMenus: true);
+                var element = Str("element") ?? Str("item") ?? throw new CommandException("missing 'element' (what to click)");
+                return new JObject { ["summary"] = MenuAgent.Click(element, Int("count", Int("n", 1))) };
             }
-            case "sleep":
-                return StartJob(cmd, "going to bed", FarmJobs.Sleep, runDuringMenus: true);
-            case "forage":
-            {
-                var where = Str("target");
-                int n = Math.Clamp(Int("count", 10), 1, 30);
-                return StartJob(cmd, where == null ? "foraging" : $"foraging in {where}", j => MoreJobs.Forage(j, where, n));
-            }
-            case "craft":
-            {
-                var item = Str("item") ?? throw new CommandException("missing 'item'");
-                return StartJob(cmd, $"crafting {item}", j => MoreJobs.Craft(j, item));
-            }
-            case "repair":
-            {
-                var target = Str("target") ?? throw new CommandException("missing 'target'");
-                return StartJob(cmd, $"repairing {target}", j => FarmJobs.Repair(j, target));
-            }
-            case "plant_tree":
-            {
-                var item = Str("item");
-                return StartJob(cmd, item == null ? "planting a fruit tree" : $"planting a {item}",
-                    j => FarmJobs.PlantTree(j, item));
-            }
-            case "fruit":
-                return StartJob(cmd, "picking fruit", FarmJobs.HarvestFruit);
+
+            case "close":
+                return new JObject { ["summary"] = MenuAgent.Close() };
+
             case "check_community_center":
             {
                 var cc = CommunityCenterJobs.Observe();
@@ -478,152 +394,72 @@ internal sealed class ModEntry : Mod
                 return new JObject { ["summary"] = string.Join(". ", parts) };
             }
 
-            case "check_chest":
+            case "fish":
             {
-                var chests = MoreJobs.FarmChestContents();
-                if (chests.Count == 0)
-                    return new JObject { ["summary"] = "There are no shared chests on the farm yet (craft one with 50 wood)." };
-                var parts = chests.Select((c, i) => $"chest {i + 1}: {c}");
-                return new JObject { ["summary"] = string.Join("; ", parts) };
+                var where = Str("target");
+                int n = Math.Clamp(Int("count", 3), 1, 10);
+                return StartJob(cmd, where == null ? "fishing" : $"fishing at {where}", j => AdventureJobs.Fish(j, where, n));
             }
 
-            case "open_backpack":
-            {
-                var items = Game1.player.Items.Where(i => i != null).Select(i => i!.Stack > 1 ? $"{i.DisplayName} x{i.Stack}" : i.DisplayName);
-                return new JObject
-                {
-                    ["summary"] = $"Inventory ({Game1.player.Items.Count(i => i != null)}/{Game1.player.MaxItems} slots): "
-                        + (string.Join(", ", items) is { Length: > 0 } text ? text : "empty"),
-                };
-            }
+            case "descend":
+                return StartJob(cmd, "heading down into the mines", AdventureJobs.Descend);
 
-            case "start_crafting":
-            {
-                var recipes = MoreJobs.AllRecipes();
-                return new JObject
-                {
-                    ["summary"] = recipes.Count == 0 ? "You don't know any crafting recipes yet." : "Known recipes: " + string.Join("; ", recipes),
-                };
-            }
-
-            case "check_shop":
-            {
-                var target = Str("target");
-                var stock = FarmJobs.ShopStock(target);
-                return new JObject
-                {
-                    ["summary"] = $"{(target ?? "Pierre")} sells: " + (stock.Count == 0 ? "nothing right now" : string.Join(", ", stock)),
-                };
-            }
-
-            case "answer":
-            {
-                int option = Math.Max(0, Int("count", Int("option", 0)));
-                if (Game1.activeClickableMenu is DialogueBox box)
-                {
-                    if (box.isQuestion && box.responses.Length > 0)
-                    {
-                        int index = Math.Clamp(option <= 0 ? 1 : option, 1, box.responses.Length) - 1;
-                        box.selectedResponse = index;
-                        box.characterIndexInDialogue = Math.Max(0, (box.getCurrentString() ?? "").Length - 1);
-                        box.safetyTimer = 0;
-                        box.receiveLeftClick(0, 0);
-                        screenMessages.ClearHold();
-                        return new JObject { ["summary"] = $"Chose: {box.responses[index].responseText}" };
-                    }
-                    box.characterIndexInDialogue = Math.Max(0, (box.getCurrentString() ?? "").Length - 1);
-                    box.safetyTimer = 0;
-                    box.receiveLeftClick(0, 0);
-                    screenMessages.ClearHold();
-                    return new JObject { ["summary"] = "Continued the message." };
-                }
-                if (Game1.activeClickableMenu is LetterViewerMenu letter)
-                {
-                    letter.exitThisMenu();
-                    screenMessages.ClearHold();
-                    return new JObject { ["summary"] = "Closed the letter." };
-                }
-                if (Game1.activeClickableMenu is ReadyCheckDialog ready)
-                {
-                    if (ready.checkName == "sleep")
-                    {
-                        // The day-end ready check. Do NOT call confirm(): that's what deadlocks the
-                        // co-op - this machine drops out of the vanilla handshake and starts its
-                        // new-day transition before the others, so no one ever rolls over. The
-                        // dialog confirms itself once everyone is ready; just acknowledge it.
-                        screenMessages.ClearHold();
-                        return new JObject { ["summary"] = "The day is ending (ready check) - waiting for the other players; it rolls over on its own." };
-                    }
-                    // Other ready checks (festival etc.) are safe to confirm like clicking "Ready".
-                    ready.confirm();
-                    screenMessages.ClearHold();
-                    return new JObject { ["summary"] = "Confirmed ready to end the day." };
-                }
-                if (Game1.activeClickableMenu is ItemGrabMenu or GameMenu)
-                {
-                    // A chest/inventory menu: closing it is the same as pressing the menu key in-game
-                    // (vanilla handles the chest's lid and lock on its side).
-                    Game1.activeClickableMenu.exitThisMenu();
-                    screenMessages.ClearHold();
-                    return new JObject { ["summary"] = "Closed the menu." };
-                }
-                throw new CommandException("there's no message on screen to answer");
-            }
-
-            case "donate":
+            case "eat":
             {
                 var item = Str("item");
-                return StartJob(cmd, item == null ? "donating to the Community Center" : $"donating {item}",
-                    j => CommunityCenterJobs.Donate(j, item));
+                return StartJob(cmd, "eating", j => FarmJobs.Eat(j, item));
             }
-            case "cook":
-            {
-                var item = Str("item") ?? throw new CommandException("missing 'item'");
-                return StartJob(cmd, $"cooking {item}", j => MoreJobs.Cook(j, item));
-            }
-            case "operate":
-                return StartJob(cmd, at is { } opTile ? $"using the machine at {opTile.X},{opTile.Y}" : "using a machine",
-                    j => MoreJobs.Operate(j, at), runDuringMenus: true);
-            case "build":
-            {
-                var item = Str("item") ?? throw new CommandException("missing 'item'");
-                return StartJob(cmd, $"building {item}", j => HomesteadJobs.Build(j, item));
-            }
-            case "upgrade":
-            {
-                var item = Str("item") ?? throw new CommandException("missing 'item'");
-                return StartJob(cmd, $"upgrading the {item}", j => HomesteadJobs.UpgradeTool(j, item));
-            }
-            case "buy_animal":
-            {
-                var item = Str("item") ?? throw new CommandException("missing 'item'");
-                return StartJob(cmd, $"buying a {item}", j => HomesteadJobs.BuyAnimal(j, item));
-            }
-            case "care_animals":
-                return StartJob(cmd, "tending the animals", HomesteadJobs.CareAnimals);
-            case "store":
-            {
-                // Runs while a menu is open too: stores into the open chest instead of walking home.
-                var item = Str("item");
-                return StartJob(cmd, "putting things in the chest", j => MoreJobs.Store(j, item), runDuringMenus: true);
-            }
-            case "take":
-            {
-                // Runs while a menu is open too: takes from the open menu/chest instead of walking home.
-                var item = Str("item") ?? throw new CommandException("missing 'item'");
-                int n = Math.Clamp(Int("count", 999), 1, 999);
-                return StartJob(cmd, $"taking {item} from the chest", j => MoreJobs.Take(j, item, n), runDuringMenus: true);
-            }
-            case "talk_to":
-            {
-                var who = Str("target") ?? throw new CommandException("missing 'target'");
-                var gift = Str("item");
-                return StartJob(cmd, gift == null ? $"talking to {who}" : $"giving {who} a gift", j => MoreJobs.TalkTo(j, who, gift), runDuringMenus: true);
-            }
+
+            case "sleep":
+                return StartJob(cmd, "going to bed", FarmJobs.Sleep, runDuringMenus: true);
 
             default:
                 throw new CommandException($"unknown command '{cmd}'");
         }
+    }
+
+    /// <summary>Click through a pop-up screen, like a player pressing the interact/close key.</summary>
+    private JObject Answer(int option)
+    {
+        if (Game1.activeClickableMenu is DialogueBox box)
+        {
+            if (box.isQuestion && box.responses.Length > 0)
+            {
+                option = Math.Max(0, option);
+                int index = Math.Clamp(option <= 0 ? 1 : option, 1, box.responses.Length) - 1;
+                box.selectedResponse = index;
+                box.characterIndexInDialogue = Math.Max(0, (box.getCurrentString() ?? "").Length - 1);
+                box.safetyTimer = 0;
+                box.receiveLeftClick(0, 0);
+                screenMessages.ClearHold();
+                return new JObject { ["summary"] = $"Chose: {box.responses[index].responseText}" };
+            }
+            box.characterIndexInDialogue = Math.Max(0, (box.getCurrentString() ?? "").Length - 1);
+            box.safetyTimer = 0;
+            box.receiveLeftClick(0, 0);
+            screenMessages.ClearHold();
+            return new JObject { ["summary"] = "Continued the message." };
+        }
+        if (Game1.activeClickableMenu is LetterViewerMenu letter)
+        {
+            letter.exitThisMenu();
+            screenMessages.ClearHold();
+            return new JObject { ["summary"] = "Closed the letter." };
+        }
+        if (Game1.activeClickableMenu is ReadyCheckDialog ready)
+        {
+            if (ready.checkName == "sleep")
+            {
+                // The day-end ready check: confirm() would deadlock the co-op (this machine starts its
+                // new-day transition before the others). It confirms itself once everyone is ready.
+                screenMessages.ClearHold();
+                return new JObject { ["summary"] = "The day is ending (ready check) - waiting for the other players; it rolls over on its own." };
+            }
+            ready.confirm();
+            screenMessages.ClearHold();
+            return new JObject { ["summary"] = "Confirmed ready." };
+        }
+        throw new CommandException("there's no message on screen to answer");
     }
 
     private JObject StartJob(string action, string activity, Func<Job, IEnumerator> body, bool runDuringMenus = false)

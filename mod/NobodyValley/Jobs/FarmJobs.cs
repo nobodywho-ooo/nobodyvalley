@@ -1,18 +1,12 @@
 using System.Collections;
 using Microsoft.Xna.Framework;
 using StardewValley;
-using StardewValley.Buildings;
-using StardewValley.GameData.Crops;
-using StardewValley.Internal;
 using StardewValley.Locations;
-using StardewValley.Menus;
-using StardewValley.TerrainFeatures;
-using StardewValley.Tools;
 using SObject = StardewValley.Object;
 
 namespace NobodyValley.Jobs;
 
-/// <summary>The high-level actions exposed to agents. Each returns a coroutine body for <see cref="Job"/>.</summary>
+/// <summary>Movement and day-cycle conveniences (the affordances: walk/go_to/sleep).</summary>
 internal static class FarmJobs
 {
     private static ModConfig Config => ModEntry.Instance.Config;
@@ -36,8 +30,8 @@ internal static class FarmJobs
         if (resolved.Person == null && Me.currentLocation.NameOrUniqueName == Navigation.GetLocation(resolved.Location)?.NameOrUniqueName)
         {
             // Agents that can't see what they're looking for tend to go_to where they already are, in a loop.
-            job.Summary = $"You're already at {Observer.LocationName(Me.currentLocation)}; nothing changed. Use walk x,y, "
-                + "or a bulk action (e.g. harvest, water) that finds things by itself.";
+            job.Summary = $"You're already at {Observer.LocationName(Me.currentLocation)}; nothing changed. Use walk x,y "
+                + "or interact directly.";
             yield break;
         }
         var r = new StepResult();
@@ -105,632 +99,70 @@ internal static class FarmJobs
         return null;
     }
 
-    private static bool IsClearable(SObject o) => o.IsWeeds() || o.IsBreakableStone() || o.IsTwig();
+    // ================================================================ sleep
 
-    /// <summary>Remove a weed/stone/twig/grass on a tile with the right tool.</summary>
-    private static IEnumerator ClearTile(Vector2 tile, StepResult r)
+    /// <summary>Walk to bed and lie down; the game's own "go to sleep?" prompt is left for the
+    /// agent to answer (like a player clicking Yes).</summary>
+    public static IEnumerator Sleep(Job job)
     {
-        var loc = Me.currentLocation;
-        var walk = new StepResult();
-        yield return Steps.WalkAdjacent(Steps.ToPoint(tile), walk);
-        if (!walk.Ok)
+        // The day-end ready check is up: nothing to do, it rolls over on its own.
+        if (Game1.activeClickableMenu is StardewValley.Menus.ReadyCheckDialog)
         {
-            r.Fail(walk.Error ?? "unreachable");
+            job.Summary = "The day is ending (ready check) - waiting for the other players; it rolls over on its own.";
             yield break;
         }
-
-        for (int swings = 0; swings < 8; swings++)
+        if (Me.isInBed.Value && Me.timeWentToBed.Value != 0)
         {
-            Tool? tool = null;
-            if (loc.objects.TryGetValue(tile, out var obj))
-            {
-                if (obj.IsWeeds())
-                    tool = Steps.FindScythe();
-                else if (obj.IsBreakableStone())
-                    tool = Steps.FindTool<Pickaxe>();
-                else if (obj.IsTwig())
-                    tool = Steps.FindTool<Axe>();
-                else
-                {
-                    r.Fail($"{obj.DisplayName} is in the way");
-                    yield break;
-                }
-            }
-            else if (loc.terrainFeatures.TryGetValue(tile, out var tf) && tf is Grass)
-            {
-                tool = Steps.FindScythe();
-            }
-            else
-            {
-                r.Ok = true;
-                yield break;
-            }
-
-            if (tool == null)
-            {
-                r.Fail("missing the right tool");
-                yield break;
-            }
-            yield return Steps.Swing(tool);
-        }
-        r.Fail("it won't break");
-    }
-
-    // ================================================================ till
-
-    public static IEnumerator Till(Job job, int count)
-    {
-        var hoe = Steps.FindTool<Hoe>() ?? throw new JobFailed("you don't have a hoe");
-        yield return EnsureOnFarm();
-        var farm = Game1.getFarm();
-        var centre = FieldCentre();
-        var skipped = new HashSet<Vector2>();
-        int tilled = 0;
-
-        while (tilled < count)
-        {
-            var claims = PlayerState.OthersClaims();
-            Vector2? next = FieldTiles(farm, centre, 12)
-                .Where(t => !skipped.Contains(t) && !claims.Contains(t) && CanTill(farm, t))
-                .Cast<Vector2?>()
-                .FirstOrDefault();
-            if (next == null)
-                break;
-            var tile = next.Value;
-            PlayerState.SetClaim(tile);
-
-            var clear = new StepResult();
-            yield return ClearTile(tile, clear);
-            if (!clear.Ok)
-            {
-                skipped.Add(tile);
-                continue;
-            }
-            yield return Steps.Swing(hoe);
-
-            if (farm.terrainFeatures.TryGetValue(tile, out var tf) && tf is HoeDirt)
-            {
-                tilled++;
-                job.Summary = $"Tilled {tilled} of {count} tiles.";
-            }
-            else
-            {
-                skipped.Add(tile);
-            }
-        }
-        if (tilled == 0)
-            throw new JobFailed("couldn't find any tillable ground near the field");
-        job.Summary = $"Tilled {tilled} tiles of soil in the field.";
-    }
-
-    /// <summary>Tiles around the field centre, nearest first (so the field grows as a compact blob).</summary>
-    private static IEnumerable<Vector2> FieldTiles(Farm farm, Point centre, int maxRadius)
-    {
-        var tiles = new List<Vector2>();
-        for (int y = centre.Y - maxRadius; y <= centre.Y + maxRadius; y++)
-        for (int x = centre.X - maxRadius; x <= centre.X + maxRadius; x++)
-        {
-            var t = new Vector2(x, y);
-            if (farm.isTileOnMap(t))
-                tiles.Add(t);
-        }
-        return tiles.OrderBy(t => Vector2.DistanceSquared(t, new Vector2(centre.X, centre.Y))).ThenBy(t => t.Y).ThenBy(t => t.X);
-    }
-
-    private static bool CanTill(Farm farm, Vector2 t)
-    {
-        if (farm.doesTileHaveProperty((int)t.X, (int)t.Y, "Diggable", "Back") == null)
-            return false;
-        if (farm.terrainFeatures.TryGetValue(t, out var tf) && tf is not Grass)
-            return false;
-        if (farm.objects.TryGetValue(t, out var o) && !IsClearable(o))
-            return false;
-        if (farm.getBuildingAt(t) != null || farm.isWaterTile((int)t.X, (int)t.Y))
-            return false;
-        // Keep the farmhouse porch walkable.
-        var door = farm.GetMainFarmHouseEntry();
-        if (Math.Abs(t.X - door.X) <= 1 && t.Y >= door.Y && t.Y <= door.Y + 2)
-            return false;
-        return true;
-    }
-
-    // ================================================================ plant
-
-    public static IEnumerator Plant(Job job, string? seedName, int count)
-    {
-        var seeds = FindSeeds(seedName) ?? throw new JobFailed(seedName == null
-            ? "you have no seeds - buy some at Pierre's"
-            : $"you have no '{seedName}'");
-        string seedId = seeds.ItemId;
-        string seedLabel = seeds.DisplayName;
-        yield return EnsureOnFarm();
-        var farm = Game1.getFarm();
-        var centre = FieldCentre();
-        var skipped = new HashSet<Vector2>();
-        int planted = 0;
-
-        while (planted < count)
-        {
-            seeds = Me.Items.OfType<SObject>().FirstOrDefault(i => i.ItemId == seedId);
-            if (seeds == null)
-                break;
-
-            var claims = PlayerState.OthersClaims();
-            Vector2? next = farm.terrainFeatures.Pairs
-                .Where(p => p.Value is HoeDirt { crop: null } && !skipped.Contains(p.Key) && !claims.Contains(p.Key))
-                .Where(p => farm.CanPlantSeedsHere(seedId, (int)p.Key.X, (int)p.Key.Y, false, out _))
-                .Select(p => p.Key)
-                .OrderBy(t => Steps.Dist(Steps.ToPoint(t), centre))
-                .Cast<Vector2?>()
-                .FirstOrDefault();
-            if (next == null)
-                break;
-
-            var tile = next.Value;
-            PlayerState.SetClaim(tile);
-            var walk = new StepResult();
-            yield return Steps.WalkAdjacent(Steps.ToPoint(tile), walk);
-            if (!walk.Ok || !farm.terrainFeatures.TryGetValue(tile, out var tf) || tf is not HoeDirt dirt || dirt.crop != null)
-            {
-                skipped.Add(tile);
-                continue;
-            }
-
-            Steps.Equip(seeds);
-            yield return null;
-            if (dirt.plant(seedId, Me, isFertilizer: false))
-            {
-                Me.Items.ReduceId(seedId, 1);
-                planted++;
-                job.Summary = $"Planted {planted} {seedLabel}.";
-            }
-            else
-            {
-                skipped.Add(tile);
-            }
-            yield return Wait.Ticks(15);
-        }
-        if (planted == 0)
-            throw new JobFailed("no empty tilled soil to plant in (till some first)");
-        job.Summary = $"Planted {planted} {seedLabel}.";
-    }
-
-    /// <summary>Plant a fruit-tree sapling on open ground on the farm.</summary>
-    public static IEnumerator PlantTree(Job job, string? name)
-    {
-        var saplings = Me.Items.OfType<SObject>().Where(o => o.Category == -74).ToList();
-        var sapling = (name == null ? null : saplings.FirstOrDefault(o => o.DisplayName.Contains(name, StringComparison.OrdinalIgnoreCase)))
-            ?? saplings.FirstOrDefault()
-            ?? throw new JobFailed(name == null ? "you have no fruit-tree saplings - buy one at Pierre's" : $"you have no '{name}' sapling");
-        yield return EnsureOnFarm();
-        var farm = Game1.getFarm();
-        var centre = FieldCentre();
-        var spots = Enumerable.Range(-18, 37).SelectMany(dx => Enumerable.Range(-14, 29).Select(dy => new Vector2(centre.X + dx, centre.Y + dy)))
-            .Where(t => !farm.terrainFeatures.ContainsKey(t) && !farm.objects.ContainsKey(t) && sapling.canBePlacedHere(farm, t))
-            .OrderBy(t => Vector2.DistanceSquared(t, new Vector2(centre.X, centre.Y)))
-            .Take(8)
-            .ToList();
-        foreach (var spot in spots)
-        {
-            var walk = new StepResult();
-            yield return Steps.WalkAdjacent(Steps.ToPoint(spot), walk);
-            if (!walk.Ok)
-                continue;
-            Steps.Equip(sapling);
-            yield return null;
-            if (sapling.placementAction(farm, (int)spot.X * 64, (int)spot.Y * 64, Me))
-            {
-                Me.Items.ReduceId(sapling.QualifiedItemId, 1);
-                job.Summary = $"Planted a {sapling.DisplayName} at {spot.X},{spot.Y}; fruit trees take about a season to mature.";
-                yield break;
-            }
-        }
-        throw new JobFailed("couldn't find a free 3x3 spot for the fruit tree; clear some debris/grass first");
-    }
-
-    /// <summary>Shake ripe fruit off all fruit trees and put it in the inventory.</summary>
-    public static IEnumerator HarvestFruit(Job job)
-    {
-        yield return EnsureOnFarm();
-        var farm = Game1.getFarm();
-        int total = 0;
-        foreach (var pair in farm.terrainFeatures.Pairs.Where(p => p.Value is FruitTree).ToList())
-        {
-            var tree = (FruitTree)pair.Value;
-            if (tree.fruit.Count == 0)
-                continue;
-            var walk = new StepResult();
-            yield return Steps.WalkAdjacent(Steps.ToPoint(pair.Key), walk);
-            if (!walk.Ok)
-                continue;
-            tree.performUseAction(pair.Key);
-            yield return Wait.Seconds(1.5);
-            for (int i = tree.fruit.Count - 1; i >= 0; i--)
-            {
-                var fruit = tree.fruit[i];
-                if (!Me.addItemToInventoryBool(fruit))
-                    throw new JobFailed($"picked {total} fruit but your inventory is full");
-                tree.fruit.RemoveAt(i);
-                total++;
-            }
-        }
-        job.Summary = total == 0 ? "No ripe fruit on the fruit trees right now." : $"Picked {total} fruit from the fruit trees.";
-    }
-
-    public static SObject? FindSeeds(string? name)
-    {
-        var seeds = Me.Items.OfType<SObject>().Where(o => o.Category == SObject.SeedsCategory).ToList();
-        if (name == null)
-            return seeds.FirstOrDefault();
-        return seeds.FirstOrDefault(s => s.DisplayName.Equals(name, StringComparison.OrdinalIgnoreCase))
-            ?? seeds.FirstOrDefault(s => s.DisplayName.Contains(name, StringComparison.OrdinalIgnoreCase)
-                || name.Contains(s.DisplayName.Replace(" Seeds", ""), StringComparison.OrdinalIgnoreCase));
-    }
-
-    // ================================================================ water
-
-    public static IEnumerator Water(Job job) => Water(job, int.MaxValue);
-
-    public static IEnumerator Water(Job job, int max)
-    {
-        var can = Steps.FindTool<WateringCan>() ?? throw new JobFailed("you don't have a watering can");
-        var farm = Game1.getFarm();
-        // Check before walking all the way to the farm for nothing.
-        if (farm.IsRainingHere())
-        {
-            job.Summary = "It's raining, so the crops are watered already.";
+            job.Summary = "You're already in bed, waiting for the others to sleep.";
             yield break;
         }
-        if (!farm.terrainFeatures.Values.OfType<HoeDirt>().Any(d => d.needsWatering() && !d.isWatered()))
-        {
-            job.Summary = "All crops are already watered.";
-            yield break;
-        }
-        yield return EnsureOnFarm();
-
-        var skipped = new HashSet<Vector2>();
-        int watered = 0;
-        while (watered < max)
-        {
-            var claims = PlayerState.OthersClaims();
-            var here = Me.TilePoint;
-            Vector2? next = farm.terrainFeatures.Pairs
-                .Where(p => p.Value is HoeDirt d && d.needsWatering() && !d.isWatered() && !skipped.Contains(p.Key) && !claims.Contains(p.Key))
-                .Select(p => p.Key)
-                .OrderBy(t => Steps.Dist(Steps.ToPoint(t), here))
-                .Cast<Vector2?>()
-                .FirstOrDefault();
-            if (next == null)
-                break;
-
-            if (can.WaterLeft <= 0)
-            {
-                var refill = new StepResult();
-                yield return Refill(can, refill);
-                if (!refill.Ok)
-                    throw new JobFailed(refill.Error ?? "couldn't refill the watering can");
-            }
-
-            var tile = next.Value;
-            PlayerState.SetClaim(tile);
-            var walk = new StepResult();
-            yield return Steps.WalkAdjacent(Steps.ToPoint(tile), walk);
-            if (!walk.Ok)
-            {
-                skipped.Add(tile);
-                continue;
-            }
-            yield return Steps.Swing(can);
-            if (farm.terrainFeatures.TryGetValue(tile, out var tf) && tf is HoeDirt d2 && d2.isWatered())
-            {
-                watered++;
-                job.Summary = $"Watered {watered} crops.";
-            }
-            else
-            {
-                skipped.Add(tile);
-            }
-        }
-        int left = farm.terrainFeatures.Values.OfType<HoeDirt>().Count(d => d.needsWatering() && !d.isWatered());
-        job.Summary = watered == 0 && left == 0 ? "All crops are already watered."
-            : left == 0 ? $"Watered {watered} crops; all crops are now watered."
-            : $"Watered {watered} crops; {left} still need water.";
-    }
-
-    public static IEnumerator Refill(WateringCan can, StepResult r)
-    {
-        var loc = Me.currentLocation;
-        var here = Me.TilePoint;
-        var water = WaterTiles(loc).OrderBy(t => Steps.Dist(t, here)).Take(8).ToList();
-        foreach (var w in water)
-        {
-            var walk = new StepResult();
-            yield return Steps.WalkAdjacent(w, walk);
-            if (!walk.Ok)
-                continue;
-            yield return Steps.Swing(can);
-            if (can.WaterLeft > 0)
-            {
-                r.Ok = true;
-                yield break;
-            }
-        }
-        r.Fail("no reachable water to refill the watering can");
-    }
-
-    private static readonly Dictionary<string, List<Point>> waterCache = new();
-
-    private static List<Point> WaterTiles(GameLocation loc)
-    {
-        if (waterCache.TryGetValue(loc.NameOrUniqueName, out var cached))
-            return cached;
-        var list = new List<Point>();
-        var layer = loc.map.Layers[0];
-        for (int x = 0; x < layer.LayerWidth; x++)
-        for (int y = 0; y < layer.LayerHeight; y++)
-        {
-            if (!loc.CanRefillWateringCanOnTile(x, y))
-                continue;
-            // Only shore tiles are useful.
-            if (Steps.IsStandable(loc, new Point(x + 1, y)) || Steps.IsStandable(loc, new Point(x - 1, y))
-                || Steps.IsStandable(loc, new Point(x, y + 1)) || Steps.IsStandable(loc, new Point(x, y - 1)))
-                list.Add(new Point(x, y));
-        }
-        waterCache[loc.NameOrUniqueName] = list;
-        return list;
-    }
-
-    // ================================================================ harvest
-
-    public static IEnumerator Harvest(Job job) => Harvest(job, int.MaxValue);
-
-    public static IEnumerator Harvest(Job job, int max)
-    {
-        var farm = Game1.getFarm();
-        if (!farm.terrainFeatures.Values.OfType<HoeDirt>().Any(d => d.readyForHarvest()))
-        {
-            job.Summary = "Nothing is ready to harvest on the farm.";
-            yield break;
-        }
-        yield return EnsureOnFarm();
-        var skipped = new HashSet<Vector2>();
-        var counts = new Dictionary<string, int>();
-
-        while (counts.Values.Sum() < max)
-        {
-            var claims = PlayerState.OthersClaims();
-            var here = Me.TilePoint;
-            Vector2? next = farm.terrainFeatures.Pairs
-                .Where(p => p.Value is HoeDirt d && d.readyForHarvest() && !skipped.Contains(p.Key) && !claims.Contains(p.Key))
-                .Select(p => p.Key)
-                .OrderBy(t => Steps.Dist(Steps.ToPoint(t), here))
-                .Cast<Vector2?>()
-                .FirstOrDefault();
-            if (next == null)
-                break;
-            if (Me.freeSpotsInInventory() == 0)
-                throw new JobFailed("your inventory is full - ship something first");
-
-            var tile = next.Value;
-            PlayerState.SetClaim(tile);
-            var walk = new StepResult();
-            yield return Steps.WalkAdjacent(Steps.ToPoint(tile), walk);
-            if (!walk.Ok || !farm.terrainFeatures.TryGetValue(tile, out var tf) || tf is not HoeDirt dirt || dirt.crop == null)
-            {
-                skipped.Add(tile);
-                continue;
-            }
-
-            string name = Observer.CropName(dirt.crop);
-            if (dirt.crop.GetHarvestMethod() == HarvestMethod.Scythe && Steps.FindScythe() is { } scythe)
-                Steps.Equip(scythe);
-            dirt.performUseAction(tile);
-            yield return Wait.Ticks(30);
-
-            if (!dirt.readyForHarvest() || dirt.crop == null)
-            {
-                counts[name] = counts.GetValueOrDefault(name) + 1;
-                job.Summary = "Harvested " + string.Join(", ", counts.Select(c => $"{c.Value} {c.Key}"));
-            }
-            else
-            {
-                skipped.Add(tile);
-            }
-        }
-        if (counts.Count == 0)
-            job.Summary = "Nothing is ready to harvest.";
-        else
-            job.Summary += ".";
-    }
-
-    // ================================================================ scythe
-
-    /// <summary>Cut grass on the farm with the scythe to collect hay into the silo.</summary>
-    public static IEnumerator CutGrass(Job job, int count)
-    {
-        var scythe = Steps.FindScythe() ?? throw new JobFailed("you don't have a scythe");
-        var farm = Game1.getFarm();
-        int capacity = farm.GetHayCapacity();
-        int hayAtStart = farm.piecesOfHay.Value;
-        if (capacity == 0)
-            throw new JobFailed("you don't have a silo yet - build one with `build silo`, or cutting grass gives no hay");
-        if (hayAtStart >= capacity)
-            throw new JobFailed($"the silo is already full ({hayAtStart}/{capacity}) - build another silo or feed the animals, or hay cut now would be wasted");
-        if (farm.IsWinterHere())
-            throw new JobFailed("it's winter - the grass is gone, so there's no hay to cut; buy hay from Marnie instead");
-        yield return EnsureOnFarm();
-
-        var skipped = new HashSet<Vector2>();
-        int cut = 0;
-        while (cut < count)
-        {
-            var claims = PlayerState.OthersClaims();
-            var here = Me.TilePoint;
-            Vector2? next = farm.terrainFeatures.Pairs
-                .Where(p => p.Value is Grass && !skipped.Contains(p.Key) && !claims.Contains(p.Key))
-                .Select(p => p.Key)
-                .OrderBy(t => Steps.Dist(Steps.ToPoint(t), here))
-                .Cast<Vector2?>()
-                .FirstOrDefault();
-            if (next == null)
-                break;
-
-            var tile = next.Value;
-            PlayerState.SetClaim(tile);
-            var walk = new StepResult();
-            yield return Steps.WalkAdjacent(Steps.ToPoint(tile), walk);
-            if (!walk.Ok)
-            {
-                skipped.Add(tile);
-                continue;
-            }
-            // A grass patch needs a few swings; hay drops when its last weed is cut.
-            for (int swings = 0; swings < 8 && farm.terrainFeatures.TryGetValue(tile, out var tf) && tf is Grass; swings++)
-                yield return Steps.Swing(scythe);
-
-            if (!farm.terrainFeatures.ContainsKey(tile))
-            {
-                cut++;
-                job.Summary = $"Cut {cut} of {count} grass.";
-            }
-            else
-            {
-                skipped.Add(tile);
-            }
-            if (farm.piecesOfHay.Value >= capacity)
-                break; // the silo is full now; the rest would be wasted
-        }
-
-        int hay = farm.piecesOfHay.Value - hayAtStart;
-        bool full = farm.piecesOfHay.Value >= capacity;
-        job.Summary = cut == 0
-            ? $"There's no grass left to cut (hay {farm.piecesOfHay.Value}/{capacity}); let it grow after rain or buy hay from Marnie."
-            : $"Cut {cut} grass and stored {hay} hay in the silo ({farm.piecesOfHay.Value}/{capacity})."
-                + (full ? " The silo is full now - build another one or feed the animals." : "");
-    }
-
-    // ================================================================ ship
-
-    public static IEnumerator Ship(Job job, string? itemName)
-    {
-        var items = Me.Items.Where(i => i != null && IsShippable(i, itemName)).ToList();
-        if (itemName != null && items.FirstOrDefault(i => CommunityCenterJobs.IsNeeded(i)) is { } needed)
-            throw new JobFailed($"{needed.DisplayName} is still needed for a Community Center bundle - donate it instead");
-        // A bulk ship should never throw away the last copy of something the Junimos still want.
-        items = items.Where(i => !CommunityCenterJobs.IsNeeded(i)).ToList();
-        if (items.Count == 0)
-            throw new JobFailed(itemName == null ? "you have no crops or forage to ship" : $"you have no '{itemName}'");
-
-        var farm = Game1.getFarm();
-        // An open menu (chest/inventory) blocks movement, but the actual shipping (farm.shipItem) is
-        // just adding to the bin's list, so skip the walk and let the agent free up backpack space.
-        if (Game1.activeClickableMenu == null)
-        {
-            yield return EnsureOnFarm();
-            var bin = farm.buildings.OfType<ShippingBin>().FirstOrDefault() ?? throw new JobFailed("there's no shipping bin");
-            var r = new StepResult();
-            yield return Steps.WalkTo(new Point(bin.tileX.Value, bin.tileY.Value + 1), r, Steps.Up);
-            if (!r.Ok)
-                yield return Steps.WalkTo(new Point(bin.tileX.Value + 1, bin.tileY.Value + 1), r, Steps.Up);
-            if (!r.Ok)
-                throw new JobFailed("can't reach the shipping bin");
-        }
-
-        int total = 0, value = 0;
-        var names = new List<string>();
-        foreach (var item in Me.Items.Where(i => i != null && IsShippable(i, itemName)).ToList())
-        {
-            total += item.Stack;
-            value += item.sellToStorePrice() * item.Stack;
-            names.Add($"{item.Stack} {item.DisplayName}");
-            farm.shipItem(item, Me);
-            yield return Wait.Ticks(15);
-        }
-        job.Summary = $"Shipped {string.Join(", ", names)} (worth about {value}g, paid out overnight).";
-    }
-
-    private static bool IsShippable(Item i, string? name)
-    {
-        if (name != null)
-            return i.DisplayName.Contains(name, StringComparison.OrdinalIgnoreCase) && i.canBeShipped();
-        // Crops, forage (incl. beach finds like clams, which count as fish), fish and animal products;
-        // not materials (wood, stone, ...) that are needed for crafting.
-        return i is SObject o && i.canBeShipped() && (o.isForage() || o.Category is SObject.VegetableCategory
-            or SObject.FruitsCategory or SObject.flowersCategory or SObject.GreensCategory or SObject.FishCategory
-            or SObject.EggCategory or SObject.MilkCategory or SObject.artisanGoodsCategory or SObject.sellAtPierresAndMarnies);
-    }
-
-    // ================================================================ buy
-
-    public static IEnumerator Buy(Job job, string itemName, int count)
-    {
-        count = Math.Clamp(count, 1, 99);
-        // Which shop sells it? (Pierre's seeds, Willy's rods, Marnie's hay, the Saloon's cooked dishes, ...)
-        var shops = new[]
-        {
-            (id: "SeedShop", owner: "Pierre", counter: "Buy General", name: "Pierre's"),
-            (id: "FishShop", owner: "Willy", counter: "Buy Fish", name: "Willy's"),
-            (id: "AnimalShop", owner: "Marnie", counter: "Buy", name: "Marnie's Ranch"),
-            (id: "Saloon", owner: "Gus", counter: "Buy", name: "the Saloon"),
-            (id: "Sandy", owner: "Sandy", counter: "Buy", name: "the Oasis"),
-            (id: "Sewer", owner: "Krobus", counter: "Buy", name: "Krobus' shop"),
-            (id: "Carpenter", owner: "Robin", counter: "Buy", name: "the Carpenter's Shop"),
-            (id: "Blacksmith", owner: "Clint", counter: "Buy", name: "the Blacksmith"),
-        };
-        KeyValuePair<ISalable, ItemStockInformation> match = default;
-        var shopInfo = shops[0];
-        foreach (var s in shops)
-        {
-            var stockHere = ShopBuilder.GetShopStock(s.id);
-            match = stockHere.FirstOrDefault(x => x.Key.DisplayName.Equals(itemName, StringComparison.OrdinalIgnoreCase)
-                && x.Key is not FarmAnimal);
-            if (match.Key == null)
-                match = stockHere.FirstOrDefault(x => x.Key.DisplayName.Contains(itemName, StringComparison.OrdinalIgnoreCase)
-                    && x.Key is not FarmAnimal);
-            if (match.Key != null)
-            {
-                shopInfo = s;
-                break;
-            }
-        }
-        if (match.Key == null)
-            throw new JobFailed($"no shop sells '{itemName}' today");
-
+        var home = Utility.getHomeOfFarmer(Me);
         var r = new StepResult();
-        yield return Steps.GoToLocation(shopInfo.id, r);
+        yield return Steps.GoToLocation(home.NameOrUniqueName, r);
         if (!r.Ok)
-            throw new JobFailed(r.Error ?? $"couldn't get to {shopInfo.name}");
+            throw new JobFailed(r.Error ?? "couldn't get home");
 
-        var shop = Me.currentLocation;
-        var counter = FindActionTile(shop, shopInfo.counter)
-            ?? FindActionTile(shop, "Buy")
-            ?? FindActionTile(shop, $"OpenShop {shopInfo.id}");
-        if (counter != null)
+        // Walking onto the bed pops up the vanilla "Go to sleep for the night?" question; leave it
+        // on screen - the agent answers it (answer 1 = Yes), like a player clicking.
+        var bed = home.GetPlayerBedSpot();
+        yield return Steps.WalkTo(bed, new StepResult());
+        for (int i = 0; i < 300; i++)
         {
-            var stand = Navigation.ClosestStandable(shop, new Point(counter.Value.X, counter.Value.Y + 1), 2);
-            if (stand != null)
-                yield return Steps.WalkTo(stand.Value, new StepResult(), Steps.Up);
+            if (Game1.activeClickableMenu is StardewValley.Menus.DialogueBox { isQuestion: true } box && Me.currentLocation.lastQuestionKey == "Sleep")
+            {
+                job.Summary = "The 'go to sleep?' prompt is up - answer it (answer or click Yes to sleep).";
+                yield break;
+            }
+            if (Game1.activeClickableMenu == null && i == 60)
+            {
+                // No question appeared (e.g. we were already standing on the bed): nudge the bed action.
+                Me.currentLocation.checkAction(new xTile.Dimensions.Location(bed.X, bed.Y), Game1.viewport, Me);
+            }
+            yield return null;
         }
-
-        if (shop.getCharacterFromName(shopInfo.owner) == null)
-            throw new JobFailed($"{shopInfo.owner} isn't at the counter (shops are open about 9am-5pm)");
-
-        var salable = match.Key;
-        int price = match.Value.Price;
-        count = Math.Min(count, match.Value.Stock);
-        int affordable = price > 0 ? Me.Money / price : count;
-        if (affordable <= 0)
-            throw new JobFailed($"{salable.DisplayName} costs {price}g but you only have {Me.Money}g");
-        count = Math.Min(count, affordable);
-
-        var item = ItemRegistry.Create(salable.QualifiedItemId, count);
-        if (!Me.couldInventoryAcceptThisItem(item))
-            throw new JobFailed("your inventory is full");
-        Me.Money -= price * count;
-        Me.addItemToInventoryBool(item);
-        Game1.playSound("purchaseClick");
-        job.Summary = $"Bought {count} {salable.DisplayName} for {price * count}g. Money left: {Me.Money}g.";
+        throw new JobFailed("got to the bed, but the sleep prompt didn't come up");
     }
+
+    // ================================================================ eat
+
+    /// <summary>Eat a food from the inventory (like a player selecting it and eating it).</summary>
+    public static IEnumerator Eat(Job job, string? itemName)
+    {
+        var food = Me.Items.OfType<SObject>()
+            .Where(o => o.Edibility > 0 && (itemName == null || o.DisplayName.Contains(itemName, StringComparison.OrdinalIgnoreCase)))
+            .OrderBy(o => o.sellToStorePrice())
+            .FirstOrDefault() ?? throw new JobFailed(itemName == null ? "you have nothing edible" : $"you have no edible '{itemName}'");
+
+        float before = Me.Stamina;
+        Steps.Equip(food);
+        yield return null;
+        Me.mostRecentlyGrabbedItem = food;
+        Me.eatHeldObject();
+        yield return Wait.Seconds(3);
+        job.Summary = $"Ate {food.DisplayName}. Energy {(int)before} -> {(int)Me.Stamina}.";
+    }
+
+    // ================================================================ helpers
 
     public static Point? FindActionTile(GameLocation loc, string actionPrefix, bool exact = false)
     {
@@ -748,154 +180,6 @@ internal static class FarmJobs
         }
         return null;
     }
-
-    /// <summary>What a named shop sells today (for the check_shop action).</summary>
-    public static List<string> ShopStock(string? target)
-    {
-        var shops = new[]
-        {
-            (key: "pierre", id: "SeedShop", name: "Pierre"),
-            (key: "willy", id: "FishShop", name: "Willy"),
-            (key: "marnie", id: "AnimalShop", name: "Marnie"),
-            (key: "saloon", id: "Saloon", name: "the Saloon"),
-            (key: "sandy", id: "Sandy", name: "Sandy"),
-            (key: "krobus", id: "Sewer", name: "Krobus"),
-            (key: "robin", id: "Carpenter", name: "Robin"),
-            (key: "clint", id: "Blacksmith", name: "Clint"),
-        };
-        var shop = target == null
-            ? shops[0]
-            : shops.FirstOrDefault(s => s.key.Equals(target, StringComparison.OrdinalIgnoreCase)
-                || s.name.Equals(target, StringComparison.OrdinalIgnoreCase));
-        if (shop.id == null)
-            return new List<string> { $"unknown shop '{target}'. Try Pierre, Willy, Marnie, Saloon, Sandy, Krobus, Robin or Clint" };
-        try
-        {
-            return ShopBuilder.GetShopStock(shop.id)
-                .Where(x => x.Key is SObject or Tool)
-                .Select(x => $"{x.Key.DisplayName} ({x.Value.Price}g)")
-                .Distinct()
-                .Take(80)
-                .ToList();
-        }
-        catch (Exception)
-        {
-            return new List<string> { $"couldn't read {shop.name}'s stock right now" };
-        }
-    }
-
-    /// <summary>Seeds Pierre sells today, for the observation.</summary>
-    public static List<string> SeedsForSale()
-    {
-        try
-        {
-            return ShopBuilder.GetShopStock("SeedShop")
-                .Where(s => s.Key is SObject { Category: SObject.SeedsCategory })
-                .Select(s => $"{s.Key.DisplayName} ({s.Value.Price}g)")
-                .ToList();
-        }
-        catch (Exception)
-        {
-            return new List<string>();
-        }
-    }
-
-    // ================================================================ repairs
-
-    /// <summary>Repair the broken bridge on the beach (300 wood) so the right side is reachable.</summary>
-    public static IEnumerator Repair(Job job, string target)
-    {
-        if (!target.Contains("bridge", StringComparison.OrdinalIgnoreCase))
-            throw new JobFailed("only the beach bridge can be repaired right now (repair target=bridge)");
-        var r = new StepResult();
-        yield return Steps.GoToLocation("Beach", r);
-        if (!r.Ok)
-            throw new JobFailed(r.Error ?? "couldn't get to the beach");
-        var beach = (StardewValley.Locations.Beach)Me.currentLocation;
-        if (beach.bridgeFixed.Value)
-        {
-            job.Summary = "The beach bridge is already repaired.";
-            yield break;
-        }
-        if (!Me.Items.ContainsId("(O)388", 300))
-            throw new JobFailed($"you need 300 Wood to repair the beach bridge, but have {Me.Items.CountId("(O)388")}");
-        Me.Items.ReduceId("(O)388", 300);
-        beach.bridgeFixed.Value = true;
-        StardewValley.Locations.Beach.fixBridge(beach);
-        Game1.playSound("axchop");
-        job.Summary = "Repaired the beach bridge; the right side of the beach is now reachable.";
-    }
-
-    // ================================================================ eat
-
-    public static IEnumerator Eat(Job job, string? itemName)
-    {
-        var food = Me.Items.OfType<SObject>()
-            .Where(o => o.Edibility > 0 && (itemName == null || o.DisplayName.Contains(itemName, StringComparison.OrdinalIgnoreCase)))
-            .OrderBy(o => o.sellToStorePrice())
-            .FirstOrDefault() ?? throw new JobFailed(itemName == null ? "you have nothing edible" : $"you have no edible '{itemName}'");
-
-        float before = Me.Stamina;
-        Steps.Equip(food);
-        yield return null;
-        Me.mostRecentlyGrabbedItem = food;
-        Me.eatHeldObject();
-        yield return Wait.Seconds(3);
-        job.Summary = $"Ate {food.DisplayName}. Energy {(int)before} -> {(int)Me.Stamina}.";
-    }
-
-    // ================================================================ sleep
-
-    public static IEnumerator Sleep(Job job)
-    {
-        // The agent asked to sleep while the day-end ready check is up. Nothing to do: confirm()
-        // here (like MenuJanitor/`answer` used to) drops this machine out of the coordinated
-        // day-end handshake and deadlocks the whole co-op at 2 AM. The dialog confirms itself
-        // once every farmer is ready; just report the wait.
-        if (Game1.activeClickableMenu is ReadyCheckDialog)
-        {
-            job.Summary = "The day is ending (ready check) - waiting for the other players; it rolls over on its own.";
-            yield break;
-        }
-        if (Me.isInBed.Value && Me.timeWentToBed.Value != 0)
-        {
-            job.Summary = "You're already in bed, waiting for the others to sleep.";
-            yield break;
-        }
-        var home = Utility.getHomeOfFarmer(Me);
-        var r = new StepResult();
-        yield return Steps.GoToLocation(home.NameOrUniqueName, r);
-        if (!r.Ok)
-            throw new JobFailed(r.Error ?? "couldn't get home");
-
-        // Walking onto the bed pops up the vanilla "Go to sleep for the night?" question; answer it
-        // like a click on "Yes" would, so the normal (multiplayer-aware) sleep flow runs.
-        var bed = home.GetPlayerBedSpot();
-        yield return Steps.WalkTo(bed, new StepResult());
-        for (int i = 0; i < 300; i++)
-        {
-            if (Game1.activeClickableMenu is DialogueBox { isQuestion: true } box && Me.currentLocation.lastQuestionKey == "Sleep")
-            {
-                int yes = Array.FindIndex(box.responses, r => r.responseKey == "Yes");
-                if (yes < 0)
-                    throw new JobFailed("couldn't answer the sleep question");
-                box.safetyTimer = 0;
-                box.selectedResponse = yes;
-                box.receiveLeftClick(0, 0);
-                job.Summary = "You're in bed. The day ends once everyone is asleep.";
-                yield break;
-            }
-            if (Game1.activeClickableMenu == null && i == 60)
-            {
-                // No question appeared (e.g. we were already standing on the bed): nudge the bed action.
-                Me.currentLocation.checkAction(new xTile.Dimensions.Location(bed.X, bed.Y), Game1.viewport, Me);
-            }
-            yield return null;
-        }
-        throw new JobFailed("got to the bed, but couldn't go to sleep");
-    }
-
-    // ================================================================ helpers
 
     private static IEnumerator EnsureOnFarm()
     {

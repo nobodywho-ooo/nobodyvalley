@@ -25,7 +25,7 @@ internal static class MapView
     public const string Legend =
         "@ you, A-Z other farmers, & villager, ! monster, T tree, t sapling, X big stump/boulder, x dead crop, s stone, O ore, " +
         "w weed, k twig, f forage, g grass, , tilled, ; tilled+watered, p crop (needs water), P crop (watered), * ripe crop, " +
-        "~ water, = path, D door, L ladder down, U ladder up, B shipping bin, C chest, o object, # wall/blocked, . ground";
+        "~ water, = path, D door, L ladder down, U ladder up, B shipping bin, C chest, R shop counter, o object, # wall/blocked, . ground";
 
     public static JObject Render(Farmer me)
     {
@@ -105,6 +105,11 @@ internal static class MapView
         var v = new Vector2(p.X, p.Y);
         if (doors.ContainsKey(p))
             return 'D';
+        if (ShopCounterTiles(loc).Contains(p))
+        {
+            note("shop counters (use x,y to open it)", p);
+            return 'R';
+        }
         if (loc is MineShaft or Mine)
         {
             int idx = loc.getTileIndexAt(p, "Buildings");
@@ -175,6 +180,32 @@ internal static class MapView
         if (!Jobs.Steps.IsStandable(loc, p))
             return '#';
         return loc.doesTileHaveProperty(p.X, p.Y, "Type", "Back")?.ToLowerInvariant() == "stone" ? '=' : '.';
+    }
+
+    /// <summary>Tiles with a shop-counter Action (Pierre's, Willy's, Marnie's, ...): use x,y on them.</summary>
+    private static HashSet<Point>? countersCache;
+    private static GameLocation? countersCacheLoc;
+    private static HashSet<Point> ShopCounterTiles(GameLocation loc)
+    {
+        if (ReferenceEquals(countersCacheLoc, loc) && countersCache != null)
+            return countersCache;
+        var result = new HashSet<Point>();
+        var layer = loc.map.GetLayer("Buildings");
+        if (layer != null)
+        {
+            for (int x = 0; x < layer.LayerWidth; x++)
+            for (int y = 0; y < layer.LayerHeight; y++)
+            {
+                var action = loc.doesTileHaveProperty(x, y, "Action", "Buildings");
+                if (action != null && (action.StartsWith("Buy", StringComparison.OrdinalIgnoreCase)
+                    || action.StartsWith("OpenShop", StringComparison.OrdinalIgnoreCase)
+                    || action.StartsWith("Shop", StringComparison.OrdinalIgnoreCase)))
+                    result.Add(new Point(x, y));
+            }
+        }
+        countersCacheLoc = loc;
+        countersCache = result;
+        return result;
     }
 
     /// <summary>Fill the nearest-first lists with things outside the drawn area too (within ~30 tiles).</summary>

@@ -10,115 +10,69 @@ Community Center: finishing all of its Junimo bundles is the main goal that comp
 Personality: {personality}.
 Your job: {job}.
 
-Each turn you see a map of the area around you (absolute map coordinates) and points of interest on that map.
+You are given the game screen, a mouse and a keyboard: you act exactly like a player sitting at the game.
+The mod only moves your farmer and clicks what you tell it to - it never plays for you. Crops, shops,
+chests, bundles and machines all work like the real game, including the menus and their buttons.
+
+Each turn you see: the map around you (absolute coordinates), your inventory, and any open menu.
 Map legend: {legend}
 
 Reply each turn with minimal JSON: {{"thought":"a few words","actions":[...]}}.
 "actions": up to 5, done in order. Each is {{"do":...}} plus only the fields it needs.
-x,y is an absolute tile on the map; each work action names the exact tile it acts on.
-There is no count/n for chop, mine, till, plant, water or harvest - use one action per tile.
-Limits: thought <= 80 characters; say text <= 100 characters; target and item names <= 40 characters;
-x and y are map coordinates from 0 to 200; n (only where it is listed) is 1-25; at most 5 actions per turn.
-  say text (a public message, sent in the game chat and seen by the other farmers; only to coordinate or answer)
-  answer n (choose a 1-based option in an on-screen question; no n = continue/close any message or open menu)
-  check_community_center (show bundle progress and what is still missing)
-  check_chest (show what is in the shared chests)
-  open_backpack (show your inventory)
-  start_crafting (show known recipes and ingredients)
-  check_shop target (show what Pierre/Willy/Marnie/... sells; no target = Pierre)
+Limits: thought <= 80 characters; say text <= 100 characters; target/item/element names <= 40 characters;
+x and y are map coordinates from 0 to 200; n is 1-25; at most 5 actions per turn.
+  say text (the public game chat - seen by the other farmers; only to coordinate or answer)
+  answer n (choose a 1-based option in an on-screen question; no n = continue/close any pop-up)
+  click "element" (click that named button in the open menu; n times if you give n, e.g. buy 5)
+  close (close the open menu)
   emote ({emotes})
-  go_to target (travel to another area: Farm, home, Pierre's, Willy's, Saloon, Beach, Town, Forest, Mountain, Mines; or a person)
-  walk x,y (walk straight to that one tile; you get there by yourself - never do one walk per step)
-  use x,y (door, person, forage item, ...)
-  chop x,y (use the axe there: trees, twigs, stumps, weeds)
-  mine x,y (use the pickaxe there: stones, ore, boulders; also flattens empty tilled soil)
-  till x,y (use the hoe there: tills soil, cuts weeds on it; grass/stones/twigs block it - clear them first)
-  plant item(seed) x,y
-  water x,y
-  harvest x,y
-  scythe x,y (use the scythe there: grass, weeds, dead crops, wheat/fiber; hay goes into the silo) | scythe n (nearest n grass patches for hay)
-  ship item (none = all crops & forage; paid overnight; keeps bundle items)
-  donate item (optional; none = every bundle item you carry) at the Community Center
-  buy item n (any shop: Pierre, Willy, Marnie, Saloon, Oasis, Krobus, Robin, Clint)
-  cook item (known recipes; e.g. Maki Roll, Fried Egg)
-  operate x,y (collect from or load a machine; no x,y = nearest machine)
-  build item (Coop, Barn, Big Coop, Big Barn, Deluxe Coop, Deluxe Barn, Silo; needs materials)
-  buy_animal item (Chicken, Cow, Goat, Duck, Sheep, Rabbit, Pig at Marnie's)
-  upgrade item (Axe, Pickaxe, Hoe or Watering Can at Clint's; 2 days)
-  care_animals (pet/feed animals and collect milk, eggs, wool, ...)
-  plant_tree item (fruit-tree sapling; needs open farm ground)
-  fruit (shake ripe fruit off the fruit trees)
-  repair target (bridge; 300 wood for the beach bridge)
-  eat item
-  craft item (chests/scarecrows get placed by the field)
-  store item (shared chest; if a chest menu is open, stores into that chest)
-  take item n (shared chest; if a menu is open, takes from that menu/chest)
-  forage target(place or none = here) n
+  go_to target (travel somewhere: Farm, Pierre's, Willy's, Marnie's, Saloon, Beach, Town, Forest, Mountain, Mines, home; or a person)
+  walk x,y (walk straight to that tile in one action)
+  use x,y (right-click that tile: harvest ripe crops, pick up forage, open chests/shipping bin/machines/doors, talk to villagers, click a shop counter)
+  place x,y (left-click with the item in your hand, to plant/place it; equip it first)
+  equip item (select an inventory item into your hand; "equip nothing" empties your hand)
+  axe x,y | pickaxe x,y | hoe x,y | watering_can x,y | scythe x,y (swing that tool once at that tile, like a player clicking)
+  check_community_center (read the bundle progress; free)
+  eat item (eat that food; restores energy)
   fish target(place or none = here) n
-  descend (mines: ladder down)
-  talk_to target(villager) item(optional gift)
-  sleep (ends your day)
-  stop (cancel plan; first only)
-Example: {{"thought":"Clearing the stone next to the field.","actions":[{{"do":"mine","x":62,"y":17}},{{"do":"till","x":64,"y":18}}]}}
+  descend (in the mines: take the ladder down)
+  sleep (go home and to bed; answer the sleep prompt)
+  stop (cancel the current plan; first action only)
 
-Tips:
-- Shops are open about 9am-5pm: Pierre closed Wednesdays, Robin Tuesdays (and after 4pm Fridays), Marnie Mondays &
-  Tuesdays, Willy Saturdays (unless it rains), Clint until 4pm, the Saloon from noon. Festival days lock all shops and homes.
-- Money is shared; inventories aren't: you can only plant your own seeds; share via the shared chests on the farm.
-- Crops need water every day (rain does it for you). Plant with enough days left in the season: crops wither on the 1st
-  of the next season except multi-season ones (Corn, Wheat, Sunflower, Ancient Fruit, Coffee).
-- A Scarecrow (50 wood, 1 coal, 20 fiber, Farming 1) protects about 8 tiles around it; crows only eat when more than
-  15 crops grow with no scarecrow in range (crops grown from Wild Seeds are never eaten).
-- Basic Fertilizer (2 Sap, Farming 1) raises crop quality - what the Quality Crops bundle wants (5 gold each of
-  Parsnip, Melon, Pumpkin, Corn).
-- Multi-harvest crops pay off best: Blueberry, Hot Pepper, Corn, Cranberries, Eggplant (Strawberry in spring).
-- Forage is free money - pick it up as you pass by.
-- Sleep by midnight (full energy the next day; later = less). After 2am you pass out and lose up to 1,000g. Lying in
-  bed (multiplayer) or the Spa restores energy; cooked meals restore far more than raw forage.
-- Community Center: use check_community_center when you need to know which bundle items are missing, keep those items
-  instead of shipping them, and donate when you carry any. Completed bundles give immediate rewards, and finishing a
-  room unlocks valuable things:
-  - Pantry: the Greenhouse (grow anything year-round). Crafts Room: the Quarry. Boiler Room: minecarts. Fish Tank: the
-    beach boulder removed + a copper pan. Bulletin Board: friendship. Vault (42,500g total): the bus to the Desert
-    (needed for Coconut, Cactus Fruit, Sandfish, ...).
-  - The six rooms: Pantry (crops, animal & artisan goods), Crafts Room (forage, wood/stone/hardwood), Fish Tank (fish,
-    crab-pot catches), Boiler Room (bars, minerals, monster drops), Bulletin Board (cooking, dye, research, fodder,
-    enchanter goods), Vault (money).
-- Missing crops: buy their seeds in season from Pierre (check_shop Pierre shows today's seeds). Missing forage/fish/
-  minerals: go collect them. Missing animal/artisan goods: build a Coop/Barn, buy animals from Marnie,
-  care_animals every morning, and craft machines - start_crafting shows ingredients (Furnace: 25 stone, 20 copper ore;
-  Preserves Jar; Keg; Cheese Press; Mayonnaise Machine; Loom; Tapper). Fruit trees, tappers and fishing also fill
-  bundle slots.
-- Keep the animals' hay topped up in winter: `scythe n` cuts the farm's grass (visibly g on the map) and stores hay in
-  a silo (build one with Robin, 240 per silo). Grass only regrows in non-winter seasons; if the silo runs out in
-  winter, buy hay from Marnie. The observe's farm summary shows grass count and hay (hay stored/capacity).
-- Build before you buy: a Coop (4,000g, 300 wood, 100 stone) for chickens/ducks/rabbits, a Barn (6,000g, 350 wood,
-  150 stone) for cows/goats/sheep/pigs. Happy (petted and fed) animals give Large Milk/Eggs and better produce.
-- The Mines: 120 floors; break rocks to reveal the ladder down; reaching every 5th floor unlocks the elevator. Copper
-  on floors 2-39, iron from 41, gold from 81; Dust Sprites (floors 41-79) drop coal. Leave big stumps/boulders (X) -
-  they need upgraded tools.
-- Fishing: ocean fish at the Beach, lake fish in the Mountain lake, river fish along the Forest/Town rivers. Which
-  fish bite depends on season, weather and hour (e.g. Catfish only in spring/fall rain, Walleye on rainy fall nights,
-  Sturgeon in the mountain lake in summer or winter). Get a rod from Willy's if you don't own one.
-- Moving: walk x,y takes you straight to that tile in one action - you don't have to walk step by step, and you don't
-  need to name every tile in between. go_to target crosses to another area (or paths to a person) in one action; use it
-  instead of a chain of walks whenever the walk would be long. Walk to a forage item, door or NPC when you want to
-  interact with it, not just to move a few tiles.
-- An open menu (chest, backpack, or items that didn't fit) blocks everything. Read what it shows, take/store the
-  items you want, then answer to close it. Closing a full-bag menu loses what's left inside.
-- Each tool verb swings that tool at the tile: chop=axe (trees/twigs), mine=pickaxe (stones/ore), till=hoe (soil),
-  scythe=grass/weeds/dead crops. A swing does what the tool does there: chopping or mining a crop tile destroys that
-  crop (harvest x,y picks ripe ones instead; scythe cuts wheat/fiber). Mine also flattens empty tilled soil. Clear grass/weeds
-  anywhere: scythe cuts them.
-- A failed action cancels the rest of your plan: read the map before choosing tiles, walk only on passable ground
-  (~ is water, # is blocked), and use go_to for anywhere you can't see. Don't gift your tools, and don't repeat an
-  action that just failed - do something different.
-- Tell the others in chat what you are collecting, and summarize villager requests for them (e.g. "Pierre wants a
-  cauliflower"). Keep it short.
-- Use check_community_center/check_chest/open_backpack/start_crafting/check_shop when you need the information, not as
-  a checklist every turn. Craft only what's missing (one chest is enough for everyone). Keep the inventory lean: store
-  what you don't need right now in the shared chests; keep your tools, seeds and bundle items with you. Everyone must
+Menus are real Stardew menus: while one is open you can only click it (click/answer/close).
+Example: {{"thought":"Buy seeds, then plant.","actions":[{{"do":"click","element":"Parsnip Seeds","n":10}},{{"do":"close"}}]}}
+
+Tips - read the screen:
+- Shops (Pierre's, Willy's, Marnie's, the Saloon, ...): go_to the place, then use x,y on the counter.
+  The shop menu appears and its items are listed. click="<item name>" buys 1 (add n=5 for 5); clicking
+  one of YOUR items sells it to the shop if it buys that; click="next"/"prev" scrolls; close to leave.
+- Chests and the shipping bin: use x,y on them; the menu lists both sides. click="take X" takes X out,
+  click="store X" puts one in, close when done. The bin sells what you put in overnight.
+- Crops: till the soil (hoe x,y), plant seeds (equip them, then place x,y on tilled soil), water every
+  day (watering_can x,y - rain free), and use x,y on ready crops to harvest. Wheat and fiber are cut
+  with scythe x,y. Crops die at season change unless multi-season (Corn, Wheat, Sunflower, Ancient Fruit, Coffee).
+- Tools do what they do, no more: the axe cuts trees (several swings) and twigs; the pickaxe breaks
+  stones/ore and flattens empty tilled soil; the hoe tills soil (and cuts weeds on it); the scythe cuts
+  grass (hay goes to a silo if there's room), weeds and dead crops; a watering can waters soil.
+  Swinging a tool at a growing crop destroys it - that's the game, so don't.
+- Money is shared; inventories aren't: you can only plant your own seeds; put extra in the shared chests.
+- Forage lying around is free money: use x,y on it. Big stumps/boulders (X) need upgraded tools.
+- Shops are open about 9am-5pm (Pierre closed Wednesdays, Robin Tuesdays, Marnie Mondays/Tuesdays, Willy
+  Saturdays unless rain). Buy seeds in season; Plant with enough days left, or the crop withers.
+- Sleep by midnight (full energy next day; after 2am you pass out and lose up to 1,000g). Everyone must
   sleep for a new day to start.
+- Community Center: check_community_center shows what the bundles still need; keep those items (store
+  them in the shared chest), and put them in the bundles when the option appears in the Junimo hut menu.
+  Rooms reward: Pantry -> greenhouse, Crafts Room -> quarry, Boiler Room -> minecarts, Fish Tank -> beach
+  fix + copper pan, Bulletin Board -> friendship, Vault (42,500g) -> desert bus.
+- The Mines: 120 floors, the ladder is under rocks; every 5th floor unlocks the elevator. Copper floors
+  2-39, iron 41+, gold 81+. Monsters (the ! on the map) hurt you - leave or fight back with your sword.
+- Fishing: ocean at the Beach, lake at the Mountain, river in the Forest/Town; which fish depends on
+  the season, weather and hour. Willy sells rods.
+- A failed action stops your plan: read the map before choosing tiles, walk only on passable ground
+  (~ water, # blocked), and don't repeat an action that just failed - try something else.
+- Talk to villagers with use x,y; read their dialogue and answer it. Tell the other farmers in chat what
+  you're doing, briefly.
 """
 
 
@@ -144,7 +98,7 @@ def system_prompt(name: str, others: list[str], persona: str, emotes: list[str])
 MAP_LEGEND = (
     "@ you, A-Z other farmers, & villager, ! monster, T tree, t sapling, X big stump/boulder, x dead crop, s stone, O ore, "
     "w weed, k twig, f forage, g grass, , tilled, ; tilled+watered, p crop (needs water), P crop (watered), * ripe crop, "
-    "~ water, = path, D door, L ladder down, U ladder up, B shipping bin, C chest, o object, # wall/blocked, . ground"
+    "~ water, = path, D door, L ladder down, U ladder up, B shipping bin, C chest, R shop counter, o object, # wall/blocked, . ground"
 )
 
 # Recipes worth telling the agents about (the rest - paths, fences, ... - are just noise).
@@ -194,6 +148,9 @@ def format_observation(
         options = [str(o) for o in (screen_message.get("options") or []) if str(o).strip()]
         if options:
             status_lines.append("Options: " + "; ".join(f"{i + 1}) {o}" for i, o in enumerate(options)))
+            status_lines.append("Click through it: answer n picks an option.")
+        else:
+            status_lines.append("Click through it: answer (no n) continues/closes the message.")
         if status:
             status_lines.append(status)
         lines += status_lines
@@ -202,9 +159,13 @@ def format_observation(
     status_lines.append(energy)
     status_lines.append(inventory_line)
     if menu := obs.get("menu"):
-        # An open chest/inventory menu: what it holds and how to use it, so the blocking state stays
-        # visible even after the initial "On screen (menu)" event has aged out.
-        status_lines.append(menu)
+        # A real menu is up (shop/chest/shipping bin/level-up): the screen is the menu, click it.
+        status_lines.append("A menu is open - you can only click it: click=\"...\", answer n, or close.")
+        status_lines.append("Menu: " + menu)
+        if status:
+            status_lines.append(status)
+        lines += status_lines
+        return "\n".join(lines)
     if obs.get("farm", {}).get("animals"):
         status_lines.append(f"Animals: {', '.join(obs['farm']['animals'])}.")
     if fruit_trees := obs.get("farm", {}).get("fruit_trees"):
@@ -222,6 +183,7 @@ def format_observation(
         status_lines.append(status)
     lines += status_lines
     return "\n".join(lines)
+
 
 def merge_chests(chests: list[str]) -> str:
     """The chests' contents added up ("Wood x35, Sap x2"; empty chests are "nothing")."""

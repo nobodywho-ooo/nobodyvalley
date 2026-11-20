@@ -64,23 +64,14 @@ internal sealed class ScreenMessages
         lastDialogueBox = null;
         lastDialogueKey = null;
 
-        // An open chest/backpack menu freezes every job, so tell the agent right away (it gets a turn
-        // and can take/store or close it). Reported once per menu instance; observe's "menu" field
-        // keeps it in the Status block afterwards.
-        if (Game1.activeClickableMenu is ItemGrabMenu or GameMenu)
+        // An open letter (mail) needs a click to move on.
+        if (Game1.activeClickableMenu is LetterViewerMenu letter)
         {
-            if (ReferenceEquals(Game1.activeClickableMenu, modOpened))
-                return; // the mod opened this menu itself (a store/take job); its job_done tells the agent
-            if (!ReferenceEquals(Game1.activeClickableMenu, lastMenu))
-            {
-                lastMenu = Game1.activeClickableMenu;
-                var text = Observer.OpenMenu() ?? "A menu is open and blocking you - close it with `answer`.";
-                Report(text, "menu", null, Array.Empty<string>(), hold: false,
-                    dedupeKey: "menu:" + RuntimeHelpers.GetHashCode(lastMenu), dedupeSeconds: 600);
-            }
+            string text = (letter.mailTitle ?? "a letter") + "\n" + string.Join("\n", letter.mailMessage);
+            Report(text, "letter", null, Array.Empty<string>(), hold: true,
+                dedupeKey: "letter:" + RuntimeHelpers.GetHashCode(letter), dedupeSeconds: 600);
             return;
         }
-        lastMenu = null;
 
         // The multiplayer day-end ready check ("waiting for the other players") freezes the day
         // until everyone is ready, then rolls it over by itself (ReadyCheckDialog.update confirms

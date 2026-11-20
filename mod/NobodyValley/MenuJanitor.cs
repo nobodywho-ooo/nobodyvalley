@@ -5,9 +5,10 @@ using StardewValley.Menus;
 namespace NobodyValley;
 
 /// <summary>
-/// Nobody is at the keyboard, so click through the screens that would otherwise block an agent forever:
-/// the overnight shipping summary, level-ups, letters, plain dialogue boxes and cutscenes.
-/// Each one stays up for a few seconds first, so spectators get to see it.
+/// Dismisses only the screens that can't wait for an agent turn: the overnight shipping summary and
+/// cutscenes (plus the day-end ready check, which confirms itself). Everything interactive - shops,
+/// chests, dialogues, letters, level-ups - stays on screen for the agent to read and click, like a
+/// player would. Each dismissed screen stays up a few seconds first, so spectators get to see it.
 /// </summary>
 internal sealed class MenuJanitor
 {
@@ -51,12 +52,9 @@ internal sealed class MenuJanitor
             Event { isFestival: true } festival => EndFestival(festival),
             Event e => SkipEvent(e),
             ShippingMenu shipping => DismissShipping(shipping),
-            LevelUpMenu levelUp => DismissLevelUp(levelUp),
-            DialogueBox { isQuestion: false } box when !leaveDialoguesAlone => Click(box),
-            LetterViewerMenu letter => Exit(letter),
             ReadyCheckDialog { checkName: "sleep" } => LeaveDayEndReadyCheck(),
             ReadyCheckDialog ready => Confirm(ready),
-            _ => false,
+            _ => false, // everything else (shops, chests, dialogues, letters, level-ups) is the agent's to click
         };
         if (acted)
             ticksShown = 0; // e.g. the next page of a dialogue gets its own few seconds
@@ -111,7 +109,7 @@ internal sealed class MenuJanitor
         return true;
     }
 
-    private bool DismissLevelUp(LevelUpMenu menu)
+    private bool DismissLevelUp(LevelUpMenu menu) // kept for toolbar/tests; unused by Tick now
     {
         // This menu ignores receiveLeftClick (it polls the mouse itself), so do what the buttons do.
         if (!menu.readyToClose() || !menu.isActive)

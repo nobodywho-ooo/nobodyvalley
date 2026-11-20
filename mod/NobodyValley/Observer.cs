@@ -64,8 +64,9 @@ internal static class Observer
         };
     }
 
-    /// <summary>What's blocking the game right now (an open chest/inventory menu or the day-end ready
-    /// check), or null if nothing is.</summary>
+    /// <summary>The current blocking screen, as the agent should see it: interactive menus are
+    /// described in detail (the agent clicks them); the day-end ready check is a short notice.
+    /// Dialogues and letters are reported by ScreenMessages instead.</summary>
     public static string? OpenMenu()
     {
         if (Game1.activeClickableMenu == null)
@@ -76,23 +77,8 @@ internal static class Observer
             return readyCheck.checkName == "sleep"
                 ? "The day is ending: waiting for the other players (ready check)."
                 : $"A ready check is up ({readyCheck.checkName}): waiting for the other players.";
-        if (Game1.activeClickableMenu is not ItemGrabMenu menu)
-            return Game1.activeClickableMenu is GameMenu ? "Your backpack menu is open and blocks you - close it with `answer`." : null;
-
-        var items = menu.ItemsToGrabMenu?.actualInventory?.Where(i => i != null)
-            .Select(i => i!.Stack > 1 ? $"{i.DisplayName} x{i.Stack}" : i.DisplayName)
-            .ToList();
-        string contents = items is not { Count: > 0 } ? "nothing" : string.Join(", ", items);
-
-        if (menu.sourceItem is Chest chest)
-        {
-            string what = chest.fridge.Value ? "the fridge" : "a chest";
-            return $"A menu is open for {what} next to you. It contains: {contents}. "
-                + "Use take to take things out, store to put things in, or answer to close it.";
-        }
-        // The "items that didn't fit" menu (e.g. a gift/overflow with a full backpack).
-        return $"A menu is open showing items that didn't fit in your backpack: {contents}. "
-            + $"Use take to take them, store to make room, or answer to close it (anything left is lost).";
+        // Real interactive menus (shops, chests, the shipping bin, level-ups): show what's on screen.
+        return MenuAgent.Describe();
     }
 
     private static JObject FarmSummary(Farm farm)

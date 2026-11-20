@@ -44,51 +44,30 @@ class Spec:
     needs: tuple[str, ...] = ()  # fields that must be present ("target", "item", "xy")
 
 
-# Most work actions act on one map tile (x,y), or in bulk on the nearest n (or all) things.
+# The thin, player-like set: movement, clicks (use/place/equip), one tool swing per tile verb,
+# and real menu interactions (click/answer/close). No bulk jobs, no auto-shopping, no hand-holding.
 ACTIONS: dict[str, Spec] = {
     "go_to": Spec("go_to", target="target", needs=("target",)),
     "walk": Spec("walk", xy=True, needs=("xy",)),
     "use": Spec("use", xy=True, needs=("xy",)),
-    "chop": Spec("chop_trees", xy=True, needs=("xy",)),
-    "mine": Spec("mine", xy=True, needs=("xy",)),
-    "till": Spec("till", xy=True, needs=("xy",)),
-    "plant": Spec("plant", item="seed", xy=True, needs=("xy", "item")),
-    "water": Spec("water", xy=True, needs=("xy",)),
-    "harvest": Spec("harvest", xy=True, needs=("xy",)),
-    "scythe": Spec("scythe", xy=True, n=True),  # x,y = swing the scythe there (grass/weeds/dead crops); n = bulk hay
-    "ship": Spec("ship", item="item"),
-    "donate": Spec("donate", item="item"),
-    "cook": Spec("cook", item="item", needs=("item",)),
-    "operate": Spec("operate", xy=True),
+    "place": Spec("place", xy=True, needs=("xy",)),
+    "equip": Spec("equip", item="item", needs=("item",)),
+    "axe": Spec("axe", xy=True, needs=("xy",)),
+    "pickaxe": Spec("pickaxe", xy=True, needs=("xy",)),
+    "hoe": Spec("hoe", xy=True, needs=("xy",)),
+    "watering_can": Spec("watering_can", xy=True, needs=("xy",)),
+    "scythe": Spec("scythe", xy=True, needs=("xy",)),
     "answer": Spec("answer", n=True),
+    "click": Spec("click", item="element", n=True, needs=("item",)),
+    "close": Spec("close"),
     "check_community_center": Spec("check_community_center"),
-    "check_chest": Spec("check_chest"),
-    "open_backpack": Spec("open_backpack"),
-    "start_crafting": Spec("start_crafting"),
-    "check_shop": Spec("check_shop", target="target"),
-    "build": Spec("build", item="item", needs=("item",)),
-    "buy_animal": Spec("buy_animal", item="item", needs=("item",)),
-    "upgrade": Spec("upgrade", item="item", needs=("item",)),
-    "care_animals": Spec("care_animals"),
-    "plant_tree": Spec("plant_tree", item="item"),
-    "fruit": Spec("fruit"),
-    "repair": Spec("repair", target="target", needs=("target",)),
-    "buy": Spec("buy", item="item", n=True, needs=("item",)),
     "eat": Spec("eat", item="item"),
-    "forage": Spec("forage", target="target", n=True),
     "fish": Spec("fish", target="target", n=True),
     "descend": Spec("descend"),
-    "craft": Spec("craft", item="item", needs=("item",)),
-    "talk_to": Spec("talk_to", target="target", item="item", needs=("target",)),
-    "store": Spec("store", item="item"),
-    "take": Spec("take", item="item", n=True, needs=("item",)),
     "sleep": Spec("sleep"),
     "stop": Spec("stop"),
 }
-INFO_ACTIONS = {"check_community_center", "check_chest", "open_backpack", "start_crafting", "check_shop"}
-
-# Don't till more when this much tilled soil is already waiting for seeds.
-MAX_EMPTY_TILLED = 30
+INFO_ACTIONS = {"check_community_center"}
 
 MAX_ACTIONS_PER_TURN = 5
 # "say" and "emote" are actions like the rest ({"do":"say","text":"..."}); this limits the text.
@@ -139,25 +118,6 @@ MAX_OBSERVE_BACKOFF = 300.0
 MIN_SAY_GAP_SECONDS = 90.0
 DEBUG_TOKENS = bool(os.environ.get("NV_DEBUG_TOKENS"))
 DEBUG_TIMING = bool(os.environ.get("NV_DEBUG_TIMING"))
-
-
-def _canonical_item(name: str) -> str:
-    """Names as comparable strings: lowercased, punctuation stripped, trailing plural 's' dropped
-    (so 'Parsnip Seed', 'Parsnip Seeds' and 'Parsnip Seeds x4' all line up)."""
-    n = re.sub(r"[^a-z0-9]+", "", name.lower())
-    return n[:-1] if n.endswith("s") and len(n) > 3 else n
-
-
-def _carried_items(inventory: list[str]) -> set[str]:
-    """What we carry now: the observation lists 'Axe', 'Parsnip Seeds x4', ... as display names
-    (a count suffix only appears when the stack is >1)."""
-    names = set()
-    for entry in inventory:
-        name, sep, _ = entry.rpartition(" x")
-        if not sep:  # no ' x<count>' suffix: the entry is just the item name
-            name = entry
-        names.add(_canonical_item(name))
-    return names
 
 
 def _blank_if_none(value: Any) -> str:
@@ -366,12 +326,12 @@ class Agent:
                 note_cause.append(" That needs an upgraded tool you don't have. Leave it and do something your tools "
                                   "can handle, or get bigger stumps/boulders upgraded at Clint's later.")
             elif "inventory is full" in summary:
-                note_cause.append(" Make room: store extra items in the shared chest (`store item`, e.g. `store Wood` "
-                                  "or `store Stone`), eat something, or ship things you don't need.")
-            elif "still needed for a Community Center bundle" in summary:
+                note_cause.append(" Make room: open a shared chest (use x,y on it), click=\"store X\" for what you "
+                                  "don't need now, or ship things overnight via the shipping bin.")
+            elif "is still needed for a Community Center bundle" in summary:
                 item = summary.split(" is still needed")[0].strip()
-                note_cause.append(f" {item} is wanted for a bundle so it can't be shipped; if your backpack is full, "
-                                  f"free space with `store {item}` or `eat`, then donate it.")
+                note_cause.append(f" {item} is wanted for a bundle, so keep it; if the backpack is full, store other "
+                                  f"things in a shared chest first.")
             # A 9B model stuck in a rut repeats the exact same doomed plan for many turns. Once it's
             # clearly looping, tell it plainly to stop (the earlier "failed the same way" note wasn't
             # enough on its own).
@@ -532,6 +492,17 @@ class Agent:
         info_actions = [a for a in raw_actions if a.get("do") in INFO_ACTIONS]
         for info in info_actions:
             await self._query(info.get("do", ""), target=_blank_if_none(info.get("target")))
+        # Instant actions that answer right away (no job to wait for): equip (pick up an item),
+        # click / close (the open menu).
+        for m in raw_actions:
+            if m.get("do") == "equip":
+                await self._query("equip", item=_blank_if_none(m.get("item")))
+            elif m.get("do") == "click":
+                element = _blank_if_none(m.get("element")) or _blank_if_none(m.get("item"))
+                if element:
+                    await self._query("click", element=element, count=int(m.get("n") or 1))
+            elif m.get("do") == "close":
+                await self._query("close")
         say = " ".join(str(a.get("text", "")) for a in raw_actions if a.get("do") == "say").strip()
         if len(say) >= MAX_SAY_LENGTH:  # hit the limit mid-sentence
             say = say[: say.rfind(" ")].rstrip(",;:") + "…" if " " in say else say
@@ -544,22 +515,27 @@ class Agent:
         if emote := next((a.get("emote") for a in raw_actions if a.get("do") == "emote"), None):
             await self._send("emote", emote=emote)
 
-        # A real dialogue or menu is blocking the game. If the model ignored it and tried to walk
-        # off, nudge it once to answer/react before running the plan. (Talking doesn't handle a
-        # menu, so "say" alone still gets nudged.)
-        kind = self.screen_message.get("kind") if has_screen and self.screen_message is not None else None
-        if kind == "menu" and not answer and not self.screen_message_ignored:
+        # A real menu (shop/chest/bin/level-up) is blocking the game: the mod refuses everything
+        # else. Nudge the model once if it didn't click/answer/close.
+        clicked = any(a.get("do") in ("click", "close", "answer") for a in raw_actions)
+        if obs.get("menu") and not clicked and not self.screen_message_ignored:
             self.screen_message_ignored = True
-            self.inbox.append("A menu is blocking you. React first: take/store its items, or answer to close it.")
+            self.inbox.append("A menu is open and blocking you. React first: click its buttons, answer n, or close.")
             self.wake.set()
             return
-        if kind in ("dialogue", "event") and not answer and not say and not self.screen_message_ignored:
+        # A real dialogue or question is up. If the model didn't answer it, nudge it once - saying
+        # something does NOT click through the message, so the game stays blocked until answer.
+        kind = self.screen_message.get("kind") if has_screen and self.screen_message is not None else None
+        if kind in ("dialogue", "event", "letter") and not answer and not self.screen_message_ignored:
             self.screen_message_ignored = True
-            self.inbox.append("A message is still on screen. React to it first: answer n (or just answer to continue), or say something.")
+            self.inbox.append("A message is STILL on screen and blocks you - only `answer` clicks through it "
+                              "(answer n for an option, or answer with no n to continue). Say doesn't clear it.")
             self.wake.set()
             return
 
-        actions, errors = self._parse_actions([a for a in raw_actions if a.get("do") not in ("say", "emote", "answer") and a.get("do") not in INFO_ACTIONS], obs)
+        actions, errors = self._parse_actions([a for a in raw_actions
+                                               if a.get("do") not in ("say", "emote", "answer", "equip", "click", "close")
+                                               and a.get("do") not in INFO_ACTIONS], obs)
         self.inbox.extend(errors)
         if actions and actions[0].cmd == "stop":
             await self._send("stop")
@@ -592,17 +568,10 @@ class Agent:
     def _parse_actions(self, raw: list[dict[str, Any]], obs: dict[str, Any]) -> tuple[list[Action], list[str]]:
         actions: list[Action] = []
         errors: list[str] = []
-        empty_tilled = obs.get("farm", {}).get("empty_tilled_soil", 0)
         world = obs.get("world", {})
         t = world.get("time_raw", 1200)
-        shop_closed = world.get("date", "").startswith("Wed") or not 900 <= t < 1700
         me = obs.get("me", {})
         tired = me.get("energy", 100) < 0.2 * me.get("max_energy", 270)
-        farmers = {n.lower() for n in self.others}
-        carried = _carried_items(me.get("inventory") or [])
-
-        def carries(thing: str) -> bool:
-            return _canonical_item(thing) in carried
         # x,y in a decision are absolute map coordinates.
         map_info = obs.get("map") or {}
         map_w, map_h = map_info.get("width"), map_info.get("height")
@@ -635,39 +604,18 @@ class Agent:
                 args["x"], args["y"] = item["x"], item["y"]
             elif spec.n and item.get("n"):
                 args["count"] = item["n"]
-            if cmd == "talk_to" and target.lower() in farmers:
-                errors.append(f"Skipped talk_to {target}: that's a fellow farmer - use 'say' to talk to them. "
-                              "talk_to is for villagers.")
-                continue
-            if cmd in ("plant", "donate", "ship") and thing and not carries(thing):
-                # The model repeats doomed 'plant/donate what I don't have' turns for a long time;
-                # catch it before the game does, without failing the rest of the plan.
-                if cmd == "plant":
-                    hint = f"you don't have {thing}. Take the seeds from a chest (take {thing}) or buy them first."
-                elif cmd == "donate":
-                    hint = f"you're not carrying {thing}. Collect/grow it (or take it from a chest) before donating."
-                else:
-                    hint = f"you're not carrying {thing} - nothing to ship."
-                errors.append(f"Skipped {cmd} {thing}: {hint}")
-                continue
             if cmd == "sleep" and t < 1800 and not tired:
                 errors.append(f"Skipped sleep: it's only {world.get('time')} and you have energy left. "
                               "Keep working; go to bed in the evening.")
                 continue
-            if cmd == "buy" and me.get("money", 0) < 20:
-                if not any("no money" in e for e in errors):
-                    errors.append(f"Skipped buy: there's no money ({me.get('money', 0)}g). Money comes from shipping "
-                                  "(crops, forage), paid out overnight - help with that instead.")
+            # A menu is open: only menu actions make sense (the mod refuses everything else anyway).
+            if obs.get("menu") and cmd not in ("answer", "click", "close"):
+                errors.append(f"Skipped {cmd}: a menu is open - react to it first (click/answer/close).")
                 continue
-            if cmd == "buy" and shop_closed:
-                if not any("shops are closed" in e for e in errors):
-                    errors.append(f"Skipped buy: the shops are closed right now ({world.get('time')}). They're open 9am-5pm "
-                                  "(Pierre's not on Wednesdays). Do something else until then.")
-                continue
-            if cmd == "till" and not has_xy and empty_tilled >= MAX_EMPTY_TILLED:
-                if not any("enough tilled" in e for e in errors):
-                    errors.append(f"Skipped till: there are already {empty_tilled} empty tilled tiles waiting for seeds. "
-                                  "Plant (or get seeds) instead of tilling more.")
+            # A blocking dialogue/question is up too (it's not in the menu field - it's a pop-up).
+            if (self.screen_message and self.screen_message.get("kind") in ("dialogue", "event", "letter")
+                    and cmd not in ("answer", "say", "emote")):
+                errors.append(f"Skipped {cmd}: a message is on screen - answer it first (answer n, or answer to continue).")
                 continue
             actions.append(Action(cmd, args))
         if any(a.cmd == "stop" for a in actions[1:]):

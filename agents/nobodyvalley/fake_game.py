@@ -3,8 +3,8 @@
     uv run python -m nobodyvalley.fake_game --players Alice Bob Carol Dave
     uv run nobodyvalley --base-port 9765     # in another terminal
 
-Each fake farmer listens on its own port (9765, 9766, ...; away from the real mod). Jobs just take a few seconds and
-update a shared, very simplified farm.
+Each fake farmer listens on its own port (9765, 9766, ...; away from the real mod). Jobs just take a few seconds;
+there's no real world model left, so the replies are generic (tests the loop, not the game).
 """
 
 from __future__ import annotations
@@ -16,17 +16,17 @@ import json
 import random
 from typing import Any
 
-JOB_SECONDS = {"go_to": 4, "chop_trees": 6, "mine": 6, "till": 6, "plant": 5, "water": 5, "harvest": 4, "ship": 3, "buy": 5, "eat": 2, "sleep": 3}
+JOB_SECONDS = {"go_to": 4, "walk": 2, "use": 3, "place": 3, "axe": 4, "pickaxe": 4, "hoe": 3, "watering_can": 3,
+               "scythe": 3, "eat": 2, "sleep": 3, "fish": 6, "descend": 3}
 
 
 class World:
     def __init__(self, players: list[str]):
         self.time = 600
         self.money = 500
-        self.debris = 120
-        self.tilled = 0
-        self.crops: list[dict[str, Any]] = []
-        self.players = {p: {"location": "Farm", "energy": 270, "inventory": ["Axe", "Hoe", "Watering Can", "Pickaxe", "Scythe", "Parsnip Seeds x15"], "doing": None} for p in players}
+        self.players = {p: {"location": "Farm", "energy": 270,
+                             "inventory": ["Axe", "Hoe", "Watering Can", "Pickaxe", "Scythe", "Parsnip Seeds x15"],
+                             "doing": None} for p in players}
         self.servers: dict[str, "FakeInstance"] = {}
 
     def broadcast(self, event: dict[str, Any]) -> None:
@@ -65,14 +65,18 @@ class FakeInstance:
             return {"port": self.port, "world_ready": True, "farmer": self.name, "is_host": self.port == 8765}
         if cmd == "observe":
             return {
-                "me": {"name": self.name, "location": me["location"], "energy": me["energy"], "max_energy": 270, "money": w.money,
-                       "busy": me["doing"], "inventory": me["inventory"]},
-                "world": {"time": f"{w.time // 100}:{w.time % 100:02}", "date": "Mon Spring 1, year 1", "weather": "sunny"},
-                "farm": {"crops": [f"{len(w.crops)} Parsnip"] if w.crops else [], "crops_needing_water": sum(not c["watered"] for c in w.crops),
-                         "empty_tilled_soil": w.tilled - len(w.crops), "dead_crops": 0, "debris_near_field": w.debris, "raining": False},
-                "others": [{"name": n, "location": p["location"], "doing": p["doing"] or "nothing in particular"} for n, p in w.players.items() if n != self.name],
-                "nearby_villagers": [],
-                "seeds_for_sale": ["Parsnip Seeds (20g)", "Potato Seeds (50g)", "Cauliflower Seeds (80g)"],
+                "me": {"name": self.name, "location": me["location"], "location_id": "Farm", "tile": [50, 25],
+                       "energy": me["energy"], "max_energy": 270, "money": w.money, "busy": me["doing"],
+                       "inventory_size": 12, "inventory": me["inventory"]},
+                "world": {"time": f"{w.time // 100}:{w.time % 100:02}", "date": "Mon Spring 1, year 1",
+                          "weather": "sunny", "time_raw": w.time},
+                "farm": {"crops": [], "crops_needing_water": 0, "empty_tilled_soil": 0, "dead_crops": 0,
+                         "debris_near_field": 40, "grass": 200, "hay": "0/240", "raining": False, "animals": []},
+                "others": [{"name": n, "location": p["location"], "doing": p["doing"] or "nothing in particular"}
+                           for n, p in w.players.items() if n != self.name],
+                "nearby_villagers": [], "forage_here": 0,
+                "machines": [], "menu": None,
+                "map": {"you": "50,25", "width": 100, "height": 80, "grid": "..."},
             }
         if cmd == "say":
             for s in w.servers.values():
@@ -85,6 +89,9 @@ class FakeInstance:
             if self.job:
                 self.job.cancel()
             return {"summary": "Stopped."}
+        # Instant commands: no job_id, reply right away.
+        if cmd in ("answer", "click", "close", "equip", "check_community_center"):
+            return {"summary": "ok"}
         if cmd in JOB_SECONDS:
             if self.job:
                 self.job.cancel()
@@ -96,29 +103,24 @@ class FakeInstance:
         raise ValueError(f"unknown command '{cmd}'")
 
     async def run_job(self, job_id: int, cmd: str, msg: dict[str, Any]) -> None:
-        w, me = self.world, self.world.players[self.name]
+        me = self.world.players[self.name]
         await asyncio.sleep(JOB_SECONDS[cmd] * random.uniform(0.7, 1.3))
-        n = int(msg.get("count", 10))
         ok, summary = True, "done"
         if cmd == "go_to":
-            me["location"] = msg["target"]
-            summary = f"You arrived at {msg['target']}."
-        elif cmd in ("till", "plant", "water", "harvest") and me["location"] != "Farm":
-            me["location"] = "Farm"
-        if cmd == "till":
-            w.tilled += n; summary = f"Tilled {n} tiles."
-        elif cmd == "plant":
-            n = min(n, w.tilled - len(w.crops))
-            if n <= 0:
-                ok, summary = False, "no empty tilled soil to plant in (till some first)"
-            else:
-                w.crops += [{"watered": False}] * n; summary = f"Planted {n} Parsnip Seeds."
-        elif cmd == "water":
-            for c in w.crops:
-                c["watered"] = True
-            summary = "All crops are now watered."
-        elif cmd == "buy":
-            w.money -= 20 * n; summary = f"Bought {n} {msg['item']}. Money left: {w.money}g."
+            me["location"] = msg.get("target", "Farm")
+            summary = f"You arrived at {me['location']}."
+        elif cmd == "walk":
+            summary = f"You're at {msg.get('x', 0)},{msg.get('y', 0)}."
+        elif cmd in ("axe", "pickaxe", "hoe", "watering_can", "scythe"):
+            summary = f"Swung the {cmd} at {msg.get('x', 0)},{msg.get('y', 0)}."
+        elif cmd == "use":
+            summary = "Done."
+        elif cmd == "place":
+            summary = "Placed it."
+        elif cmd == "eat":
+            summary = "Ate it. Energy up."
+        elif cmd == "sleep":
+            me["location"] = "farmhouse"
         me["energy"] = max(0, me["energy"] - 10)
         me["doing"] = None
         self.send({"event": "job_done", "job_id": job_id, "action": cmd, "ok": ok, "summary": summary})
