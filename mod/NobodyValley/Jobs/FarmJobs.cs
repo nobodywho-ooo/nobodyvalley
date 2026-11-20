@@ -584,6 +584,72 @@ internal static class FarmJobs
             job.Summary += ".";
     }
 
+    // ================================================================ scythe
+
+    /// <summary>Cut grass on the farm with the scythe to collect hay into the silo.</summary>
+    public static IEnumerator CutGrass(Job job, int count)
+    {
+        var scythe = Steps.FindScythe() ?? throw new JobFailed("you don't have a scythe");
+        var farm = Game1.getFarm();
+        int capacity = farm.GetHayCapacity();
+        int hayAtStart = farm.piecesOfHay.Value;
+        if (capacity == 0)
+            throw new JobFailed("you don't have a silo yet - build one with `build silo`, or cutting grass gives no hay");
+        if (hayAtStart >= capacity)
+            throw new JobFailed($"the silo is already full ({hayAtStart}/{capacity}) - build another silo or feed the animals, or hay cut now would be wasted");
+        if (farm.IsWinterHere())
+            throw new JobFailed("it's winter - the grass is gone, so there's no hay to cut; buy hay from Marnie instead");
+        yield return EnsureOnFarm();
+
+        var skipped = new HashSet<Vector2>();
+        int cut = 0;
+        while (cut < count)
+        {
+            var claims = PlayerState.OthersClaims();
+            var here = Me.TilePoint;
+            Vector2? next = farm.terrainFeatures.Pairs
+                .Where(p => p.Value is Grass && !skipped.Contains(p.Key) && !claims.Contains(p.Key))
+                .Select(p => p.Key)
+                .OrderBy(t => Steps.Dist(Steps.ToPoint(t), here))
+                .Cast<Vector2?>()
+                .FirstOrDefault();
+            if (next == null)
+                break;
+
+            var tile = next.Value;
+            PlayerState.SetClaim(tile);
+            var walk = new StepResult();
+            yield return Steps.WalkAdjacent(Steps.ToPoint(tile), walk);
+            if (!walk.Ok)
+            {
+                skipped.Add(tile);
+                continue;
+            }
+            // A grass patch needs a few swings; hay drops when its last weed is cut.
+            for (int swings = 0; swings < 8 && farm.terrainFeatures.TryGetValue(tile, out var tf) && tf is Grass; swings++)
+                yield return Steps.Swing(scythe);
+
+            if (!farm.terrainFeatures.ContainsKey(tile))
+            {
+                cut++;
+                job.Summary = $"Cut {cut} of {count} grass.";
+            }
+            else
+            {
+                skipped.Add(tile);
+            }
+            if (farm.piecesOfHay.Value >= capacity)
+                break; // the silo is full now; the rest would be wasted
+        }
+
+        int hay = farm.piecesOfHay.Value - hayAtStart;
+        bool full = farm.piecesOfHay.Value >= capacity;
+        job.Summary = cut == 0
+            ? $"There's no grass left to cut (hay {farm.piecesOfHay.Value}/{capacity}); let it grow after rain or buy hay from Marnie."
+            : $"Cut {cut} grass and stored {hay} hay in the silo ({farm.piecesOfHay.Value}/{capacity})."
+                + (full ? " The silo is full now - build another one or feed the animals." : "");
+    }
+
     // ================================================================ ship
 
     public static IEnumerator Ship(Job job, string? itemName)

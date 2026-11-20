@@ -24,7 +24,7 @@ internal static class MapView
 
     public const string Legend =
         "@ you, A-Z other farmers, & villager, ! monster, T tree, t sapling, X big stump/boulder, s stone, O ore, " +
-        "w weed, k twig, f forage, , tilled, ; tilled+watered, p crop (needs water), P crop (watered), * ripe crop, " +
+        "w weed, k twig, f forage, g grass, , tilled, ; tilled+watered, p crop (needs water), P crop (watered), * ripe crop, " +
         "~ water, = path, D door, L ladder down, U ladder up, B shipping bin, C chest, o object, # wall/blocked, . ground";
 
     public static JObject Render(Farmer me)
@@ -157,6 +157,9 @@ internal static class MapView
                     if (dirt.readyForHarvest()) { note("ripe crops", p); return '*'; }
                     if (dirt.needsWatering() && !dirt.isWatered()) { note("crops needing water", p); return 'p'; }
                     return 'P';
+                case Grass:
+                    note("grass", p);
+                    return 'g';
                 case Flooring:
                     return '=';
             }
@@ -188,7 +191,8 @@ internal static class MapView
         {
             var p = Jobs.Steps.ToPoint(pair.Key);
             // Crops anywhere on this map, so an agent at its cabin door still finds the field.
-            if (!InView(p) && (pair.Value is HoeDirt || (Near(pair.Key) && pair.Value is Tree)))
+            // Grass too: agents scythe it for hay (a patch is several tiles wide).
+            if (!InView(p) && (pair.Value is HoeDirt || pair.Value is Grass || (Near(pair.Key) && pair.Value is Tree)))
                 Glyph(loc, p, doors, note);
         }
     }

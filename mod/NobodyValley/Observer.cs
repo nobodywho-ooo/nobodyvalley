@@ -139,6 +139,11 @@ internal static class Observer
             ["empty_tilled_soil"] = tilledEmpty,
             ["dead_crops"] = dead,
             ["debris_near_field"] = debris,
+            // Grass is what you scythe for hay; the silo holds it for the animals (240 per silo).
+            ["grass"] = farm.terrainFeatures.Values.Count(tf => tf is Grass),
+            ["hay"] = farm.GetHayCapacity() == 0
+                ? "0/0 (no silo - build one to store hay)"
+                : $"{farm.piecesOfHay.Value}/{farm.GetHayCapacity()}",
             ["raining"] = farm.IsRainingHere(),
             ["buildings"] = new JArray(farm.buildings.Select(b =>
                 (StardewValley.TokenizableStrings.TokenParser.ParseText(b.GetData()?.Name) ?? b.buildingType.Value)

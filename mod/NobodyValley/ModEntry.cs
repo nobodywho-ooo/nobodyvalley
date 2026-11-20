@@ -419,6 +419,13 @@ internal sealed class ModEntry : Mod
                 int n = Math.Clamp(Int("count", int.MaxValue), 1, int.MaxValue);
                 return StartJob(cmd, "harvesting crops", j => FarmJobs.Harvest(j, n));
             }
+            case "scythe":
+            {
+                if (at is { } t)
+                    return StartJob(cmd, $"swinging the scythe{AtText()}", j => TileJobs.Hit(j, t, "scythe"));
+                int n = Math.Clamp(Int("count", 10), 1, 25);
+                return StartJob(cmd, "cutting grass for hay", j => FarmJobs.CutGrass(j, n));
+            }
             case "ship":
             {
                 // Runs while a menu is open too, so a full backpack can be thinned before taking.

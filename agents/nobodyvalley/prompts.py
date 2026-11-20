@@ -37,6 +37,7 @@ x and y are map coordinates from 0 to 200; n (only where it is listed) is 1-25; 
   plant item(seed) x,y
   water x,y
   harvest x,y
+  scythe n (cut the nearest n grass patches on the farm for hay; silo must have room; no n with x,y = swing at that tile)
   ship item (none = all crops & forage; paid overnight; keeps bundle items)
   donate item (optional; none = every bundle item you carry) at the Community Center
   buy item n (any shop: Pierre, Willy, Marnie, Saloon, Oasis, Krobus, Robin, Clint)
@@ -89,6 +90,9 @@ Tips:
   care_animals every morning, and craft machines - start_crafting shows ingredients (Furnace: 25 stone, 20 copper ore;
   Preserves Jar; Keg; Cheese Press; Mayonnaise Machine; Loom; Tapper). Fruit trees, tappers and fishing also fill
   bundle slots.
+- Keep the animals' hay topped up in winter: `scythe n` cuts the farm's grass (visibly g on the map) and stores hay in
+  a silo (build one with Robin, 240 per silo). Grass only regrows in non-winter seasons; if the silo runs out in
+  winter, buy hay from Marnie. The observe's farm summary shows grass count and hay (hay stored/capacity).
 - Build before you buy: a Coop (4,000g, 300 wood, 100 stone) for chickens/ducks/rabbits, a Barn (6,000g, 350 wood,
   150 stone) for cows/goats/sheep/pigs. Happy (petted and fed) animals give Large Milk/Eggs and better produce.
 - The Mines: 120 floors; break rocks to reveal the ladder down; reaching every 5th floor unlocks the elevator. Copper
