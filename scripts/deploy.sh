@@ -20,7 +20,10 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # Optional local settings (save name, farmhand names, ...): scripts/local.env (gitignored).
+# Export them: the remote demo.sh and the agents rely on the same values as environment vars.
+set -a
 [ -f "$ROOT/scripts/local.env" ] && source "$ROOT/scripts/local.env"
+set +a
 REMOTE="${NV_REMOTE:?set NV_REMOTE (or scripts/local.env; see scripts/local.env.example)}"
 REMOTE_DIR="${NV_REMOTE_DIR:-nobodyvalley}"
 GAME_DIR="${NV_GAME_DIR:-$HOME/Library/Application Support/Steam/steamapps/common/Stardew Valley/Contents/MacOS}"

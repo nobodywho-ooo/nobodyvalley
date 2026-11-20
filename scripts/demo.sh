@@ -23,7 +23,11 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # Optional local settings (save name, farmhand names, ...): scripts/local.env (gitignored).
+# Export them: the agents (and games) are child processes and only see exported variables -
+# a sourced-but-unexported var like NV_VLLM_API_KEY would silently vanish at exec uv run.
+set -a
 [ -f "$ROOT/scripts/local.env" ] && source "$ROOT/scripts/local.env"
+set +a
 GAME_DIR="${NV_GAME_DIR:-$HOME/Library/Application Support/Steam/steamapps/common/Stardew Valley/Contents/MacOS}"
 SAVE="${NV_SAVE:?set NV_SAVE (or scripts/local.env; see scripts/local.env.example)}"
 read -r -a FARMHANDS <<< "${NV_FARMHANDS:?set NV_FARMHANDS (or scripts/local.env; see scripts/local.env.example)}"
