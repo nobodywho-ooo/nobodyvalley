@@ -197,6 +197,10 @@ done
 echo "Everyone's in."
 
 cd "$ROOT/agents"
-MODEL_ARGS=()
-[ -n "${NV_MODEL:-}" ] && MODEL_ARGS=(--model "$NV_MODEL")
-exec uv run nobodyvalley "${MODEL_ARGS[@]}" --dashboard-window "$DASHBOARD_WINDOW" --log "$RUN_DIR/agents.log" --prompt-dir "$RUN_DIR"
+# No array here: macOS ships bash 3.2, whose "${arr[@]}" with set -u errors on an empty array.
+if [ -n "${NV_MODEL:-}" ]; then
+    exec uv run nobodyvalley --model "$NV_MODEL" --dashboard-window "$DASHBOARD_WINDOW" \
+        --log "$RUN_DIR/agents.log" --prompt-dir "$RUN_DIR"
+else
+    exec uv run nobodyvalley --dashboard-window "$DASHBOARD_WINDOW" --log "$RUN_DIR/agents.log" --prompt-dir "$RUN_DIR"
+fi
