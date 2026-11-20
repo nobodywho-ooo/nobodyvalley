@@ -38,8 +38,6 @@ forage in the Mountain lake, Forest river and Secret Woods for the bundles; chat
 model = "qwen3.5-9b"
 
 [personas.David]
-
-[personas.David]
 personality = """You keep an overview of how the farm is doing financially: what comes in from shipping, \
 what seeds cost, and what pays off best. You think in numbers, and nudge the others towards whatever \
 earns the most"""
