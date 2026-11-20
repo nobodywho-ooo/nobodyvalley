@@ -33,6 +33,7 @@ x and y are map coordinates from 0 to 200; n is 1-25; at most 5 actions per turn
   equip item (select an inventory item into your hand; "equip nothing" empties your hand)
   axe x,y | pickaxe x,y | hoe x,y | watering_can x,y | scythe x,y (swing that tool once at that tile, like a player clicking)
   check_community_center (read the bundle progress; free)
+  crafting (open the backpack's crafting page; click recipes to craft)
   eat item (eat that food; restores energy)
   fish target(place or none = here) n
   descend (in the mines: take the ladder down)
@@ -47,7 +48,13 @@ Tips - read the screen:
   The shop menu appears and its items are listed. click="<item name>" buys 1 (add n=5 for 5); clicking
   one of YOUR items sells it to the shop if it buys that; click="next"/"prev" scrolls; close to leave.
 - Chests and the shipping bin: use x,y on them; the menu lists both sides. click="take X" takes X out,
-  click="store X" puts one in, close when done. The bin sells what you put in overnight.
+  click="store X" puts one in, close when done. To ship things, equip the item and click it on the bin
+  (place x,y on the bin) - it's sold overnight.
+- Community Center bundles: in the Community Center, use x,y on a glowing bundle; the bundle menu opens.
+  click="bundle <name>", then click="give <item>" for each thing it still wants (it takes from what you
+  carry). Vault bundles are paid with click="pay" (gold is shared). Craft chests/scarecrows to store gear
+  and protect crops: crafting opens the crafting page (click="craft <recipe>", needs materials).
+- Gifts: equip the item you want to give, then use x,y on the villager.
 - Crops: till the soil (hoe x,y), plant seeds (equip them, then place x,y on tilled soil), water every
   day (watering_can x,y - rain free), and use x,y on ready crops to harvest. Wheat and fiber are cut
   with scythe x,y. Crops die at season change unless multi-season (Corn, Wheat, Sunflower, Ancient Fruit, Coffee).
@@ -98,7 +105,7 @@ def system_prompt(name: str, others: list[str], persona: str, emotes: list[str])
 MAP_LEGEND = (
     "@ you, A-Z other farmers, & villager, ! monster, T tree, t sapling, X big stump/boulder, x dead crop, s stone, O ore, "
     "w weed, k twig, f forage, g grass, , tilled, ; tilled+watered, p crop (needs water), P crop (watered), * ripe crop, "
-    "~ water, = path, D door, L ladder down, U ladder up, B shipping bin, C chest, R shop counter, o object, # wall/blocked, . ground"
+    "~ water, = path, D door, L ladder down, U ladder up, B shipping bin, C chest, R shop counter, J bundle spot (Community Center), o object, # wall/blocked, . ground"
 )
 
 # Recipes worth telling the agents about (the rest - paths, fences, ... - are just noise).

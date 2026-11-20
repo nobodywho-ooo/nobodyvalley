@@ -25,7 +25,7 @@ internal static class MapView
     public const string Legend =
         "@ you, A-Z other farmers, & villager, ! monster, T tree, t sapling, X big stump/boulder, x dead crop, s stone, O ore, " +
         "w weed, k twig, f forage, g grass, , tilled, ; tilled+watered, p crop (needs water), P crop (watered), * ripe crop, " +
-        "~ water, = path, D door, L ladder down, U ladder up, B shipping bin, C chest, R shop counter, o object, # wall/blocked, . ground";
+        "~ water, = path, D door, L ladder down, U ladder up, B shipping bin, C chest, R shop counter, J bundle spot (Community Center), o object, # wall/blocked, . ground";
 
     public static JObject Render(Farmer me)
     {
@@ -109,6 +109,20 @@ internal static class MapView
         {
             note("shop counters (use x,y to open it)", p);
             return 'R';
+        }
+        if (loc is StardewValley.Locations.CommunityCenter)
+        {
+            int idx = loc.getTileIndexAt(p.X, p.Y, "Buildings", "indoors");
+            if (idx is >= 1824 and <= 1833)
+            {
+                note("bundle spots (use x,y to open the Junimo bundles)", p);
+                return 'J';
+            }
+            if (idx == 1799)
+            {
+                note("bundle note (needs 2 bundles done)", p);
+                return 'J';
+            }
         }
         if (loc is MineShaft or Mine)
         {
@@ -213,6 +227,13 @@ internal static class MapView
     {
         bool InView(Point p) => p.X >= x0 && p.X <= x1 && p.Y >= y0 && p.Y <= y1;
         bool Near(Vector2 t) => Math.Abs(t.X - c.X) + Math.Abs(t.Y - c.Y) <= 30;
+        // The Community Center's bundle spots sit on empty tiles; list the nearby ones explicitly.
+        if (loc is StardewValley.Locations.CommunityCenter)
+        {
+            foreach (var spot in BundleTiles(loc))
+                if (!InView(spot) && Near(spot.ToVector2()))
+                    note("bundle spots (use x,y to open)", spot);
+        }
         foreach (var pair in loc.objects.Pairs)
         {
             var p = Jobs.Steps.ToPoint(pair.Key);
@@ -238,6 +259,29 @@ internal static class MapView
             if (b.humanDoor.X >= 0 && b.GetIndoors() is { } indoors)
                 doors[b.getPointForHumanDoor()] = indoors.NameOrUniqueName;
         return doors;
+    }
+
+    /// <summary>The Community Center's bundle spots (Buildings layer indexes 1824-1833), cached.</summary>
+    private static List<Point>? bundleCache;
+    private static GameLocation? bundleCacheLoc;
+    private static List<Point> BundleTiles(GameLocation loc)
+    {
+        if (loc is not StardewValley.Locations.CommunityCenter cc)
+            return new List<Point>();
+        if (ReferenceEquals(bundleCacheLoc, loc) && bundleCache != null)
+            return bundleCache;
+        var result = new List<Point>();
+        var layer = loc.map.GetLayer("Buildings");
+        for (int x = 0; layer != null && x < layer.LayerWidth; x++)
+        for (int y = 0; layer != null && y < layer.LayerHeight; y++)
+        {
+            int idx = cc.getTileIndexAt(x, y, "Buildings", "indoors");
+            if (idx is >= 1824 and <= 1833 or 1799)
+                result.Add(new Point(x, y));
+        }
+        bundleCacheLoc = loc;
+        bundleCache = result;
+        return result;
     }
 
     /// <summary>Where you can leave this map, and to where.</summary>

@@ -61,6 +61,7 @@ ACTIONS: dict[str, Spec] = {
     "click": Spec("click", item="element", n=True, needs=("item",)),
     "close": Spec("close"),
     "check_community_center": Spec("check_community_center"),
+    "crafting": Spec("crafting"),
     "eat": Spec("eat", item="item"),
     "fish": Spec("fish", target="target", n=True),
     "descend": Spec("descend"),
@@ -500,6 +501,8 @@ class Agent:
                     await self._query("click", element=element, count=int(m.get("n") or 1))
             elif m.get("do") == "close":
                 await self._query("close")
+            elif m.get("do") == "crafting":
+                await self._query("crafting")
         say = " ".join(str(a.get("text", "")) for a in raw_actions if a.get("do") == "say").strip()
         if len(say) >= MAX_SAY_LENGTH:  # hit the limit mid-sentence
             say = say[: say.rfind(" ")].rstrip(",;:") + "…" if " " in say else say
@@ -531,7 +534,7 @@ class Agent:
             return
 
         actions, errors = self._parse_actions([a for a in raw_actions
-                                               if a.get("do") not in ("say", "emote", "answer", "equip", "click", "close")
+                                               if a.get("do") not in ("say", "emote", "answer", "equip", "click", "close", "crafting")
                                                and a.get("do") not in INFO_ACTIONS], obs)
         self.inbox.extend(errors)
         if actions and actions[0].cmd == "stop":

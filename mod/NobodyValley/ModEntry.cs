@@ -246,6 +246,14 @@ internal sealed class ModEntry : Mod
                 return new JObject { ["gave"] = $"{n} {item.DisplayName}" };
             }
 
+            case "debug_mail":
+            {
+                // Testing aid: add a mail flag (e.g. canReadJunimoText to un-scramble the bundles).
+                var name = Str("mail") ?? Str("item") ?? throw new CommandException("missing 'mail'");
+                Game1.player.mailReceived.Add(name);
+                return new JObject { ["mail"] = name };
+            }
+
             case "debug_money":
                 Game1.player.Money = Math.Max(0, Int("amount", 100000));
                 return new JObject { ["money"] = Game1.player.Money };
@@ -263,6 +271,22 @@ internal sealed class ModEntry : Mod
                     if (b.daysOfConstructionLeft.Value > 0 || b.daysUntilUpgrade.Value > 0)
                         b.FinishConstruction();
                 return new JObject { ["finished"] = true };
+            }
+
+            case "debug_bundles":
+            {
+                // Debug aid: the Community Center's bundle-spot tiles (Buildings layer indexes 1824-1833).
+                var cc = Game1.currentLocation as StardewValley.Locations.CommunityCenter;
+                var layer = cc?.map.GetLayer("Buildings");
+                var list = new List<string>();
+                for (int x = 0; layer != null && x < layer.LayerWidth; x++)
+                for (int y = 0; layer != null && y < layer.LayerHeight; y++)
+                {
+                    int idx = cc!.getTileIndexAt(x, y, "Buildings", "indoors");
+                    if (idx is >= 1824 and <= 1833)
+                        list.Add($"{x},{y} ({idx})");
+                }
+                return new JObject { ["bundles"] = string.Join(" ", list) };
             }
 
             case "debug_trace":
@@ -375,6 +399,11 @@ internal sealed class ModEntry : Mod
 
             case "close":
                 return new JObject { ["summary"] = MenuAgent.Close() };
+
+            // Open the backpack's crafting page, like a player pressing the menu key and picking the tab.
+            case "crafting":
+                Game1.activeClickableMenu = new GameMenu(GameMenu.craftingTab);
+                return new JObject { ["summary"] = "Opened the crafting page - craft with click, close to leave." };
 
             case "check_community_center":
             {

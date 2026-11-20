@@ -95,6 +95,14 @@ internal sealed class MenuJanitor
         monitor.Log($"Skipping cutscene '{ev.id}'.", LogLevel.Info);
         ev.skipped = true; // like the vanilla skip button, so we only skip once
         ev.skipEvent();
+        // The Junimo-scroll mail is granted by an event command; skipEvent doesn't run those, so
+        // without this the bundles stay scrambled forever for the agents. (The player would have
+        // watched the cutscene and gotten the scroll.)
+        if (!Game1.player.hasOrWillReceiveMail("canReadJunimoText") && Game1.MasterPlayer.mailReceived.Contains("ccDoorUnlock"))
+        {
+            Game1.player.mailReceived.Add("canReadJunimoText");
+            monitor.Log("Granted canReadJunimoText (its cutscene was skipped).", LogLevel.Info);
+        }
         return true;
     }
 

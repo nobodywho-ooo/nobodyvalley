@@ -30,7 +30,9 @@ internal static class MenuAgent
             ShopMenu shop => Shop(shop),
             ItemGrabMenu grab => Grab(grab),
             LevelUpMenu level => Level(level),
-            _ => null, // dialogues/letters/ready checks are screen messages; the GameMenu isn't modelled yet
+            JunimoNoteMenu note => Bundle(note),
+            GameMenu game => Game(game),
+            _ => null, // dialogues/letters/ready checks are screen messages
         };
     }
 
@@ -51,7 +53,9 @@ internal static class MenuAgent
             ShopMenu shop => ShopClick(shop, element, n),
             ItemGrabMenu grab => GrabClick(grab, element),
             LevelUpMenu level => LevelClick(level, element),
-            _ => $"there's no clickable menu open right now (clickable: shop/chest/bundle/level-up)",
+            JunimoNoteMenu note => BundleClick(note, element, n),
+            GameMenu game => GameClick(game, element, n),
+            _ => $"there's no clickable menu open right now (clickable: shop/chest/bin/bundle/crafting/level-up)",
         };
     }
 
@@ -270,6 +274,217 @@ internal static class MenuAgent
             }
         }
         return $"you don't carry '{name}'";
+    }
+
+    // ---------------------------------------------------------------- junimo bundles
+
+    private static string Bundle(JunimoNoteMenu menu)
+    {
+        var sb = new StringBuilder("[Junimo bundles]");
+        if (menu.specificBundlePage && menu.currentPageBundle is { } b)
+        {
+            sb.Append($"\nBundle: {b.name}");
+            if (menu.purchaseButton != null)
+            {
+                // The Vault: paid in gold.
+                int cost = b.ingredients.LastOrDefault().stack;
+                sb.Append($"\nNeeds {cost}g ({Me.Money}g).");
+                sb.Append("\nActions: click=\"pay\", click=\"back\", click=\"close\".");
+                return sb.ToString();
+            }
+            foreach (var need in b.ingredients)
+                if (!need.completed)
+                    sb.Append($"\n- needs {IngredientName(need)}");
+            sb.Append("\nActions: click=\"give {item}\" (donate one you carry), click=\"back\", click=\"close\".");
+            return sb.ToString();
+        }
+        var open = menu.bundles.Where(x => !x.complete && x.canBeClicked()).Select(x => x.name).ToList();
+        sb.Append(open.Count == 0 ? " Everything here is done." : " Open bundles:");
+        foreach (var name in open)
+            sb.Append($"\n- {name}  (click=\"bundle {name}\")");
+        sb.Append("\nActions: click=\"bundle {name}\", click=\"close\".");
+        return sb.ToString();
+    }
+
+    private static string IngredientName(BundleIngredientDescription need)
+    {
+        if (need.category is int cat)
+        {
+            string catName = cat switch
+            {
+                -2 => "Mineral", -75 => "Foraged item", -4 => "Fish", -5 => "Egg", -6 => "Milk", _ => $"category {cat}",
+            };
+            return $"{need.stack} {catName}" + (need.quality >= 2 ? " (gold)" : "");
+        }
+        return $"{need.stack} {ItemRegistry.GetDataOrErrorItem(need.id).DisplayName}" + (need.quality >= 2 ? " (gold)" : "");
+    }
+
+    private static string BundleClick(JunimoNoteMenu menu, string element, int n)
+    {
+        string q = element.Trim();
+        if (q.Equals("close", StringComparison.OrdinalIgnoreCase) || q.Equals("leave", StringComparison.OrdinalIgnoreCase))
+        {
+            if (menu.specificBundlePage && menu.upperRightCloseButton != null)
+            {
+                menu.receiveLeftClick(menu.upperRightCloseButton.bounds.Center.X, menu.upperRightCloseButton.bounds.Center.Y);
+                return "Closed the bundle page.";
+            }
+            menu.exitThisMenu(playSound: true);
+            return "Closed the bundle menu.";
+        }
+        if (q.StartsWith("bundle ", StringComparison.OrdinalIgnoreCase))
+        {
+            string name = q["bundle ".Length..];
+            var bundle = menu.bundles.FirstOrDefault(x => !x.complete && x.name.Equals(name, StringComparison.OrdinalIgnoreCase));
+            if (bundle == null)
+                return $"no open bundle named '{name}' - pick from the list";
+            menu.receiveLeftClick(bundle.bounds.Center.X, bundle.bounds.Center.Y);
+            return $"Opened the {name} bundle.";
+        }
+
+        // On a bundle's detail page.
+        if (!menu.specificBundlePage || menu.currentPageBundle is not { } b)
+            return "open a bundle first (click=\"bundle {name}\")";
+        if (q.Equals("back", StringComparison.OrdinalIgnoreCase) && menu.backButton != null)
+        {
+            menu.receiveLeftClick(menu.backButton.bounds.Center.X, menu.backButton.bounds.Center.Y);
+            return "Back to the bundle list.";
+        }
+        if (q.Equals("pay", StringComparison.OrdinalIgnoreCase))
+        {
+            if (menu.purchaseButton == null)
+                return "this bundle isn't paid in gold";
+            menu.receiveLeftClick(menu.purchaseButton.bounds.Center.X, menu.purchaseButton.bounds.Center.Y);
+            return $"Paid for the {b.name} bundle.";
+        }
+        if (q.StartsWith("give ", StringComparison.OrdinalIgnoreCase))
+        {
+            string name = q["give ".Length..];
+            // Pick the item up from our grid, then click the empty ingredient slot that accepts it.
+            for (int i = 0; i < Me.Items.Count && i < menu.inventory.inventory.Count; i++)
+            {
+                if (Me.Items[i] == null || !Matches(Me.Items[i]!, name))
+                    continue;
+                menu.receiveLeftClick(menu.inventory.inventory[i].bounds.Center.X, menu.inventory.inventory[i].bounds.Center.Y);
+                if (menu.heldItem == null)
+                    return $"couldn't pick up {name}";
+                for (int l = 0; l < menu.ingredientSlots.Count; l++)
+                {
+                    if (menu.ingredientSlots[l].item == null && b.canAcceptThisItem(menu.heldItem, menu.ingredientSlots[l]))
+                    {
+                        menu.receiveLeftClick(menu.ingredientSlots[l].bounds.Center.X, menu.ingredientSlots[l].bounds.Center.Y);
+                        return $"Donated {name} to the {b.name} bundle.";
+                    }
+                }
+                // No empty slot accepts it (wrong quality/stack) - put it back by clicking anywhere.
+                menu.receiveLeftClick(menu.xPositionOnScreen + menu.width + 64, menu.yPositionOnScreen + menu.height / 2);
+                return $"{name} doesn't fit any empty slot of the {b.name} bundle right now";
+            }
+            return $"you don't carry '{name}'";
+        }
+        return "say click=\"give <item>\", click=\"back\", or click=\"pay\"";
+    }
+
+    // ---------------------------------------------------------------- crafting (the GameMenu)
+
+    private static string Game(GameMenu game)
+    {
+        if (game.pages.ElementAtOrDefault(game.currentTab) is not CraftingPage page)
+            return "[backpack menu] that tab isn't wired up for clicking yet - close it (click=\"close\").";
+        var sb = new StringBuilder("Crafting menu:");
+        var recipes = page.pagesOfCraftingRecipes.ElementAtOrDefault(page.currentCraftingPage);
+        if (recipes is { Count: > 0 })
+        {
+            foreach (var (_, recipe) in recipes)
+            {
+                string parts = string.Join(", ", recipe.recipeList.Select(kv => IngredientForCraft(kv)));
+                sb.Append($"\n- {recipe.DisplayName}: {parts}"
+                    + (recipe.doesFarmerHaveIngredientsInInventory() ? " (you have these)" : " (missing ingredients)"));
+            }
+        }
+        if (page.heldItem != null)
+            sb.Append($"\n(you're holding {page.heldItem.DisplayName} x{page.heldItem.Stack} on your cursor - click=\"bag\" to put it in a free slot)");
+        if (page.pagesOfCraftingRecipes.Count > 1)
+            sb.Append($"\n(page {page.currentCraftingPage + 1} of {page.pagesOfCraftingRecipes.Count} - click=\"next\"/\"prev\")");
+        sb.Append("\nActions: click=\"craft {name}\" (n=N for N; each craft is also clicked into a bag slot for you), click=\"bag\", click=\"next\"/\"prev\", click=\"close\".");
+        return sb.ToString();
+    }
+
+    private static string IngredientForCraft(KeyValuePair<string, int> kv)
+    {
+        string what = int.TryParse(kv.Key, out int cat) && cat < 0
+            ? $"any {cat switch { -5 => "egg", -6 => "milk", -75 => "vegetable", -80 => "flower", _ => $"category {cat}" }}"
+            : ItemRegistry.GetDataOrErrorItem(kv.Key).DisplayName;
+        return $"{kv.Value} {what}";
+    }
+
+    private static string GameClick(GameMenu game, string element, int n)
+    {
+        string q = element.Trim();
+        if (q.Equals("close", StringComparison.OrdinalIgnoreCase) || q.Equals("leave", StringComparison.OrdinalIgnoreCase))
+        {
+            game.exitThisMenu(playSound: true);
+            return "Closed the menu.";
+        }
+        if (game.pages.ElementAtOrDefault(game.currentTab) is not CraftingPage page)
+            return "that tab has nothing clickable yet";
+        if (q.Equals("bag", StringComparison.OrdinalIgnoreCase))
+        {
+            if (page.heldItem == null)
+                return "your cursor is empty already";
+            return DepositHeld(page) ? "Put it in your bag." : "No free slot - make room (store things) and click bag again.";
+        }
+        if (q.Equals("next", StringComparison.OrdinalIgnoreCase) && page.downButton != null)
+        {
+            page.receiveLeftClick(page.downButton.bounds.Center.X, page.downButton.bounds.Center.Y);
+            return "Next crafting page.";
+        }
+        if (q.Equals("prev", StringComparison.OrdinalIgnoreCase) && page.upButton != null)
+        {
+            page.receiveLeftClick(page.upButton.bounds.Center.X, page.upButton.bounds.Center.Y);
+            return "Previous crafting page.";
+        }
+        string name = q.StartsWith("craft ", StringComparison.OrdinalIgnoreCase) ? q["craft ".Length..] : q;
+        var recipes = page.pagesOfCraftingRecipes[page.currentCraftingPage];
+        foreach (var (comp, recipe) in recipes)
+        {
+            if (!recipe.DisplayName.Contains(name, StringComparison.OrdinalIgnoreCase))
+                continue;
+            int made = 0;
+            int want = Math.Clamp(n, 1, 25);
+            for (int i = 0; i < want; i++)
+            {
+                if (Game1.activeClickableMenu is not GameMenu || game.pages.ElementAtOrDefault(game.currentTab) is not CraftingPage cur)
+                    break;
+                if (cur.heldItem != null && !DepositHeld(cur))
+                    break; // cursor is stuck full - deal with it first
+                cur.receiveLeftClick(comp.bounds.Center.X, comp.bounds.Center.Y); // vanilla: item appears on the cursor
+                if (cur.heldItem == null)
+                    break; // no ingredients
+                made++;
+                if (!DepositHeld(cur))
+                    break; // crafted but the cursor is stuck full; the menu note mentions it
+            }
+            return made > 0
+                ? $"Crafted {made} {recipe.DisplayName}{((Game1.activeClickableMenu is GameMenu gm && gm.pages.ElementAtOrDefault(gm.currentTab) is CraftingPage cp && cp.heldItem != null) ? " - one is on your cursor; click=bag when you have room" : "")}."
+                : $"Clicked {recipe.DisplayName} - you're missing ingredients; read the recipe list.";
+        }
+        return $"no recipe '{name}' on this page - click=\"next\" to scroll";
+    }
+
+    /// <summary>Click a bag slot to put the cursor item away (the second half of a craft click).
+    /// Only stackable/empty slots - never swaps, so nothing gets kicked onto the cursor.</summary>
+    private static bool DepositHeld(CraftingPage page)
+    {
+        if (page.heldItem is not Item held || page.inventory?.inventory == null)
+            return false;
+        ClickableComponent? slot = page.inventory.inventory.FirstOrDefault(s =>
+                s.item != null && s.item.canStackWith(held) && s.item.Stack + held.Stack <= held.maximumStackSize())
+            ?? page.inventory.inventory.FirstOrDefault(s => s.item == null);
+        if (slot == null)
+            return false;
+        page.receiveLeftClick(slot.bounds.Center.X, slot.bounds.Center.Y);
+        return page.heldItem == null;
     }
 
     // ---------------------------------------------------------------- level ups
