@@ -306,6 +306,21 @@ internal sealed class ModEntry : Mod
                 return new JObject { ["event"] = script };
             }
 
+            case "debug_warp_npc":
+            {
+                // Debug aid: warp an NPC to a tile (and pause its schedule), e.g. put Pierre at his counter.
+                var who = Game1.getCharacterFromName(Str("name") ?? throw new CommandException("missing 'name'"));
+                if (who == null || who.currentLocation == null)
+                    throw new CommandException("that NPC isn't here/loaded");
+                var px = Int("x", (int)who.Tile.X);
+                var py = Int("y", (int)who.Tile.Y);
+                who.Position = new Microsoft.Xna.Framework.Vector2(px * 64, py * 64);
+                who.controller = null;
+                who.movementPause = 60 * 60 * 1000; // a game-hour
+                who.faceDirection(0);
+                return new JObject { ["warped"] = $"{who.Name} to {px},{py}" };
+            }
+
             case "debug_trace":
                 traceTicks = Math.Clamp(Int("ticks", 300), 1, 3600);
                 return new JObject { ["tracing_ticks"] = traceTicks };

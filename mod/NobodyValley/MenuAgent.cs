@@ -131,23 +131,41 @@ internal static class MenuAgent
             shop.receiveLeftClick(shop.upArrow.bounds.Center.X, shop.upArrow.bounds.Center.Y);
             return shop.currentItemIndex < before ? "Scrolled up." : "Already at the top.";
         }
-        // Selling: click the item in our own inventory grid (the shop pays for it if it buys that).
-        ClickableComponent? slot = shop.inventory.inventory.FirstOrDefault(s => s?.item != null && Matches(s.item, q));
-        if (slot != null)
+        // Selling: click the item in the shop's bottom pane (your items, index-aligned with the
+        // real bag), like a player. The pane only reacts to what this shop buys.
+        int carried = -1;
+        for (int i = 0; i < Me.Items.Count && i < shop.inventory.inventory.Count; i++)
+        {
+            if (Me.Items[i] != null && Matches(Me.Items[i]!, q))
+            {
+                carried = i;
+                break;
+            }
+        }
+        if (carried >= 0)
         {
             int moneyBeforeSell = Me.Money;
+            int sold = 0;
             int clicksSell = Math.Clamp(n, 1, 25);
-            for (int i = 0; i < clicksSell; i++)
+            for (int c = 0; c < clicksSell; c++)
             {
-                slot = shop.inventory.inventory.FirstOrDefault(s => s?.item != null && Matches(s.item, q));
-                if (slot == null)
-                    break;
+                int sellIdx = -1;
+                for (int j = 0; j < Me.Items.Count && j < shop.inventory.inventory.Count; j++)
+                    if (Me.Items[j] != null && Matches(Me.Items[j]!, q))
+                    {
+                        sellIdx = j;
+                        break;
+                    }
+                if (sellIdx < 0)
+                    break; // sold the whole stack
                 shop.safetyTimer = 0;
-                shop.receiveLeftClick(slot.bounds.Center.X, slot.bounds.Center.Y);
+                shop.receiveLeftClick(shop.inventory.inventory[sellIdx].bounds.Center.X, shop.inventory.inventory[sellIdx].bounds.Center.Y);
+                sold++;
             }
-            return Me.Money > moneyBeforeSell
-                ? $"Sold {q}: +{Me.Money - moneyBeforeSell}g (now {Me.Money}g)."
-                : $"Clicked {q} but the shop didn't buy it - click one of the listed items to buy instead.";
+            int gained = Me.Money - moneyBeforeSell;
+            return gained > 0
+                ? $"Sold {q}: +{gained}g (now {Me.Money}g)."
+                : $"Clicked {q} in the pane but nothing sold - this shop may not buy {q} (ship it instead).";
         }
 
         // A tab click: switch the shop's category, like a player clicking its tab.
