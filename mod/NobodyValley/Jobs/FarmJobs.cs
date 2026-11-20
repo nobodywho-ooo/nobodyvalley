@@ -105,47 +105,6 @@ internal static class FarmJobs
         return null;
     }
 
-    // ================================================================ clear debris
-
-    public static IEnumerator ClearDebris(Job job, int count)
-    {
-        yield return EnsureOnFarm();
-        var farm = Game1.getFarm();
-        var centre = FieldCentre();
-        var skipped = new HashSet<Vector2>();
-        int cleared = 0;
-
-        while (cleared < count)
-        {
-            var claims = PlayerState.OthersClaims();
-            var next = farm.objects.Pairs
-                .Where(p => IsClearable(p.Value) && !skipped.Contains(p.Key) && !claims.Contains(p.Key))
-                .Select(p => p.Key)
-                .OrderBy(t => Steps.Dist(Steps.ToPoint(t), centre))
-                .Cast<Vector2?>()
-                .FirstOrDefault();
-            if (next == null)
-                break;
-
-            var tile = next.Value;
-            PlayerState.SetClaim(tile);
-            var r = new StepResult();
-            yield return ClearTile(tile, r);
-            if (r.Ok)
-            {
-                cleared++;
-                job.Summary = $"Cleared {cleared} of {count} debris.";
-            }
-            else
-            {
-                skipped.Add(tile);
-            }
-        }
-        if (cleared == 0)
-            throw new JobFailed("no reachable debris (weeds, stones, twigs) near the field");
-        job.Summary = $"Cleared {cleared} debris near the field.";
-    }
-
     private static bool IsClearable(SObject o) => o.IsWeeds() || o.IsBreakableStone() || o.IsTwig();
 
     /// <summary>Remove a weed/stone/twig/grass on a tile with the right tool.</summary>

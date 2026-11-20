@@ -16,7 +16,7 @@ import json
 import random
 from typing import Any
 
-JOB_SECONDS = {"go_to": 4, "clear_debris": 6, "till": 6, "plant": 5, "water": 5, "harvest": 4, "ship": 3, "buy": 5, "eat": 2, "sleep": 3}
+JOB_SECONDS = {"go_to": 4, "chop_trees": 6, "mine": 6, "till": 6, "plant": 5, "water": 5, "harvest": 4, "ship": 3, "buy": 5, "eat": 2, "sleep": 3}
 
 
 class World:
@@ -103,11 +103,9 @@ class FakeInstance:
         if cmd == "go_to":
             me["location"] = msg["target"]
             summary = f"You arrived at {msg['target']}."
-        elif cmd in ("till", "clear_debris", "plant", "water", "harvest") and me["location"] != "Farm":
+        elif cmd in ("till", "plant", "water", "harvest") and me["location"] != "Farm":
             me["location"] = "Farm"
-        if cmd == "clear_debris":
-            n = min(n, w.debris); w.debris -= n; summary = f"Cleared {n} debris."
-        elif cmd == "till":
+        if cmd == "till":
             w.tilled += n; summary = f"Tilled {n} tiles."
         elif cmd == "plant":
             n = min(n, w.tilled - len(w.crops))

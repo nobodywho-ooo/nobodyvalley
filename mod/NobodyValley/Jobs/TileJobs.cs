@@ -78,7 +78,7 @@ internal static class TileJobs
     {
         var loc = Me.currentLocation;
         var v = new Vector2(tile.X, tile.Y);
-        if (loc.terrainFeatures.TryGetValue(v, out var tf) && tf is HoeDirt)
+        if (loc.terrainFeatures.TryGetValue(v, out var tf) && tf is HoeDirt { crop: null })
             throw new JobFailed($"{tile.X},{tile.Y} is already tilled - plant seeds there (plant item x,y)");
         var hoe = Steps.FindTool<Hoe>() ?? throw new JobFailed("you don't have a hoe");
         yield return SwingTool(job, tile, hoe, "hoe", "tilled", HoeTarget);
@@ -150,6 +150,9 @@ internal static class TileJobs
                 () => !loc.resourceClumps.Any(c => c.occupiesTile((int)v.X, (int)v.Y)));
         if (loc.terrainFeatures.TryGetValue(v, out var tf) && tf is Tree)
             return ("tree", () => !loc.terrainFeatures.ContainsKey(v));
+        if (loc.terrainFeatures.TryGetValue(v, out var tf2) && tf2 is HoeDirt { crop: { } c })
+            return (c.dead.Value ? $"dead {Observer.CropName(c)}" : $"growing {Observer.CropName(c)}",  // an axe destroys a crop in the way
+                () => !loc.terrainFeatures.TryGetValue(v, out var x) || x is not HoeDirt { crop: not null });
         if (loc.objects.TryGetValue(v, out var o))
         {
             if (o.IsTwig()) return ("twig", () => !loc.objects.ContainsKey(v));
@@ -168,8 +171,13 @@ internal static class TileJobs
             if (o.IsBreakableStone()) return ("stone", () => !loc.objects.TryGetValue(v, out var x) || !x.IsBreakableStone());
             if (o.IsWeeds()) return ("weeds", () => !loc.objects.ContainsKey(v));
         }
-        if (loc.terrainFeatures.TryGetValue(v, out var tf) && tf is HoeDirt { crop: null })
+        if (loc.terrainFeatures.TryGetValue(v, out var tf) && tf is HoeDirt dirt)
+        {
+            if (dirt.crop is { } c)
+                return (c.dead.Value ? $"dead {Observer.CropName(c)}" : $"growing {Observer.CropName(c)}",  // a pickaxe destroys a crop in the way
+                    () => !loc.terrainFeatures.TryGetValue(v, out var x) || x is not HoeDirt { crop: not null });
             return ("tilled soil", () => !loc.terrainFeatures.ContainsKey(v)); // pickaxe un-tills empty soil
+        }
         return null;
     }
 

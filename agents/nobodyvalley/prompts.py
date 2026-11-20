@@ -107,8 +107,8 @@ Tips:
 - An open menu (chest, backpack, or items that didn't fit) blocks everything. Read what it shows, take/store the
   items you want, then answer to close it. Closing a full-bag menu loses what's left inside.
 - Each tool verb swings that tool at the tile: chop=axe (trees/twigs), mine=pickaxe (stones/ore), till=hoe (soil),
-  scythe=grass/weeds/dead crops. The axe/pickaxe/hoe destroy growing crops - never use them on a crop tile; harvest
-  ripe ones (or scythe wheat/fiber). Mine flattens empty tilled soil, so don't mine the field. Clear grass/weeds
+  scythe=grass/weeds/dead crops. A swing does what the tool does there: chopping or mining a crop tile destroys that
+  crop (harvest x,y picks ripe ones instead; scythe cuts wheat/fiber). Mine also flattens empty tilled soil. Clear grass/weeds
   anywhere: scythe cuts them.
 - A failed action cancels the rest of your plan: read the map before choosing tiles, walk only on passable ground
   (~ is water, # is blocked), and use go_to for anywhere you can't see. Don't gift your tools, and don't repeat an

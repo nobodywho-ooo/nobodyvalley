@@ -361,12 +361,6 @@ internal sealed class ModEntry : Mod
                 var t = at ?? throw new CommandException("missing x, y");
                 return StartJob(cmd, $"using {t.X},{t.Y}", j => TileJobs.Use(j, t), runDuringMenus: true);
             }
-            case "clear_debris":
-            {
-                // Bulk only, for field prep: cutting individual weeds/stones is what chop/mine/scythe are for.
-                int n = Math.Clamp(Int("count", 10), 1, 25);
-                return StartJob(cmd, "clearing debris from the field", j => FarmJobs.ClearDebris(j, n));
-            }
             case "chop_trees":
             {
                 if (at is { } t)
