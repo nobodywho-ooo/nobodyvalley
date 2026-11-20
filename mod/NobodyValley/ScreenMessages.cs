@@ -20,8 +20,6 @@ internal sealed class ScreenMessages
     private DialogueBox? lastDialogueBox;
     private string? lastDialogueKey;
     private string? lastEventKey;
-    private IClickableMenu? lastMenu; // an open chest/inventory menu we've already told the agent about
-    private IClickableMenu? modOpened; // a chest menu the mod itself opened (store/take) - don't report it
 
     public ScreenMessages(BridgeServer server, IMonitor monitor)
     {
@@ -31,9 +29,6 @@ internal sealed class ScreenMessages
 
     /// <summary>True while a message is waiting for the agent (MenuJanitor leaves the screen alone).</summary>
     public bool Holding => DateTime.UtcNow < holdUntil;
-
-    /// <summary>Mark a menu as mod-opened (e.g. the chest window a store/take job raises); it's reported as a job result, not as a screen message.</summary>
-    public void Ignore(IClickableMenu? menu) => modOpened = menu;
 
     public void ClearHold() => holdUntil = DateTime.MinValue;
 

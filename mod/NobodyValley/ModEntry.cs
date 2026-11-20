@@ -136,9 +136,6 @@ internal sealed class ModEntry : Mod
             Game1.options.desiredUIScale = Math.Clamp(scale, 0.5f, 1.5f);
     }
 
-    /// <summary>Tell ScreenMessages to ignore the currently open menu (the mod opened it itself).</summary>
-    internal void NoteModOpenedMenu() => screenMessages.Ignore(Game1.activeClickableMenu);
-
     internal void OnChat(string from, string text, bool isPrivate) =>
         server.Broadcast("chat", new JObject { ["from"] = from, ["text"] = text, ["private"] = isPrivate });
 

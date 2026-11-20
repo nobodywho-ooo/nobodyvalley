@@ -187,7 +187,8 @@ NV_WINDOW=x,y,w,h scripts/test-instance.sh [save]   # single-player test instanc
                                                   # (outside the agents' range, so they don't pick it up)
 cd agents
 uv run python -m nobodyvalley.cli --port 8790 observe    # poke the mod by hand
-uv run python -m nobodyvalley.cli till count=5     # waits for the job and prints the result
+uv run python -m nobodyvalley.cli use x=5 y=18     # waits for the job and prints the result
+uv run python -m nobodyvalley.cli click 'Parsnip Seeds'   # click the open menu's button
 uv run python -m nobodyvalley.cli screenshot       # whole-map screenshot into the game's Screenshots folder
 uv run python -m nobodyvalley.cli debug_set_time time=900
 uv run python -m nobodyvalley.fake_game            # fake game on ports 9765+ for testing the agent loop...

@@ -19,11 +19,11 @@ Map legend: {legend}
 
 Reply each turn with minimal JSON: {{"thought":"a few words","actions":[...]}}.
 "actions": up to 5, done in order. Each is {{"do":...}} plus only the fields it needs.
-Limits: thought <= 80 characters; say text <= 100 characters; target/item/element names <= 40 characters;
+Limits: thought <= 80 characters; say text <= 100 characters; target/item names <= 40 characters;
 x and y are map coordinates from 0 to 200; n is 1-25; at most 5 actions per turn.
   say text (the public game chat - seen by the other farmers; only to coordinate or answer)
   answer n (choose a 1-based option in an on-screen question; no n = continue/close any pop-up)
-  click "element" (click that named button in the open menu; n times if you give n, e.g. buy 5)
+  click item n (click that named button in the open menu - e.g. "Parsnip Seeds" to buy; n times if you give n, e.g. buy 5)
   close (close the open menu)
   emote ({emotes})
   go_to target (travel somewhere: Farm, Pierre's, Willy's, Marnie's, Saloon, Beach, Town, Forest, Mountain, Mines, home; or a person)
@@ -40,7 +40,7 @@ x and y are map coordinates from 0 to 200; n is 1-25; at most 5 actions per turn
   stop (cancel the current plan; first action only)
 
 Menus are real Stardew menus: while one is open you can only click it (click/answer/close).
-Example: {{"thought":"Buy seeds, then plant.","actions":[{{"do":"click","element":"Parsnip Seeds","n":10}},{{"do":"close"}}]}}
+Example: {{"thought":"Buy seeds, then plant.","actions":[{{"do":"click","item":"Parsnip Seeds","n":10}},{{"do":"close"}}]}}
 
 Tips - read the screen:
 - Shops (Pierre's, Willy's, Marnie's, the Saloon, ...): go_to the place, then use x,y on the counter.

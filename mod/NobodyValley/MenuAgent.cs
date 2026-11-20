@@ -301,17 +301,23 @@ internal static class MenuAgent
     private static string LevelClick(LevelUpMenu level, string element)
     {
         string q = element.Trim().ToLowerInvariant();
-        if (q is "ok" or "continue" or "close")
+        // LevelUpMenu.receiveLeftClick is empty (it polls the mouse), so do what the buttons do.
+        if (!level.readyToClose() || !level.isActive)
+            return "the level-up screen isn't ready yet";
+        if (!level.isProfessionChooser || q is "ok" or "continue" or "close" or "skip")
         {
-            level.receiveLeftClick(level.okButton.bounds.Center.X, level.okButton.bounds.Center.Y);
+            level.okButtonClicked();
             return "OK.";
         }
-        var target = q is "left" or "right" ? (q == "left" ? level.leftProfession : level.rightProfession)
-            : level.isProfessionChooser && q.Contains("left") ? level.leftProfession
-            : level.isProfessionChooser && q.Contains("right") ? level.rightProfession : null;
-        if (target == null)
+        var choices = Reflection.GetField<List<int>>(level, "professionsToChoose").GetValue();
+        int pick = q.Contains("right") && choices.Count > 1 ? 1 : choices.Count > 0 ? 0 : -1;
+        if (pick < 0)
             return "click=\"left\" or click=\"right\" to pick a profession";
-        level.receiveLeftClick(target.bounds.Center.X, target.bounds.Center.Y);
+        Game1.player.professions.Add(choices[pick]);
+        level.getImmediateProfessionPerk(choices[pick]);
+        level.isActive = false;
+        level.informationUp = false;
+        level.RemoveLevelFromLevelList();
         return "Chose a profession.";
     }
 }

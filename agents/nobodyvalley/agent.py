@@ -303,10 +303,7 @@ class Agent:
         if ev["ok"]:
             self.last_failure = None
             self.failure_streak = 0
-            if ev["action"] == "talk_to":
-                self.report_turn = True  # give the model a chance to summarize the villager's news
-                self.inbox.append("If the villager asked for something or said something useful, summarize it for the others with say.")
-            # Always report it, also mid-plan: e.g. "harvest: Nothing is ready" explains why the "ship" after it fails.
+            # Always report it, also mid-plan.
             self.inbox.append(f"Done {ev['action']}: {ev['summary']}")
             if self.queue:
                 asyncio.create_task(self._start_next())
