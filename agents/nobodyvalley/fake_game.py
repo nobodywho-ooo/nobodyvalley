@@ -90,7 +90,7 @@ class FakeInstance:
                 self.job.cancel()
             return {"summary": "Stopped."}
         # Instant commands: no job_id, reply right away.
-        if cmd in ("answer", "click", "close", "equip", "check_community_center"):
+        if cmd in ("answer", "click", "close", "equip", "crafting", "check_community_center"):
             return {"summary": "ok"}
         if cmd in JOB_SECONDS:
             if self.job:

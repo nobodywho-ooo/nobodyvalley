@@ -59,12 +59,21 @@ internal static class MenuAgent
         };
     }
 
-    /// <summary>Close the current menu, as if the player pressed the close key.</summary>
+    /// <summary>Close the current menu, as if the player pressed the close key. When something is on
+    /// the cursor, that means the vanilla ESC flow (which collects the item into the backpack).</summary>
     public static string Close()
     {
         var m = Game1.activeClickableMenu;
         if (m == null)
             return "there's no menu open";
+        if (m is ShopMenu shop && shop.heldItem != null)
+        {
+            string held = shop.heldItem.DisplayName;
+            shop.receiveKeyPress(Microsoft.Xna.Framework.Input.Keys.Escape); // the vanilla ESC: put the cursor item back
+            if (Game1.activeClickableMenu is ShopMenu still)
+                still.exitThisMenu(playSound: true);                     // and leave, like a second ESC
+            return $"Closed the shop; {held} went back into your backpack.";
+        }
         if (m is ItemGrabMenu { heldItem: not null })
             return "you're holding an item - put it somewhere (store it) or click=close again to drop it back";
         m.exitThisMenu(playSound: true);
@@ -77,22 +86,25 @@ internal static class MenuAgent
     {
         var sb = new StringBuilder();
         if (shop.heldItem != null)
-            sb.Append($"(you're holding {shop.heldItem.DisplayName} x{shop.heldItem.Stack} on the cursor - it isn't in your backpack yet)");
-        sb.Append($" Shop is open; you have {Me.Money}g. Click an item below to buy it (it's put into your backpack for you); click one of YOUR items (below/right) to sell it.");
-        for (int k = 0; k < shop.forSaleButtons.Count; k++)
+            sb.Append($"(you're holding {shop.heldItem.DisplayName} x{shop.heldItem.Stack} on the cursor - it isn't in your backpack yet; close when done)");
+        sb.Append($" Shop is open; you have {Me.Money}g. The whole list is here - click any item to buy 1 (n=N for N). Click one of YOUR items (the ones you carry) to sell it.");
+        if (shop.tabButtons is { Count: > 1 })
+            sb.Append("\nTabs: " + string.Join(", ", shop.tabButtons.Select(t => $"\"{t.label}\"")) + " (click=\"tab {name}\").");
+        int shown = 0;
+        for (int i = 0; i < shop.forSale.Count && shown < 60; i++)
         {
-            int idx = shop.currentItemIndex + k;
-            if (idx >= shop.forSale.Count || shop.forSale[idx] == null)
+            var salable = shop.forSale[i];
+            if (salable == null)
                 continue;
-            var salable = shop.forSale[idx];
             int price = shop.itemPriceAndStock.TryGetValue(salable, out var info) ? info.Price : salable.salePrice();
             int stock = shop.itemPriceAndStock.TryGetValue(salable, out var info2) ? info2.Stock : -1;
-            string stockText = stock <= 0 ? "" : stock >= int.MaxValue / 2 ? ", plenty in stock" : $", {stock} left";
+            string stockText = stock <= 0 ? "" : stock >= int.MaxValue / 2 ? "" : $", {stock} left";
             sb.Append($"\n- {salable.DisplayName} ({price}g{stockText})");
+            shown++;
         }
-        if (shop.forSale.Count > shop.forSaleButtons.Count)
-            sb.Append("\n(more items - click=\"next\" to scroll)");
-        sb.Append("\nActions: click=\"<item name>\" (buy/sell 1, n=N for N), click=\"next\"/\"prev\", click=\"close\".");
+        if (shop.forSale.Count > shown)
+            sb.Append($"\n... and {shop.forSale.Count - shown} more - switch tabs to see them; any click on a listed item works.");
+        sb.Append("\nActions: click=\"<item name>\" (buy/sell 1, n=N for N), click=\"tab <name>\", click=\"close\".");
         return sb.ToString();
     }
 
@@ -108,12 +120,14 @@ internal static class MenuAgent
         if (q.Equals("next", StringComparison.OrdinalIgnoreCase))
         {
             int before = shop.currentItemIndex;
+            shop.safetyTimer = 0;
             shop.receiveLeftClick(shop.downArrow.bounds.Center.X, shop.downArrow.bounds.Center.Y);
             return shop.currentItemIndex > before ? "Scrolled down." : "Already at the bottom.";
         }
         if (q.Equals("prev", StringComparison.OrdinalIgnoreCase))
         {
             int before = shop.currentItemIndex;
+            shop.safetyTimer = 0;
             shop.receiveLeftClick(shop.upArrow.bounds.Center.X, shop.upArrow.bounds.Center.Y);
             return shop.currentItemIndex < before ? "Scrolled up." : "Already at the top.";
         }
@@ -128,6 +142,7 @@ internal static class MenuAgent
                 slot = shop.inventory.inventory.FirstOrDefault(s => s?.item != null && Matches(s.item, q));
                 if (slot == null)
                     break;
+                shop.safetyTimer = 0;
                 shop.receiveLeftClick(slot.bounds.Center.X, slot.bounds.Center.Y);
             }
             return Me.Money > moneyBeforeSell
@@ -135,14 +150,29 @@ internal static class MenuAgent
                 : $"Clicked {q} but the shop didn't buy it - click one of the listed items to buy instead.";
         }
 
-        // Buying: like a player, each purchase lands on the cursor and has to be clicked into the
-        // backpack. We do that per unit: click the item, click a bag slot.
+        // A tab click: switch the shop's category, like a player clicking its tab.
+        if (q.StartsWith("tab ", StringComparison.OrdinalIgnoreCase) && shop.tabButtons is { Count: > 0 })
+        {
+            string tabName = q["tab ".Length..];
+            for (int i = 0; i < shop.tabButtons.Count; i++)
+            {
+                var tab = shop.tabButtons[i];
+                if (tab.label.Equals(tabName, StringComparison.OrdinalIgnoreCase) || tab.name.Equals(tabName, StringComparison.OrdinalIgnoreCase))
+                {
+                    shop.receiveLeftClick(tab.bounds.Center.X, tab.bounds.Center.Y);
+                    return $"Switched to the {tabName} tab.";
+                }
+            }
+            return $"no tab '{tabName}' - tabs are: " + string.Join(", ", shop.tabButtons.Select(t => t.label));
+        }
+
+        // Buying: the whole stock is listed, so scroll to the item first if it isn't on the
+        // current page, then click its button once per unit wanted (purchases stack on the cursor).
         int idx = FindShopItem(shop, q);
         if (idx < 0)
-            return $"the shop's current page has no '{q}' - click=\"next\" to scroll, or pick from the list";
+            return $"the shop doesn't sell '{q}' - pick from the list (or switch tabs)";
+        ScrollTo(shop, idx);
         var salable = shop.forSale[idx];
-        string qid = (salable as Item)?.QualifiedItemId ?? "";
-        int qtyBefore = qid.Length > 0 ? Me.Items.CountId(qid) : 0;
         int moneyBeforeBuy = Me.Money;
         int clicks = Math.Clamp(n, 1, 25);
         int done = 0;
@@ -153,48 +183,41 @@ internal static class MenuAgent
             int curIdx = FindShopItem(cur, q);
             if (curIdx < 0)
                 break; // sold out or scrolled away
+            ScrollTo(cur, curIdx);
             var btn = cur.forSaleButtons[curIdx - cur.currentItemIndex];
-            cur.receiveLeftClick(btn.bounds.Center.X, btn.bounds.Center.Y); // buys; item sits on the cursor
-            DepositHeld(cur);                                               // click it into the backpack
+            cur.safetyTimer = 0; // purchases arm a repeat-click guard; clears like the real timer would
+            cur.receiveLeftClick(btn.bounds.Center.X, btn.bounds.Center.Y); // buys; stacks on the cursor
             done++;
         }
-        int gained = qid.Length > 0 ? Me.Items.CountId(qid) - qtyBefore : 0;
+        // The vanilla purchase sits on the cursor; closing the shop returns it to your backpack
+        // (a full backpack shows an "items that didn't fit" menu the agent can clear out).
         int spent = moneyBeforeBuy - Me.Money;
-        if (gained > 0)
-            return $"Bought {gained} {salable.DisplayName} for {spent}g (money: {Me.Money}g).";
-        if (shop.heldItem != null && shop.heldItem.DisplayName.Equals(salable.DisplayName, StringComparison.OrdinalIgnoreCase))
-            return $"Bought 1 {salable.DisplayName} ({spent}g) but your backpack is full - it's still in your hand; close=... or make room and click again.";
+        if (shop.heldItem is Item heldH && heldH.DisplayName.Equals(salable.DisplayName, StringComparison.OrdinalIgnoreCase))
+            return $"Bought {done} {salable.DisplayName} for {spent}g (money: {Me.Money}g) - it's on your cursor; click=\"close\" to put it in your backpack.";
         if (done > 0 && spent == 0)
             return $"the clicks on '{q}' didn't go through - you may be out of money (you have {Me.Money}g)";
         return $"nothing was bought - '{q}' may be sold out or the shop needs a scroll";
     }
 
-    /// <summary>Click a backpack slot to put the cursor item away (like the player putting it in their bag).</summary>
-    private static void DepositHeld(ShopMenu shop)
-    {
-        if (shop.heldItem is not Item held || shop.inventory?.inventory == null)
-            return;
-        // First a slot the stack can join, then an empty slot, then anything (it swaps).
-        ClickableComponent? slot = shop.inventory.inventory.FirstOrDefault(s =>
-                s.item != null && s.item.canStackWith(held) && s.item.Stack + held.Stack <= held.maximumStackSize())
-            ?? shop.inventory.inventory.FirstOrDefault(s => s.item == null)
-            ?? shop.inventory.inventory.FirstOrDefault(s => s.item != null);
-        if (slot == null)
-            return;
-        shop.receiveLeftClick(slot.bounds.Center.X, slot.bounds.Center.Y);
-    }
+
 
     private static int FindShopItem(ShopMenu shop, string name)
     {
-        for (int k = 0; k < shop.forSaleButtons.Count; k++)
+        for (int i = 0; i < shop.forSale.Count; i++)
         {
-            int idx = shop.currentItemIndex + k;
-            if (idx >= shop.forSale.Count || shop.forSale[idx] == null)
-                continue;
-            if (Matches((Item)shop.forSale[idx]!, name))
-                return idx;
+            if (shop.forSale[i] != null && Matches((Item)shop.forSale[i]!, name))
+                return i;
         }
         return -1;
+    }
+
+    /// <summary>Bring an item's page into view so its button is clickable (the shop only clicks the
+    /// visible rows). Direct, like scrolling - the agent sees the whole list anyway.</summary>
+    private static void ScrollTo(ShopMenu shop, int idx)
+    {
+        int pageSize = Math.Max(1, shop.forSaleButtons.Count);
+        if (idx < shop.currentItemIndex || idx >= shop.currentItemIndex + pageSize)
+            shop.currentItemIndex = Math.Clamp(idx, 0, Math.Max(0, shop.forSale.Count - pageSize));
     }
 
     // ---------------------------------------------------------------- chests / shipping bin
@@ -302,7 +325,9 @@ internal static class MenuAgent
         sb.Append(open.Count == 0 ? " Everything here is done." : " Open bundles:");
         foreach (var name in open)
             sb.Append($"\n- {name}  (click=\"bundle {name}\")");
-        sb.Append("\nActions: click=\"bundle {name}\", click=\"close\".");
+        if (menu.heldItem != null)
+            sb.Append($"\n(you're holding {menu.heldItem.DisplayName} x{menu.heldItem.Stack} on your cursor - click=\"bag\" to put it away)");
+        sb.Append("\nActions: click=\"bundle {name}\", click=\"bag\" (put a cursor item away), click=\"close\".");
         return sb.ToString();
     }
 
@@ -367,7 +392,7 @@ internal static class MenuAgent
                     continue;
                 menu.receiveLeftClick(menu.inventory.inventory[i].bounds.Center.X, menu.inventory.inventory[i].bounds.Center.Y);
                 if (menu.heldItem == null)
-                    return $"couldn't pick up {name}";
+                    return $"couldn't pick up {name} - the bundle only lets you take items it needs (they're the only clickable ones)";
                 for (int l = 0; l < menu.ingredientSlots.Count; l++)
                 {
                     if (menu.ingredientSlots[l].item == null && b.canAcceptThisItem(menu.heldItem, menu.ingredientSlots[l]))
@@ -376,13 +401,44 @@ internal static class MenuAgent
                         return $"Donated {name} to the {b.name} bundle.";
                     }
                 }
-                // No empty slot accepts it (wrong quality/stack) - put it back by clicking anywhere.
-                menu.receiveLeftClick(menu.xPositionOnScreen + menu.width + 64, menu.yPositionOnScreen + menu.height / 2);
-                return $"{name} doesn't fit any empty slot of the {b.name} bundle right now";
+                // No empty slot accepts it (wrong quality or not the full count) - put it back
+                // into the bag. NEVER click outside: the menu would throw the item on the ground.
+                if (ReturnHeld(menu))
+                    return $"{name} doesn't fit the {b.name} bundle right now (wrong quality or too few?) - put back in your bag";
+                return $"{name} doesn't fit, and there's no free bag slot - it's still on your cursor";
             }
             return $"you don't carry '{name}'";
         }
-        return "say click=\"give <item>\", click=\"back\", or click=\"pay\"";
+        if (q.Equals("bag", StringComparison.OrdinalIgnoreCase))
+            return ReturnHeld(menu)
+                ? "Put it back in your bag."
+                : "No free bag slot - make room (store something) and click bag again.";
+        return "say click=\"give <item>\", click=\"bag\", click=\"back\", or click=\"pay\"";
+    }
+
+    /// <summary>Click the cursor item back into a free/stacking bag slot. Searches the REAL bag by
+    /// index (component.item is unreliable in some menus), and never swaps slots.</summary>
+    private static bool ReturnHeld(JunimoNoteMenu menu)
+    {
+        if (menu.heldItem is not Item held || menu.inventory?.inventory == null)
+            return false;
+        int idx = FindBagSlot(held);
+        if (idx < 0 || idx >= menu.inventory.inventory.Count)
+            return false;
+        menu.receiveLeftClick(menu.inventory.inventory[idx].bounds.Center.X, menu.inventory.inventory[idx].bounds.Center.Y);
+        return menu.heldItem == null;
+    }
+
+    /// <summary>An index in the real bag where <paramref name="held"/> can go (stack or empty), or -1.</summary>
+    private static int FindBagSlot(Item held)
+    {
+        for (int i = 0; i < Me.Items.Count; i++)
+            if (Me.Items[i] != null && Me.Items[i]!.canStackWith(held) && Me.Items[i]!.Stack + held.Stack <= held.maximumStackSize())
+                return i;
+        for (int i = 0; i < Me.Items.Count; i++)
+            if (Me.Items[i] == null)
+                return i;
+        return -1;
     }
 
     // ---------------------------------------------------------------- crafting (the GameMenu)
@@ -473,17 +529,15 @@ internal static class MenuAgent
     }
 
     /// <summary>Click a bag slot to put the cursor item away (the second half of a craft click).
-    /// Only stackable/empty slots - never swaps, so nothing gets kicked onto the cursor.</summary>
+    /// Index-aligned with the real bag; only stackable/empty slots, never swaps.</summary>
     private static bool DepositHeld(CraftingPage page)
     {
         if (page.heldItem is not Item held || page.inventory?.inventory == null)
             return false;
-        ClickableComponent? slot = page.inventory.inventory.FirstOrDefault(s =>
-                s.item != null && s.item.canStackWith(held) && s.item.Stack + held.Stack <= held.maximumStackSize())
-            ?? page.inventory.inventory.FirstOrDefault(s => s.item == null);
-        if (slot == null)
+        int idx = FindBagSlot(held);
+        if (idx < 0 || idx >= page.inventory.inventory.Count)
             return false;
-        page.receiveLeftClick(slot.bounds.Center.X, slot.bounds.Center.Y);
+        page.receiveLeftClick(page.inventory.inventory[idx].bounds.Center.X, page.inventory.inventory[idx].bounds.Center.Y);
         return page.heldItem == null;
     }
 
