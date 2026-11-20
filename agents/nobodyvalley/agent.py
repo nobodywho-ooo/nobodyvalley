@@ -56,7 +56,7 @@ ACTIONS: dict[str, Spec] = {
     "plant": Spec("plant", item="seed", xy=True, needs=("xy", "item")),
     "water": Spec("water", xy=True, needs=("xy",)),
     "harvest": Spec("harvest", xy=True, needs=("xy",)),
-    "scythe": Spec("scythe", xy=True, n=True),
+    "scythe": Spec("scythe", n=True),  # bulk-only: for a tile, `clear` already picks the scythe for weeds/grass
     "ship": Spec("ship", item="item"),
     "donate": Spec("donate", item="item"),
     "cook": Spec("cook", item="item", needs=("item",)),

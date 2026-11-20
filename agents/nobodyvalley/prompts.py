@@ -37,7 +37,7 @@ x and y are map coordinates from 0 to 200; n (only where it is listed) is 1-25; 
   plant item(seed) x,y
   water x,y
   harvest x,y
-  scythe n (cut the nearest n grass patches on the farm for hay; silo must have room; no n with x,y = swing at that tile)
+  scythe n (cut the nearest n grass patches on the farm for hay; needs a silo with room; no n = 10). For one grass/weed tile use clear x,y
   ship item (none = all crops & forage; paid overnight; keeps bundle items)
   donate item (optional; none = every bundle item you carry) at the Community Center
   buy item n (any shop: Pierre, Willy, Marnie, Saloon, Oasis, Krobus, Robin, Clint)
