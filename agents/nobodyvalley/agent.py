@@ -49,7 +49,6 @@ ACTIONS: dict[str, Spec] = {
     "go_to": Spec("go_to", target="target", needs=("target",)),
     "walk": Spec("walk", xy=True, needs=("xy",)),
     "use": Spec("use", xy=True, needs=("xy",)),
-    "clear": Spec("clear_debris", xy=True, needs=("xy",)),
     "chop": Spec("chop_trees", xy=True, needs=("xy",)),
     "mine": Spec("mine", xy=True, needs=("xy",)),
     "till": Spec("till", xy=True, needs=("xy",)),

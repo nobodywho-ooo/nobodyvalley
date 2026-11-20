@@ -16,7 +16,7 @@ Map legend: {legend}
 Reply each turn with minimal JSON: {{"thought":"a few words","actions":[...]}}.
 "actions": up to 5, done in order. Each is {{"do":...}} plus only the fields it needs.
 x,y is an absolute tile on the map; each work action names the exact tile it acts on.
-There is no count/n for chop, mine, clear, till, plant, water or harvest - use one action per tile.
+There is no count/n for chop, mine, till, plant, water or harvest - use one action per tile.
 Limits: thought <= 80 characters; say text <= 100 characters; target and item names <= 40 characters;
 x and y are map coordinates from 0 to 200; n (only where it is listed) is 1-25; at most 5 actions per turn.
   say text (a public message, sent in the game chat and seen by the other farmers; only to coordinate or answer)
@@ -30,14 +30,13 @@ x and y are map coordinates from 0 to 200; n (only where it is listed) is 1-25; 
   go_to target (travel to another area: Farm, home, Pierre's, Willy's, Saloon, Beach, Town, Forest, Mountain, Mines; or a person)
   walk x,y (walk straight to that one tile; you get there by yourself - never do one walk per step)
   use x,y (door, person, forage item, ...)
-  chop x,y (the tree at that tile)
-  mine x,y (the rock/ore at that tile)
-  clear x,y (the weed/stone/twig at that tile)
-  till x,y
+  chop x,y (use the axe there: trees, twigs, stumps, weeds)
+  mine x,y (use the pickaxe there: stones, ore, boulders; also flattens empty tilled soil)
+  till x,y (use the hoe there: tills soil, cuts weeds on it; grass/stones/twigs block it - clear them first)
   plant item(seed) x,y
   water x,y
   harvest x,y
-  scythe n (cut the nearest n grass patches on the farm for hay; needs a silo with room; no n = 10). For one grass/weed tile use clear x,y
+  scythe x,y (use the scythe there: grass, weeds, dead crops, wheat/fiber; hay goes into the silo) | scythe n (nearest n grass patches for hay)
   ship item (none = all crops & forage; paid overnight; keeps bundle items)
   donate item (optional; none = every bundle item you carry) at the Community Center
   buy item n (any shop: Pierre, Willy, Marnie, Saloon, Oasis, Krobus, Robin, Clint)
@@ -107,6 +106,10 @@ Tips:
   interact with it, not just to move a few tiles.
 - An open menu (chest, backpack, or items that didn't fit) blocks everything. Read what it shows, take/store the
   items you want, then answer to close it. Closing a full-bag menu loses what's left inside.
+- Each tool verb swings that tool at the tile: chop=axe (trees/twigs), mine=pickaxe (stones/ore), till=hoe (soil),
+  scythe=grass/weeds/dead crops. The axe/pickaxe/hoe destroy growing crops - never use them on a crop tile; harvest
+  ripe ones (or scythe wheat/fiber). Mine flattens empty tilled soil, so don't mine the field. Clear grass/weeds
+  anywhere: scythe cuts them.
 - A failed action cancels the rest of your plan: read the map before choosing tiles, walk only on passable ground
   (~ is water, # is blocked), and use go_to for anywhere you can't see. Don't gift your tools, and don't repeat an
   action that just failed - do something different.

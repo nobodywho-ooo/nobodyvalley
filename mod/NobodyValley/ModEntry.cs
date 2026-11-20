@@ -363,22 +363,21 @@ internal sealed class ModEntry : Mod
             }
             case "clear_debris":
             {
-                if (at is { } t)
-                    return StartJob(cmd, $"clearing{AtText()}", j => TileJobs.Hit(j, t, "clear"));
+                // Bulk only, for field prep: cutting individual weeds/stones is what chop/mine/scythe are for.
                 int n = Math.Clamp(Int("count", 10), 1, 25);
                 return StartJob(cmd, "clearing debris from the field", j => FarmJobs.ClearDebris(j, n));
             }
             case "chop_trees":
             {
                 if (at is { } t)
-                    return StartJob(cmd, $"chopping the tree{AtText()}", j => TileJobs.Hit(j, t, "chop"));
+                    return StartJob(cmd, $"swinging the axe{AtText()}", j => TileJobs.Chop(j, t));
                 int n = Math.Clamp(Int("count", 1), 1, 5);
                 return StartJob(cmd, "chopping trees", j => MoreJobs.ChopTrees(j, n));
             }
             case "mine":
             {
                 if (at is { } t)
-                    return StartJob(cmd, $"mining{AtText()}", j => TileJobs.Hit(j, t, "mine"));
+                    return StartJob(cmd, $"swinging the pickaxe{AtText()}", j => TileJobs.Mine(j, t));
                 int n = Math.Clamp(Int("count", 10), 1, 25);
                 return StartJob(cmd, "breaking rocks", j => AdventureJobs.MineRocks(j, n));
             }

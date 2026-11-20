@@ -58,45 +58,71 @@ internal static class TileJobs
             : did ? "Done." : "Nothing happened.";
     }
 
-    /// <summary>Chop / mine / clear whatever is on a tile, with the right tool.</summary>
-    public static IEnumerator Hit(Job job, Point tile, string verb)
+    /// <summary>Chop (swing the axe at) a tile: trees, twigs, stumps - and weeds, which any heavy hitter also cuts.</summary>
+    public static IEnumerator Chop(Job job, Point tile)
+    {
+        var axe = Steps.FindTool<Axe>() ?? throw new JobFailed("you don't have an axe");
+        yield return SwingTool(job, tile, axe, "axe", "chopped", AxeTarget);
+    }
+
+    /// <summary>Mine (swing the pickaxe at) a tile: stones, ore, boulders - and it flattens empty tilled soil.</summary>
+    public static IEnumerator Mine(Job job, Point tile)
+    {
+        var pick = Steps.FindTool<Pickaxe>() ?? throw new JobFailed("you don't have a pickaxe");
+        yield return SwingTool(job, tile, pick, "pickaxe", "broke", PickaxeTarget);
+    }
+
+    /// <summary>Till (swing the hoe at) a tile: soil gets tilled (weeds on it get cut too). Grass, stones, twigs or an
+    /// already-tilled tile block the hoe - clear those with the right tool first.</summary>
+    public static IEnumerator Till(Job job, Point tile)
     {
         var loc = Me.currentLocation;
         var v = new Vector2(tile.X, tile.Y);
-        string? what = Describe(loc, v);
-        if (what == null)
-            throw new JobFailed($"there's nothing to {verb} at {tile.X},{tile.Y}");
-        if (loc.resourceClumps.Any(c => c.occupiesTile(tile.X, tile.Y)))
-            throw new JobFailed($"the {what} at {tile.X},{tile.Y} is too big for your basic tools");
+        if (loc.terrainFeatures.TryGetValue(v, out var tf) && tf is HoeDirt)
+            throw new JobFailed($"{tile.X},{tile.Y} is already tilled - plant seeds there (plant item x,y)");
+        var hoe = Steps.FindTool<Hoe>() ?? throw new JobFailed("you don't have a hoe");
+        yield return SwingTool(job, tile, hoe, "hoe", "tilled", HoeTarget);
+    }
+
+    /// <summary>Walk to a tile and swing one specific tool at it (never another tool), reporting what happened.
+    /// <paramref name="target"/> says what the tool can act on there and how to tell it's done.</summary>
+    private static IEnumerator SwingTool(Job job, Point tile, Tool tool, string toolName, string pastVerb,
+        Func<GameLocation, Vector2, (string Label, Func<bool> Done)?> target)
+    {
+        var loc = Me.currentLocation;
+        var v = new Vector2(tile.X, tile.Y);
+        if (target(loc, v) is not { } hit)
+        {
+            string hint = Describe(loc, v) is { } what
+                ? $"you swung the {toolName} at the {what} at {tile.X},{tile.Y}, but it did nothing - use the right tool (axe chops, pickaxe mines, hoe tills, scythe cuts grass/weeds/dead crops)"
+                : $"you swung the {toolName} at {tile.X},{tile.Y}, but there's nothing for it there";
+            throw new JobFailed(hint);
+        }
+        // Big stumps/boulders need a specific upgraded tool; refuse instead of missing many swings.
+        if (loc.resourceClumps.Any(c => c.occupiesTile((int)v.X, (int)v.Y)) && ClumpTooHard(loc, v, tool) is { } why)
+            throw new JobFailed($"the {hit.Label} at {tile.X},{tile.Y} is too tough for your {toolName} - {why}");
         if (PlayerState.OthersClaims().Contains(v))
-            throw new JobFailed($"someone else is already working on the {what} at {tile.X},{tile.Y}");
+            throw new JobFailed($"someone else is already working at {tile.X},{tile.Y}");
         PlayerState.SetClaim(v);
 
         var walk = new StepResult();
         yield return Steps.WalkAdjacent(tile, walk);
         if (!walk.Ok)
             throw new JobFailed(walk.Error ?? $"can't reach {tile.X},{tile.Y}");
-        if (Describe(loc, v) == null)
-            throw new JobFailed($"the {what} at {tile.X},{tile.Y} is gone - someone else got to it first");
 
-        for (int swing = 0; swing < 40; swing++)
-        {
-            var tool = ToolFor(loc, v);
-            if (tool == null)
-                break; // gone
+        for (int swing = 0; swing < 40 && !hit.Done(); swing++)
             yield return Steps.Swing(tool);
-            if (loc.terrainFeatures.TryGetValue(v, out var tf) && tf is Tree { falling.Value: true })
-                yield return Wait.Seconds(2);
-        }
-        if (ToolFor(loc, v) != null)
-            throw new JobFailed($"the {what} at {tile.X},{tile.Y} won't break");
-        yield return Wait.Seconds(0.5);
-        // Drops (wood, stone, ...) land around the tile; step onto it to pick them up.
+        if (!hit.Done())
+            throw new JobFailed($"you swung the {toolName} at the {hit.Label} {tile.X},{tile.Y}, but it's still there - it may need an upgraded tool");
+
+        // Drops (wood, stone, ...) land on or next to the tile; step onto it to pick them up.
+        yield return Wait.Ticks(15);
         if (Steps.IsStandable(loc, tile))
             yield return Steps.WalkTo(tile, new StepResult());
-        job.Summary = $"Got rid of the {what} at {tile.X},{tile.Y}.";
+        job.Summary = $"You {pastVerb} the {hit.Label} at {tile.X},{tile.Y}.";
     }
 
+    /// <summary>What's on a tile, for hints when a tool can't act on it.</summary>
     private static string? Describe(GameLocation loc, Vector2 v)
     {
         if (loc.resourceClumps.FirstOrDefault(c => c.occupiesTile((int)v.X, (int)v.Y)) is { } clump)
@@ -104,51 +130,79 @@ internal static class TileJobs
         if (loc.objects.TryGetValue(v, out var o) && (o.IsWeeds() || o.IsTwig() || o.IsBreakableStone()))
             return o.DisplayName.ToLowerInvariant();
         if (loc.terrainFeatures.TryGetValue(v, out var tf))
-            return tf switch { Tree => "tree", Grass => "grass", _ => null };
+            return tf switch
+            {
+                Tree => "tree",
+                Grass => "grass",
+                HoeDirt { crop: null } => "tilled soil",
+                HoeDirt { crop: { } c } when c.dead.Value => "dead crop",
+                HoeDirt { crop: { } c } => $"growing {Observer.CropName(c)}",
+                _ => null,
+            };
         return null;
     }
 
-    /// <summary>The tool to use on what's at a tile (null if there's nothing left).</summary>
-    private static Tool? ToolFor(GameLocation loc, Vector2 v)
+    /// <summary>What an axe can act on at a tile, and how to tell it's done.</summary>
+    private static (string Label, Func<bool> Done)? AxeTarget(GameLocation loc, Vector2 v)
     {
+        if (loc.resourceClumps.FirstOrDefault(c => c.occupiesTile((int)v.X, (int)v.Y)) is { } clump && clump.parentSheetIndex.Value is 600 or 602)
+            return (clump.parentSheetIndex.Value == 600 ? "stump" : "hollow log",
+                () => !loc.resourceClumps.Any(c => c.occupiesTile((int)v.X, (int)v.Y)));
+        if (loc.terrainFeatures.TryGetValue(v, out var tf) && tf is Tree)
+            return ("tree", () => !loc.terrainFeatures.ContainsKey(v));
         if (loc.objects.TryGetValue(v, out var o))
         {
-            if (o.IsWeeds())
-                return Steps.FindScythe() ?? (Tool?)Steps.FindTool<Axe>();
-            if (o.IsBreakableStone())
-                return Steps.FindTool<Pickaxe>() ?? throw new JobFailed("you don't have a pickaxe");
-            if (o.IsTwig())
-                return Steps.FindTool<Axe>() ?? throw new JobFailed("you don't have an axe");
-        }
-        if (loc.terrainFeatures.TryGetValue(v, out var tf))
-        {
-            if (tf is Tree)
-                return Steps.FindTool<Axe>() ?? throw new JobFailed("you don't have an axe");
-            if (tf is Grass)
-                return Steps.FindScythe();
+            if (o.IsTwig()) return ("twig", () => !loc.objects.ContainsKey(v));
+            if (o.IsWeeds()) return ("weeds", () => !loc.objects.ContainsKey(v)); // any heavy hitter clears weeds
         }
         return null;
     }
 
-    public static IEnumerator Till(Job job, Point tile)
+    /// <summary>What a pickaxe can act on at a tile, and how to tell it's done.</summary>
+    private static (string Label, Func<bool> Done)? PickaxeTarget(GameLocation loc, Vector2 v)
     {
-        var loc = Me.currentLocation;
-        var v = new Vector2(tile.X, tile.Y);
-        var hoe = Steps.FindTool<Hoe>() ?? throw new JobFailed("you don't have a hoe");
-        if (loc.terrainFeatures.TryGetValue(v, out var tf) && tf is HoeDirt)
-            throw new JobFailed($"{tile.X},{tile.Y} is already tilled - plant seeds there (plant item x,y)");
-        if (loc.doesTileHaveProperty(tile.X, tile.Y, "Diggable", "Back") == null)
-            throw new JobFailed($"{tile.X},{tile.Y} can't be tilled (only soil can)");
-        if (Describe(loc, v) != null)
-            yield return Hit(job, tile, "clear");
-        var walk = new StepResult();
-        yield return Steps.WalkAdjacent(tile, walk);
-        if (!walk.Ok)
-            throw new JobFailed(walk.Error ?? $"can't reach {tile.X},{tile.Y}");
-        yield return Steps.Swing(hoe);
-        if (!(loc.terrainFeatures.TryGetValue(v, out tf) && tf is HoeDirt))
-            throw new JobFailed($"couldn't till {tile.X},{tile.Y}");
-        job.Summary = $"Tilled {tile.X},{tile.Y}.";
+        if (loc.resourceClumps.Any(c => c.occupiesTile((int)v.X, (int)v.Y)))
+            return ("boulder", () => !loc.resourceClumps.Any(c => c.occupiesTile((int)v.X, (int)v.Y)));
+        if (loc.objects.TryGetValue(v, out var o))
+        {
+            if (o.IsBreakableStone()) return ("stone", () => !loc.objects.TryGetValue(v, out var x) || !x.IsBreakableStone());
+            if (o.IsWeeds()) return ("weeds", () => !loc.objects.ContainsKey(v));
+        }
+        if (loc.terrainFeatures.TryGetValue(v, out var tf) && tf is HoeDirt { crop: null })
+            return ("tilled soil", () => !loc.terrainFeatures.ContainsKey(v)); // pickaxe un-tills empty soil
+        return null;
+    }
+
+    /// <summary>What a hoe can act on at a tile, and how to tell it's done.</summary>
+    private static (string Label, Func<bool> Done)? HoeTarget(GameLocation loc, Vector2 v)
+    {
+        if (loc.doesTileHaveProperty((int)v.X, (int)v.Y, "Diggable", "Back") == null)
+            return null;                            // not soil at all
+        if (loc.terrainFeatures.TryGetValue(v, out var tf))
+            return null;                            // grass, tree or already-tilled blocks the hoe
+        if (loc.objects.TryGetValue(v, out var o) && !o.IsWeeds())
+            return null;                            // a stone/twig blocks the hoe (the hoe cuts weeds itself)
+        return ("soil", () => loc.terrainFeatures.TryGetValue(v, out var t) && t is HoeDirt);
+    }
+
+    /// <summary>Whether a resource clump needs an upgraded tool for this tool, and what to say if so.</summary>
+    private static string? ClumpTooHard(GameLocation loc, Vector2 v, Tool tool)
+    {
+        var clump = loc.resourceClumps.FirstOrDefault(c => c.occupiesTile((int)v.X, (int)v.Y));
+        if (clump == null)
+            return null;
+        bool tooHard = false;
+        if (tool is Axe)
+            tooHard = clump.parentSheetIndex.Value switch { 600 => tool.upgradeLevel.Value < 1, 602 => tool.upgradeLevel.Value < 2, _ => false };
+        else if (tool is Pickaxe)
+            tooHard = clump.parentSheetIndex.Value switch
+            {
+                672 => tool.upgradeLevel.Value < 2,
+                148 or 622 => tool.upgradeLevel.Value < 3,
+                752 or 754 or 756 or 758 => tool.upgradeLevel.Value < 4,
+                _ => false,
+            };
+        return tooHard ? "it needs an upgraded tool" : null;
     }
 
     public static IEnumerator Water(Job job, Point tile)
