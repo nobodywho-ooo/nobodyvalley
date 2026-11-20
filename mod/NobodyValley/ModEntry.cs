@@ -75,6 +75,14 @@ internal sealed class ModEntry : Mod
         {
             Game1.options.pauseWhenOutOfFocus = false;
             ApplyUiScale();
+            // The old menu janitor skipped cutscenes, so saves it ran may never have been granted
+            // the Junimo-scroll mail (vanilla grants it inside the CC cutscene). Repair that state:
+            // the player would have watched it. New saves get it from the playing cutscene itself.
+            if (Game1.MasterPlayer.mailReceived.Contains("ccDoorUnlock") && !Game1.player.hasOrWillReceiveMail("canReadJunimoText"))
+            {
+                Game1.player.mailReceived.Add("canReadJunimoText");
+                Monitor.Log("Granted canReadJunimoText (legacy: its cutscene was skipped by an older version).", LogLevel.Info);
+            }
             server.Broadcast("day_started", new JObject { ["date"] = Observer.Observe(null)["world"]!["date"] });
         };
         helper.Events.GameLoop.DayEnding += (_, _) => jobs.Cancel("the day ended");
@@ -122,10 +130,10 @@ internal sealed class ModEntry : Mod
         // Day-end screens (ready check, shipping summary, festivals) are dismissed so a co-op day
         // never hangs; interactive menus (shops, chests, dialogs) are left for the agent.
         janitor.Tick(leaveDialoguesAlone: true);
-        // A festival warp takes over the character: drop any pending job (it can't tick during the
-        // event anyway), so the agent re-plans fresh once the festival is over.
-        if (Game1.CurrentEvent is { isFestival: true } && jobs.Current != null)
-            jobs.Cancel("the festival started");
+        // A cutscene/festival takes over the character: drop any pending job (it can't tick during
+        // the event anyway), so the agent re-plans fresh once it's over.
+        if (Game1.CurrentEvent != null && jobs.Current != null)
+            jobs.Cancel("a cutscene started");
         jobs.Tick();
     }
 
@@ -289,6 +297,15 @@ internal sealed class ModEntry : Mod
                 return new JObject { ["bundles"] = string.Join(" ", list) };
             }
 
+            case "debug_event":
+            {
+                // Debug aid: start a scripted cutscene in the current location (script commands
+                // like 'speak Willy "..."'; the event plays and the agent sees its dialogue).
+                var script = Str("script") ?? "none/0 0/speak Willy \"This is a watched cutscene.\"/end";
+                Game1.currentLocation.currentEvent = new Event(script); // the game runs it and cleans up when it ends
+                return new JObject { ["event"] = script };
+            }
+
             case "debug_trace":
                 traceTicks = Math.Clamp(Int("ticks", 300), 1, 3600);
                 return new JObject { ["tracing_ticks"] = traceTicks };
@@ -447,6 +464,31 @@ internal sealed class ModEntry : Mod
     /// <summary>Click through a pop-up screen, like a player pressing the interact/close key.</summary>
     private JObject Answer(int option)
     {
+        // Cutscene questions use the game's own dialogue system (not a menu): answer the way a
+        // player clicking an option would.
+        if (Game1.isQuestion && Game1.questionChoices is { Count: > 0 })
+        {
+            int index = Math.Clamp(option - 1, 0, Game1.questionChoices.Count - 1);
+            string chosen = Game1.questionChoices[index].responseText;
+            Game1.currentQuestionChoice = index;
+            Game1.isQuestion = false;
+            if (Game1.currentSpeaker != null && Game1.currentSpeaker.CurrentDialogue.Count > 0
+                && Game1.currentSpeaker.CurrentDialogue.Peek().isCurrentDialogueAQuestion())
+            {
+                Game1.currentSpeaker.CurrentDialogue.Peek().chooseResponse(Game1.questionChoices[index]);
+            }
+            else
+            {
+                var loc = Game1.currentLocation;
+                Game1.dialogueUp = false;
+                if (Game1.eventUp && loc.afterQuestion == null)
+                    loc.currentEvent?.answerDialogue(loc.lastQuestionKey, index);
+                else
+                    loc.answerDialogue(Game1.questionChoices[index]);
+            }
+            screenMessages.ClearHold();
+            return new JObject { ["summary"] = $"Answered the cutscene question: {chosen}" };
+        }
         if (Game1.activeClickableMenu is DialogueBox box)
         {
             if (box.isQuestion && box.responses.Length > 0)

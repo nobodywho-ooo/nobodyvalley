@@ -5,10 +5,14 @@ using StardewValley.Menus;
 namespace NobodyValley;
 
 /// <summary>
-/// Dismisses only the screens that can't wait for an agent turn: the overnight shipping summary and
-/// cutscenes (plus the day-end ready check, which confirms itself). Everything interactive - shops,
-/// chests, dialogues, letters, level-ups - stays on screen for the agent to read and click, like a
-/// player would. Each dismissed screen stays up a few seconds first, so spectators get to see it.
+/// Dismisses only the screens that can't wait for an agent turn:
+/// - the overnight shipping summary (without a click, the co-op day-end stalls forever - the
+///   agents are asleep and take no turns until morning);
+/// - festivals, which trap every agent on the festival map for the whole day (ending one is the
+///   same as a player leaving it).
+/// Cutscenes PLAY: the agent watches them through the event dialogue that ScreenMessages relays,
+/// and answers any question with `answer n`. Shops, chests, dialogues, letters and level-ups are
+/// the agent's own clicks. Each dismissed screen stays up a few seconds first, so spectators see it.
 /// </summary>
 internal sealed class MenuJanitor
 {
@@ -29,7 +33,6 @@ internal sealed class MenuJanitor
         this.holdScreen = holdScreen;
     }
 
-    /// <param name="leaveDialoguesAlone">A job is reading/answering dialogue boxes itself.</param>
     public void Tick(bool leaveDialoguesAlone = false)
     {
         object? screen = Game1.CurrentEvent is { skipped: false } ev ? ev : Game1.activeClickableMenu;
@@ -50,14 +53,15 @@ internal sealed class MenuJanitor
         bool acted = screen switch
         {
             Event { isFestival: true } festival => EndFestival(festival),
-            Event e => SkipEvent(e),
             ShippingMenu shipping => DismissShipping(shipping),
             ReadyCheckDialog { checkName: "sleep" } => LeaveDayEndReadyCheck(),
             ReadyCheckDialog ready => Confirm(ready),
-            _ => false, // everything else (shops, chests, dialogues, letters, level-ups) is the agent's to click
+            // Everything else - cutscenes, shops, chests, dialogues, letters, level-ups - is either
+            // for the agent to watch/click or plays on its own.
+            _ => false,
         };
         if (acted)
-            ticksShown = 0; // e.g. the next page of a dialogue gets its own few seconds
+            ticksShown = 0;
     }
 
     // A festival freezes everyone on its map and the agents can't meaningfully take part, so once
@@ -71,10 +75,8 @@ internal sealed class MenuJanitor
     // The day-end "sleep" ready check must NOT be force-confirmed, and there's no need to:
     // ReadyCheckDialog.update() marks the local player ready every tick and confirms itself the
     // moment every required farmer is ready. That self-confirm is the coordinated multiplayer
-    // handshake - all machines run doSleep()/NewDay() together, then sync the new day. Force-
-    // confirming early (or via `answer`) drops one machine out of the handshake: it starts its
-    // new-day transition on its own and the whole game deadlocks at 2 AM (farmhands frozen
-    // "waiting for the other players", the day never rolls).
+    // handshake - all machines run doSleep()/NewDay() together. Force-confirming early drops one
+    // machine out of the handshake and deadlocks the whole co-op at 2 AM.
     private static bool LeaveDayEndReadyCheck()
     {
         return false;
@@ -89,23 +91,6 @@ internal sealed class MenuJanitor
         return true;
     }
 
-    private bool SkipEvent(Event ev)
-    {
-        // Even "unskippable" cutscenes; nobody's there to click through them. Festivals are left alone.
-        monitor.Log($"Skipping cutscene '{ev.id}'.", LogLevel.Info);
-        ev.skipped = true; // like the vanilla skip button, so we only skip once
-        ev.skipEvent();
-        // The Junimo-scroll mail is granted by an event command; skipEvent doesn't run those, so
-        // without this the bundles stay scrambled forever for the agents. (The player would have
-        // watched the cutscene and gotten the scroll.)
-        if (!Game1.player.hasOrWillReceiveMail("canReadJunimoText") && Game1.MasterPlayer.mailReceived.Contains("ccDoorUnlock"))
-        {
-            Game1.player.mailReceived.Add("canReadJunimoText");
-            monitor.Log("Granted canReadJunimoText (its cutscene was skipped).", LogLevel.Info);
-        }
-        return true;
-    }
-
     private bool DismissShipping(ShippingMenu shipping)
     {
         // Only "click" once it accepts input (intro done, not already fading out): every
@@ -114,43 +99,6 @@ internal sealed class MenuJanitor
             return false;
         monitor.Log("Dismissing the shipping summary.", LogLevel.Debug);
         helper.Reflection.GetMethod(shipping, "okClicked").Invoke();
-        return true;
-    }
-
-    private bool DismissLevelUp(LevelUpMenu menu) // kept for toolbar/tests; unused by Tick now
-    {
-        // This menu ignores receiveLeftClick (it polls the mouse itself), so do what the buttons do.
-        if (!menu.readyToClose() || !menu.isActive)
-            return false;
-        if (menu.isProfessionChooser)
-        {
-            var choices = helper.Reflection.GetField<List<int>>(menu, "professionsToChoose").GetValue();
-            if (choices.Count == 0)
-                return false;
-            Game1.player.professions.Add(choices[0]); // just take the left one
-            menu.getImmediateProfessionPerk(choices[0]);
-            menu.isActive = false;
-            menu.informationUp = false;
-            menu.RemoveLevelFromLevelList();
-            monitor.Log($"Level up: picked profession {choices[0]}.", LogLevel.Info);
-        }
-        else
-        {
-            menu.okButtonClicked();
-            monitor.Log("Level up acknowledged.", LogLevel.Info);
-        }
-        return true;
-    }
-
-    private static bool Click(DialogueBox box)
-    {
-        box.receiveLeftClick(0, 0);
-        return true;
-    }
-
-    private static bool Exit(IClickableMenu menu)
-    {
-        menu.exitThisMenu();
         return true;
     }
 }

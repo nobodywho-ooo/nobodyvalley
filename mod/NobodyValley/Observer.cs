@@ -61,6 +61,7 @@ internal static class Observer
             ["mine_level"] = me.currentLocation is StardewValley.Locations.MineShaft shaft ? shaft.mineLevel : null,
             ["machines"] = new JArray(Jobs.MoreJobs.Machines()),
             ["menu"] = OpenMenu(),
+            ["event"] = Game1.CurrentEvent is { } ev ? (ev.isFestival ? "festival" : $"cutscene {ev.id}") : null,
         };
     }
 

@@ -617,6 +617,10 @@ class Agent:
                     and cmd not in ("answer", "say", "emote")):
                 errors.append(f"Skipped {cmd}: a message is on screen - answer it first (answer n, or answer to continue).")
                 continue
+            # A cutscene is playing (even between its spoken lines): everything except answering is blocked.
+            if obs.get("event") and cmd not in ("answer", "say", "emote"):
+                errors.append(f"Skipped {cmd}: {obs['event']} is playing - watch it and answer questions with answer n.")
+                continue
             actions.append(Action(cmd, args))
         if any(a.cmd == "stop" for a in actions[1:]):
             actions = [a for a in actions if a.cmd != "stop"]

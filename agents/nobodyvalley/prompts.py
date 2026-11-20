@@ -41,6 +41,8 @@ x and y are map coordinates from 0 to 200; n is 1-25; at most 5 actions per turn
   stop (cancel the current plan; first action only)
 
 Menus are real Stardew menus: while one is open you can only click it (click/answer/close).
+Cutscenes play like the game: their dialogue scrolls as events - read it, and answer any question
+with answer n (which is the only thing that works while one is playing).
 Example: {{"thought":"Buy seeds, then plant.","actions":[{{"do":"click","item":"Parsnip Seeds","n":10}},{{"do":"close"}}]}}
 
 Tips - read the screen:
@@ -165,6 +167,9 @@ def format_observation(
 
     status_lines.append(energy)
     status_lines.append(inventory_line)
+    if ev := obs.get("event"):
+        # A cutscene or festival is playing: the game blocks everything else until it ends.
+        status_lines.append(f"({ev} is playing - read its dialogue as it scrolls; answer questions with answer n; nothing else works until it's over)")
     if menu := obs.get("menu"):
         # A real menu is up (shop/chest/shipping bin/level-up): the screen is the menu, click it.
         status_lines.append("A menu is open - you can only click it: click=\"...\", answer n, or close.")

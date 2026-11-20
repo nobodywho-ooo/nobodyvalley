@@ -108,10 +108,12 @@ tile and can see e.g. "Alice: watering the crops".
 Environment variables let a launcher skip the title screen and place the window:
 `NOBODYVALLEY_HOST=<save>` (host in co-op), `NOBODYVALLEY_JOIN=<farmhand name>`,
 `NOBODYVALLEY_LOAD=<save>` (single-player), `NOBODYVALLEY_WINDOW=x,y,w,h` (screen points) and
-`NOBODYVALLEY_PORT=<port>` (pin the agent port). Only un-attendable screens are auto-dismissed (cutscenes,
-the overnight shipping summary, festivals, after `MenuDisplaySeconds` so spectators can see them);
-interactive menus - shops, chests, dialogues, letters, level-ups - stay up for the agents to read
-and click through themselves.
+`NOBODYVALLEY_PORT=<port>` (pin the agent port). Only un-attendable screens are auto-dismissed (the overnight
+shipping summary - the co-op dawn can't continue without it - and festivals, after `MenuDisplaySeconds` so
+spectators see them). Interactive menus - shops, chests, dialogues, letters, level-ups - stay up for the agents
+to read and click, and **cutscenes play**: each spoken line is relayed to the agent, who answers any question
+with `answer n`. (An older version skipped cutscenes; saves it ran may lack the Junimo-scroll mail, which the
+mod repairs at load by granting it.)
 
 ### The agents (`agents/`, Python)
 
