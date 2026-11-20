@@ -15,11 +15,30 @@ from typing import Any
 
 from nobodywho import Model
 
-from .agent import Agent
+from .agent import DECISION_SCHEMA, Agent
+from .backend import LocalBackend, RemoteBackend
 from .bridge import GameConnection, discover
 from .dashboard import Dashboard
 
 DEFAULT_MODEL = "huggingface:unsloth/Qwen3.5-9B-GGUF/Qwen3.5-9B-Q4_K_M.gguf"
+
+# Named choices for --model / NV_MODEL, and what each means.
+MODEL_PRESETS = {
+    "gemma4-e2b": "huggingface:unsloth/gemma-4-E2B-it-GGUF/gemma-4-E2B-it-Q4_K_M.gguf",
+    "gemma4-12b": "huggingface:unsloth/gemma-4-12b-it-GGUF/gemma-4-12b-it-Q4_K_M.gguf",
+    "qwen3.5-9b": DEFAULT_MODEL,
+}
+# Runs on the ASCENT cluster (../on-prem), reached through the OpenAI-compatible API; the
+# agents don't load any local model for it.
+REMOTE_MODEL = "qwen3.8-flash-next"
+DEFAULT_VLLM_URL = "http://ascent1.local:8000/v1"
+
+
+def resolve_model(model_arg: str) -> tuple[str, str | None]:
+    """(kind, ref): kind is 'local' (a GGUF on this Mac) or 'remote' (the ASCENTs' vLLM)."""
+    if model_arg == REMOTE_MODEL:
+        return "remote", None
+    return "local", MODEL_PRESETS.get(model_arg, model_arg)
 
 COLORS = ["\033[36m", "\033[35m", "\033[33m", "\033[32m", "\033[34m", "\033[31m"]
 KIND_STYLE = {
@@ -101,9 +120,28 @@ async def amain(args: argparse.Namespace) -> None:
                  "Is the NobodyValley mod installed and the game running?")
     printer("main", "info", f"found {len(conns)} game instance(s) on ports {', '.join(str(c.port) for c in conns)}")
 
-    printer("main", "info", f"loading model {args.model} ...")
-    model = await Model.load_model_async(args.model) if hasattr(Model, "load_model_async") else Model(args.model)
-    printer("main", "info", "model loaded")
+    kind, ref = resolve_model(args.model)
+    if kind == "remote":
+        url = os.environ.get("NV_VLLM_URL", DEFAULT_VLLM_URL)
+        api_key = os.environ.get("NV_VLLM_API_KEY", "")
+        if not api_key:
+            sys.exit("qwen3.8-flash-next runs on the ASCENTs and needs the VLLM API key: set "
+                     "NV_VLLM_API_KEY in scripts/local.env ("
+                     "sops k3s/ascent-secrets.sops.yaml in ../on-prem, or kubectl --context ascent1 "
+                     "-n chat get secret shared-secrets -o jsonpath='{.data.VLLM_API_KEY}' | base64 -d).")
+        printer("main", "info", f"connecting to Qwen3.8-Flash-Next on the ASCENTs at {url}")
+        backend = RemoteBackend(url, api_key, DECISION_SCHEMA)
+        try:
+            await backend.check()
+        except Exception as e:
+            sys.exit(f"Can't reach vLLM at {url}: {e}. Check NV_VLLM_URL and NV_VLLM_API_KEY "
+                     "(scripts/local.env).")
+        printer("main", "info", "remote model ready")
+    else:
+        printer("main", "info", f"loading model {ref} ...")
+        model = await Model.load_model_async(ref) if hasattr(Model, "load_model_async") else Model(ref)
+        printer("main", "info", "model loaded")
+        backend = LocalBackend(model, DECISION_SCHEMA)
 
     dashboard = None
     if not args.no_dashboard:
@@ -129,7 +167,7 @@ async def amain(args: argparse.Namespace) -> None:
         hello = await conn.request("hello")
         persona = persona_for(hello)
         index = conn.port - args.base_port
-        agent = Agent(conn, model, persona, args.n_ctx, printer, start_delay=min(index, 4) * 4.0, dashboard=dashboard)
+        agent = Agent(conn, backend, persona, args.n_ctx, printer, start_delay=min(index, 4) * 4.0, dashboard=dashboard)
         agent.is_host = bool(hello.get("is_host"))
         agents[conn.port] = agent
         running[conn.port] = asyncio.create_task(agent.run())
@@ -264,7 +302,9 @@ async def amain(args: argparse.Namespace) -> None:
 
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--model", default=DEFAULT_MODEL, help="GGUF path or huggingface: reference")
+    p.add_argument("--model", default=DEFAULT_MODEL,
+                   help="one of {gemma4-e2b, gemma4-12b, qwen3.5-9b, qwen3.8-flash-next}, "
+                        "or a GGUF path / huggingface: reference")
     p.add_argument("--n-ctx", type=int, default=16384, help="context size per agent (tokens)")
     p.add_argument("--base-port", type=int, default=8765)
     p.add_argument("--max-instances", type=int, default=8)
@@ -276,6 +316,11 @@ def main() -> None:
     p.add_argument("--no-dashboard", action="store_true", help="don't serve/open the dashboard")
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args()
+    # A bare word that isn't a preset is usually a typo; a path or huggingface: ref is passed on.
+    if (args.model not in MODEL_PRESETS and args.model != REMOTE_MODEL
+            and "/" not in args.model and not args.model.lower().endswith(".gguf")):
+        p.error(f"unknown model {args.model!r}; choose from "
+                "gemma4-e2b, gemma4-12b, qwen3.5-9b, qwen3.8-flash-next")
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.WARNING)
     try:
         asyncio.run(amain(args))

@@ -20,9 +20,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
-from nobodywho import ChatAsync, ContextShiftOptions, Model, SamplerPresets
-
 from . import prompts
+from .backend import Backend, Chat
 from .bridge import GameConnection, GameError
 from .dashboard import Dashboard
 
@@ -140,11 +139,11 @@ class Action:
 
 
 class Agent:
-    def __init__(self, conn: GameConnection, model: Model, persona: str, n_ctx: int, printer: Callable[[str, str, str], None],
+    def __init__(self, conn: GameConnection, backend: Backend, persona: str, n_ctx: int, printer: Callable[[str, str, str], None],
                  start_delay: float = 0.0, dashboard: Dashboard | None = None):
         self.dashboard = dashboard
         self.conn = conn
-        self.model = model
+        self.backend = backend
         self.persona = persona
         self.n_ctx = n_ctx
         self.print = printer  # (agent name, kind, text)
@@ -152,7 +151,7 @@ class Agent:
 
         self.name = f"port{conn.port}"
         self.others: list[str] = []
-        self.chat: ChatAsync | None = None
+        self.chat: Chat | None = None
         # Health/liveness: set by the turn loop; the main monitor (watchdog) acts on it.
         self.dead = False  # game unresponsive beyond recovery; stop taking turns
         self.observe_fail_streak = 0
@@ -193,14 +192,7 @@ class Agent:
 
         obs = await self.conn.request("observe")
         self.others = [o["name"] for o in obs.get("others", [])]
-        self.chat = ChatAsync(
-            self.model,
-            n_ctx=self.n_ctx,
-            system_prompt=self._system_prompt(),
-            sampler=SamplerPresets.constrain_with_json_schema(json.dumps(DECISION_SCHEMA)),
-            template_variables={"enable_thinking": False},
-            context_shift=ContextShiftOptions(keep_first_turns=0, keep_last_turns=4, target=0.6),
-        )
+        self.chat = self.backend.create_chat(self._system_prompt(), self.n_ctx)
         self.print(self.name, "info", f"connected (port {self.conn.port}, {'host' if hello.get('is_host') else 'farmhand'})")
         self.print(self.name, "system", self._system_prompt())
 
@@ -655,7 +647,7 @@ class Agent:
             ctx_before, prompt_tokens = 0, 0
         try:
             t0 = time.monotonic()
-            stream = self.chat.ask(prompt)
+            stream = await self.chat.ask(prompt)
             parts: list[str] = []
             arrivals: list[float] = []  # monotonic time each token's text arrived
             while (token := await stream.next_token()) is not None:

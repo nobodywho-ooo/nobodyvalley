@@ -6,7 +6,7 @@ agents run in one Python process sharing a single local model.
 
 ```
 agents/ (Python, one process)                       game instances (one per farmer)
- ├─ NobodyWho Model (loaded once, Metal)
+ ├─ Model: one NobodyWho Model on this Mac (Metal), or Qwen3.8-Flash-Next on the ASCENTs (../on-prem)
  ├─ Agent "Alice"   (ChatAsync) ── TCP :8765 ──── SMAPI + NobodyValley mod (host)
  ├─ Agent "Bob"     (ChatAsync) ── TCP :8766 ──── SMAPI + NobodyValley mod (farmhand)
  ├─ Agent "Charlie" (ChatAsync) ── TCP :8767 ──── SMAPI + NobodyValley mod (farmhand)
@@ -31,7 +31,10 @@ joining is restarted after 20 seconds. Each run's logs go to `logs/runs/<date>_<
 one file per farmer with their full system prompt, turns and replies (e.g. `logs/latest/Marek.log`).
 
 Configure it with `NV_SAVE`, `NV_FARMHANDS` and `NV_DISPLAY` (see the top of the script; put your
-own values in `scripts/local.env`, gitignored — see `scripts/local.env.example`).
+own values in `scripts/local.env`, gitignored — see `scripts/local.env.example`). `NV_MODEL` picks the
+agents' model: `gemma4-e2b`, `gemma4-12b`, `qwen3.5-9b` (default), or `qwen3.8-flash-next`, which runs on
+the ASCENTs (`../on-prem`) and is reached over the OpenAI-compatible API — set `NV_VLLM_URL` (default
+`http://ascent1.local:8000/v1`) and `NV_VLLM_API_KEY` (the ASCENTs' vLLM key) for it.
 `swift scripts/screen-bounds.swift list` lists the displays. The script also takes subcommands:
 `scripts/demo.sh build` only builds and deploys the mod, `scripts/demo.sh start`
 starts the instances and agents without rebuilding, and `scripts/demo.sh stop` kills them
@@ -117,9 +120,15 @@ mod repairs at load by granting it.)
 
 ### The agents (`agents/`, Python)
 
-- **One `nobodywho.Model`, many `ChatAsync`s:** every agent has its own chat (persona, history),
-  all on one loaded model. The default is Qwen3.5-9B (Q4_K_M, 5.4 GB). With 4 agents at 16k
-  context each, the process uses about 8 GB (the demo machine has 24 GB). Use `--model` to try others.
+- **Four models (`--model`, or `NV_MODEL` in `scripts/local.env`):** `qwen3.5-9b` (the default),
+  `gemma4-e2b` and `gemma4-12b` run locally: one `nobodywho.Model`, many `ChatAsync`s — every agent
+  has its own chat (persona, history), all on the one loaded model. Qwen3.5-9B Q4_K_M is 5.4 GB,
+  Gemma4-12B 7.1 GB, Gemma4-E2B 3.1 GB; with 4 agents at 16k context each the process uses about
+  8 GB (the demo machine has 24 GB). `qwen3.8-flash-next` runs **remotely on the ASCENTs**
+  (`../on-prem`): the agents call its vLLM OpenAI-compatible endpoint (`NV_VLLM_URL`, default
+  `http://ascent1.local:8000/v1`, with `NV_VLLM_API_KEY`) and get the same JSON-schema-constrained
+  decisions via vLLM's guided decoding. `--model` also still accepts any GGUF path or
+  `huggingface:` reference.
 - **Hybrid actions:** most work verbs take either a map tile (`{"do":"chop","x":63,"y":13}`, picked
   from the map view) or a count for bulk work (`{"do":"water","n":5}`, or no `n` = all).
 - **Compact JSON:** the schema uses llguidance's `"x-guidance": {"whitespace_flexible": false}` and

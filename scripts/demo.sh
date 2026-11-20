@@ -15,6 +15,9 @@
 #   NV_DISPLAY     display to tile the windows on; see `swift scripts/screen-bounds.swift list` (default: 0)
 #   NV_DASHBOARD_DISPLAY  display for the agent dashboard window (default: a column on NV_DISPLAY)
 #   NV_DASHBOARD_WIDTH    width of that column, in points (default: 360)
+#   NV_MODEL                agents' model: gemma4-e2b | gemma4-12b | qwen3.5-9b | qwen3.8-flash-next
+#                           (default: qwen3.5-9b; qwen3.8-flash-next runs on the ASCENTs, see ../on-prem)
+#   NV_VLLM_URL / NV_VLLM_API_KEY   endpoint + key for the remote model (default http://ascent1.local:8000/v1)
 #   NV_GAME_DIR    folder containing StardewModdingAPI     (default: Steam install)
 set -euo pipefail
 
@@ -194,4 +197,6 @@ done
 echo "Everyone's in."
 
 cd "$ROOT/agents"
-exec uv run nobodyvalley --dashboard-window "$DASHBOARD_WINDOW" --log "$RUN_DIR/agents.log" --prompt-dir "$RUN_DIR"
+MODEL_ARGS=()
+[ -n "${NV_MODEL:-}" ] && MODEL_ARGS=(--model "$NV_MODEL")
+exec uv run nobodyvalley "${MODEL_ARGS[@]}" --dashboard-window "$DASHBOARD_WINDOW" --log "$RUN_DIR/agents.log" --prompt-dir "$RUN_DIR"
