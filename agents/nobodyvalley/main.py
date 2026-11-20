@@ -1,4 +1,10 @@
-"""Run one LLM agent per connected Stardew Valley instance, all sharing a single NobodyWho model."""
+"""Run one LLM agent per connected Stardew Valley instance, each on its own model.
+
+A farmer's model comes from the `model` key in their persona (see personas.toml), falling back
+to --model / NV_MODEL. Local models: each agent loads its own NobodyWho Model instance (its own
+weights, so N farmers need N copies of the weights in RAM). qwen3.8-flash-next has no local
+weights: the agents share one client to the ASCENTs' vLLM.
+"""
 
 from __future__ import annotations
 
@@ -10,13 +16,12 @@ import subprocess
 import sys
 import time
 import tomllib
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from nobodywho import Model
-
 from .agent import DECISION_SCHEMA, Agent
-from .backend import LocalBackend, RemoteBackend
+from .backend import Backend, LocalBackend, RemoteBackend
 from .bridge import GameConnection, discover
 from .dashboard import Dashboard
 
@@ -94,8 +99,15 @@ def default_personas_path() -> Path:
     return local if local.exists() else root / "personas.toml"
 
 
-def load_personas(path: Path) -> dict[str, str]:
-    """Farmer name (lowercase) -> "personality | job". Entries are tables, or "personality | job" strings."""
+@dataclass
+class Persona:
+    text: str  # "personality | job", shown to the model
+    model: str | None = None  # a preset name / GGUF ref for THIS farmer; None = the --model default
+
+
+def load_personas(path: Path) -> dict[str, Persona]:
+    """Farmer name (lowercase) -> Persona. Entries are tables (personality, job, optional model),
+    or the old "personality | job" string form (no model)."""
     if not path.exists():
         return {}
     data = tomllib.loads(path.read_text())
@@ -103,9 +115,10 @@ def load_personas(path: Path) -> dict[str, str]:
     for name, value in data.get("personas", {}).items():
         if isinstance(value, dict):
             job = value.get("job", "").strip() or "help wherever you're needed"
-            personas[name.lower()] = f"{value.get('personality', '').strip()} | {job}"
+            model = str(value.get("model") or "").strip() or None
+            personas[name.lower()] = Persona(f"{value.get('personality', '').strip()} | {job}", model)
         else:
-            personas[name.lower()] = value
+            personas[name.lower()] = Persona(value)
     return personas
 
 
@@ -120,28 +133,39 @@ async def amain(args: argparse.Namespace) -> None:
                  "Is the NobodyValley mod installed and the game running?")
     printer("main", "info", f"found {len(conns)} game instance(s) on ports {', '.join(str(c.port) for c in conns)}")
 
-    kind, ref = resolve_model(args.model)
-    if kind == "remote":
-        url = os.environ.get("NV_VLLM_URL", DEFAULT_VLLM_URL)
-        api_key = os.environ.get("NV_VLLM_API_KEY", "")
-        if not api_key:
-            sys.exit("qwen3.8-flash-next runs on the ASCENTs and needs the VLLM API key: set "
-                     "NV_VLLM_API_KEY in scripts/local.env ("
-                     "sops k3s/ascent-secrets.sops.yaml in ../on-prem, or kubectl --context ascent1 "
-                     "-n chat get secret shared-secrets -o jsonpath='{.data.VLLM_API_KEY}' | base64 -d).")
-        printer("main", "info", f"connecting to Qwen3.8-Flash-Next on the ASCENTs at {url}")
-        backend = RemoteBackend(url, api_key, DECISION_SCHEMA)
-        try:
-            await backend.check()
-        except Exception as e:
-            sys.exit(f"Can't reach vLLM at {url}: {e}. Check NV_VLLM_URL and NV_VLLM_API_KEY "
-                     "(scripts/local.env).")
-        printer("main", "info", "remote model ready")
-    else:
-        printer("main", "info", f"loading model {ref} ...")
-        model = await Model.load_model_async(ref) if hasattr(Model, "load_model_async") else Model(ref)
-        printer("main", "info", "model loaded")
-        backend = LocalBackend(model, DECISION_SCHEMA)
+    # One shared remote backend (one vLLM client) for every farmer on qwen3.8-flash-next;
+    # local backends are created per agent, and each loads its own model when it connects.
+    remote_backend: RemoteBackend | None = None
+
+    async def resolve_backend(model_arg: str, who: str) -> Backend:
+        """The backend for one farmer: remote = the shared ASCENTs client, local = a fresh
+        LocalBackend with its own model instance (loaded at connect time)."""
+        if (model_arg not in MODEL_PRESETS and model_arg != REMOTE_MODEL
+                and "/" not in model_arg and not model_arg.lower().endswith(".gguf")):
+            sys.exit(f"unknown model {model_arg!r} for {who}: choose from "
+                     "gemma4-e2b, gemma4-12b, qwen3.5-9b, qwen3.8-flash-next, "
+                     "or a GGUF path / huggingface: reference (see personas.toml / --model)")
+        kind, ref = resolve_model(model_arg)
+        if kind != "remote":
+            return LocalBackend(ref, DECISION_SCHEMA)
+        nonlocal remote_backend
+        if remote_backend is None:
+            url = os.environ.get("NV_VLLM_URL", DEFAULT_VLLM_URL)
+            api_key = os.environ.get("NV_VLLM_API_KEY", "")
+            if not api_key:
+                sys.exit("qwen3.8-flash-next runs on the ASCENTs and needs the VLLM API key: set "
+                         "NV_VLLM_API_KEY in scripts/local.env ("
+                         "sops k3s/ascent-secrets.sops.yaml in ../on-prem, or kubectl --context ascent1 "
+                         "-n chat get secret shared-secrets -o jsonpath='{.data.VLLM_API_KEY}' | base64 -d).")
+            printer("main", "info", f"connecting to Qwen3.8-Flash-Next on the ASCENTs at {url}")
+            remote_backend = RemoteBackend(url, api_key, DECISION_SCHEMA)
+            try:
+                await remote_backend.check()
+            except Exception as e:
+                sys.exit(f"Can't reach vLLM at {url}: {e}. Check NV_VLLM_URL and NV_VLLM_API_KEY "
+                         "(scripts/local.env).")
+            printer("main", "info", "remote model ready")
+        return remote_backend
 
     dashboard = None
     if not args.no_dashboard:
@@ -155,7 +179,7 @@ async def amain(args: argparse.Namespace) -> None:
     running: dict[int, asyncio.Task[None]] = {}
     agents: dict[int, Agent] = {}
 
-    def persona_for(hello: dict) -> str:
+    def persona_for(hello: dict) -> Persona:
         farmer = hello.get("farmer") or ""
         persona = personas.get(farmer.lower())
         if persona is None:
@@ -166,8 +190,11 @@ async def amain(args: argparse.Namespace) -> None:
     async def start_agent(conn: GameConnection) -> None:
         hello = await conn.request("hello")
         persona = persona_for(hello)
+        farmer = hello.get("farmer") or f"port {conn.port}"
+        # The farmer's own model if their persona sets one, else the --model / NV_MODEL default.
+        backend = await resolve_backend(persona.model or args.model, farmer)
         index = conn.port - args.base_port
-        agent = Agent(conn, backend, persona, args.n_ctx, printer, start_delay=min(index, 4) * 4.0, dashboard=dashboard)
+        agent = Agent(conn, backend, persona.text, args.n_ctx, printer, start_delay=min(index, 4) * 4.0, dashboard=dashboard)
         agent.is_host = bool(hello.get("is_host"))
         agents[conn.port] = agent
         running[conn.port] = asyncio.create_task(agent.run())
@@ -303,7 +330,8 @@ async def amain(args: argparse.Namespace) -> None:
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--model", default=DEFAULT_MODEL,
-                   help="one of {gemma4-e2b, gemma4-12b, qwen3.5-9b, qwen3.8-flash-next}, "
+                   help="default model for farmers without a `model` in their persona: one of "
+                        "{gemma4-e2b, gemma4-12b, qwen3.5-9b, qwen3.8-flash-next}, "
                         "or a GGUF path / huggingface: reference")
     p.add_argument("--n-ctx", type=int, default=16384, help="context size per agent (tokens)")
     p.add_argument("--base-port", type=int, default=8765)

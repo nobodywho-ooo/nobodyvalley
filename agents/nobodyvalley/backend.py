@@ -34,11 +34,13 @@ class Stats:
 
 
 class Backend(Protocol):
-    """Provides one Chat per agent: local (one shared NobodyWho Model) or remote (vLLM)."""
+    """Provides one Chat per agent. Local backends load their own NobodyWho Model per chat
+    (each agent runs its own weights); the remote backend is one shared vLLM client."""
 
     kind: str
+    label: str  # shown when the agent starts
 
-    def create_chat(self, system_prompt: str, n_ctx: int) -> Chat: ...
+    async def create_chat(self, system_prompt: str, n_ctx: int) -> Chat: ...
 
 
 class Chat(Protocol):
@@ -62,7 +64,7 @@ class Chat(Protocol):
 
 
 class LocalChat:
-    """Delegates to a nobodywho ChatAsync: one per agent over the shared loaded model."""
+    """Delegates to a nobodywho ChatAsync, over the agent's own loaded model."""
 
     def __init__(self, chat: ChatAsync):
         self._chat = chat
@@ -81,17 +83,21 @@ class LocalChat:
 
 
 class LocalBackend:
-    """One NobodyWho Model shared by all agents: local inference on this Mac (Metal)."""
+    """One NobodyWho Model **per chat**: each agent loads (and keeps) its own copy of the
+    weights on this Mac (Metal), so up to N agents share the GPU but not a model instance.
+    Loading happens when the agent connects; pick a ref small enough that N copies fit."""
 
     kind = "local"
 
-    def __init__(self, model: Model, schema: dict[str, Any]):
-        self.model = model
+    def __init__(self, ref: str, schema: dict[str, Any]):
+        self.ref = ref
         self.schema = schema
+        self.label = f"{ref} (own model)"
 
-    def create_chat(self, system_prompt: str, n_ctx: int) -> LocalChat:
+    async def create_chat(self, system_prompt: str, n_ctx: int) -> LocalChat:
+        model = await Model.load_model_async(self.ref) if hasattr(Model, "load_model_async") else Model(self.ref)
         return LocalChat(ChatAsync(
-            self.model,
+            model,
             n_ctx=n_ctx,
             system_prompt=system_prompt,
             sampler=SamplerPresets.constrain_with_json_schema(json.dumps(self.schema)),
@@ -203,7 +209,9 @@ class _RemoteStream:
 
 
 class RemoteBackend:
-    """Qwen3.8-Flash-Next on the ASCENT cluster (../on-prem), over the OpenAI-compatible API."""
+    """Qwen3.8-Flash-Next on the ASCENT cluster (../on-prem), over the OpenAI-compatible API.
+    One backend (one client) is shared by every farmer on the remote model: the "model" lives
+    on the server, so there is nothing to load per agent."""
 
     kind = "remote"
     url: str
@@ -211,11 +219,12 @@ class RemoteBackend:
     def __init__(self, url: str, api_key: str, schema: dict[str, Any]):
         self.url = url
         self.schema = schema
+        self.label = f"qwen3.8-flash-next on the ASCENTs ({url})"
         # No retries: a down ASCENT box fails a turn fast (the agent loop skips the turn) instead
         # of stacking up to 3 x timeout per ask.
         self._client = AsyncOpenAI(base_url=url, api_key=api_key, timeout=60.0, max_retries=0)
 
-    def create_chat(self, system_prompt: str, n_ctx: int) -> RemoteChat:
+    async def create_chat(self, system_prompt: str, n_ctx: int) -> RemoteChat:
         return RemoteChat(self._client, REMOTE_MODEL_NAME, system_prompt, n_ctx, self.schema)
 
     async def check(self) -> None:

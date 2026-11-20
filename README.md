@@ -6,7 +6,7 @@ agents run in one Python process sharing a single local model.
 
 ```
 agents/ (Python, one process)                       game instances (one per farmer)
- ├─ Model: one NobodyWho Model on this Mac (Metal), or Qwen3.8-Flash-Next on the ASCENTs (../on-prem)
+ ├─ Model: each agent runs its own (a NobodyWho Model per farmer on this Mac, or Qwen3.8-Flash-Next on the ASCENTs)
  ├─ Agent "Alice"   (ChatAsync) ── TCP :8765 ──── SMAPI + NobodyValley mod (host)
  ├─ Agent "Bob"     (ChatAsync) ── TCP :8766 ──── SMAPI + NobodyValley mod (farmhand)
  ├─ Agent "Charlie" (ChatAsync) ── TCP :8767 ──── SMAPI + NobodyValley mod (farmhand)
@@ -120,15 +120,15 @@ mod repairs at load by granting it.)
 
 ### The agents (`agents/`, Python)
 
-- **Four models (`--model`, or `NV_MODEL` in `scripts/local.env`):** `qwen3.5-9b` (the default),
-  `gemma4-e2b` and `gemma4-12b` run locally: one `nobodywho.Model`, many `ChatAsync`s — every agent
-  has its own chat (persona, history), all on the one loaded model. Qwen3.5-9B Q4_K_M is 5.4 GB,
-  Gemma4-12B 7.1 GB, Gemma4-E2B 3.1 GB; with 4 agents at 16k context each the process uses about
-  8 GB (the demo machine has 24 GB). `qwen3.8-flash-next` runs **remotely on the ASCENTs**
-  (`../on-prem`): the agents call its vLLM OpenAI-compatible endpoint (`NV_VLLM_URL`, default
-  `http://ascent1.local:8000/v1`, with `NV_VLLM_API_KEY`) and get the same JSON-schema-constrained
-  decisions via vLLM's guided decoding. `--model` also still accepts any GGUF path or
-  `huggingface:` reference.
+- **Each agent runs its own model** (`model` key in its persona table, e.g. `personas.toml`;
+  default from `--model`/`NV_MODEL`, or a raw GGUF path / `huggingface:` reference). Choices:
+  `qwen3.5-9b` (the default), `gemma4-e2b`, `gemma4-12b` — each loads its **own** `nobodywho.Model`
+  instance (own weights; ~3.1/5.7/7.1 GB per farmer, so pick sizes that sum to your RAM, the demo
+  machine has 24 GB) — and `qwen3.8-flash-next`, which runs **remotely on the ASCENTs**
+  (`../on-prem`): farmers on it share one client to the vLLM OpenAI-compatible endpoint
+  (`NV_VLLM_URL`, default `http://ascent1.local:8000/v1`, with `NV_VLLM_API_KEY`) and get the
+  same JSON-schema-constrained decisions via vLLM's guided decoding. The committed `personas.toml`
+  demos all four at once (Alice=Gemma4-E2B, Bob=Gemma4-12B, Charlie=Qwen3.5-9B, David=Flash-Next).
 - **Hybrid actions:** most work verbs take either a map tile (`{"do":"chop","x":63,"y":13}`, picked
   from the map view) or a count for bulk work (`{"do":"water","n":5}`, or no `n` = all).
 - **Compact JSON:** the schema uses llguidance's `"x-guidance": {"whitespace_flexible": false}` and

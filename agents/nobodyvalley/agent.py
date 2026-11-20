@@ -192,7 +192,9 @@ class Agent:
 
         obs = await self.conn.request("observe")
         self.others = [o["name"] for o in obs.get("others", [])]
-        self.chat = self.backend.create_chat(self._system_prompt(), self.n_ctx)
+        self.print(self.name, "info", f"loading model {self.backend.label} ...")
+        self.chat = await self.backend.create_chat(self._system_prompt(), self.n_ctx)
+        self.print(self.name, "info", "model loaded")
         self.print(self.name, "info", f"connected (port {self.conn.port}, {'host' if hello.get('is_host') else 'farmhand'})")
         self.print(self.name, "system", self._system_prompt())
 
