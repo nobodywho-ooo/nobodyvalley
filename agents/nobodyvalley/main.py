@@ -152,14 +152,6 @@ async def amain(args: argparse.Namespace) -> None:
             if backend is None:
                 backend = local_backends[ref] = LocalBackend(ref, DECISION_SCHEMA)
             return backend
-        if (model_arg not in MODEL_PRESETS and model_arg != REMOTE_MODEL
-                and "/" not in model_arg and not model_arg.lower().endswith(".gguf")):
-            sys.exit(f"unknown model {model_arg!r} for {who}: choose from "
-                     "gemma4-e2b, gemma4-12b, qwen3.5-9b, qwen3.8-flash-next, "
-                     "or a GGUF path / huggingface: reference (see personas.toml / --model)")
-        kind, ref = resolve_model(model_arg)
-        if kind != "remote":
-            return LocalBackend(ref, DECISION_SCHEMA)
         nonlocal remote_backend
         if remote_backend is None:
             url = os.environ.get("NV_VLLM_URL", DEFAULT_VLLM_URL)

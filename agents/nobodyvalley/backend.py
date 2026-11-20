@@ -66,7 +66,7 @@ class Chat(Protocol):
 
 
 class LocalChat:
-    """Delegates to a nobodywho ChatAsync, over the agent's own loaded model."""
+    """Delegates to a nobodywho ChatAsync, over the shared Model of the agent's ref."""
 
     def __init__(self, chat: ChatAsync):
         self._chat = chat
@@ -98,10 +98,15 @@ class LocalBackend:
         self._model_task: asyncio.Task[Model] | None = None  # one load per ref, ever
 
     async def _model(self) -> Model:
-        """The shared Model for this ref: the first agent to need it loads it, the rest await it."""
+        """The shared Model for this ref: the first agent to need it loads it, the rest await it.
+        A failed load is retried by the next caller (a watchdog reconnect), not cached forever."""
         if self._model_task is None:
             self._model_task = asyncio.ensure_future(self._load())
-        return await self._model_task
+        try:
+            return await self._model_task
+        except Exception:
+            self._model_task = None
+            raise
 
     async def _load(self) -> Model:
         return await Model.load_model_async(self.ref) if hasattr(Model, "load_model_async") else Model(self.ref)
