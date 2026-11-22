@@ -28,12 +28,6 @@ mkdir -p "$ROOT/logs"
 rm -f "$ROOT/logs/.test.stdin" && mkfifo "$ROOT/logs/.test.stdin"
 (cd "$GAME_DIR" && exec env NOBODYVALLEY_LOAD="$TEST" NOBODYVALLEY_PORT="${NV_PORT:-8790}" NOBODYVALLEY_WINDOW="${NV_WINDOW:-60,60,1280,800}" ./StardewModdingAPI <> "$ROOT/logs/.test.stdin" > "$ROOT/logs/test.log" 2>&1 &)
 echo "Started test instance on $TEST (log: logs/test.log). Waiting for it to load..."
-for _ in $(seq 1 30); do
-    if grep -q "In game as" "$ROOT/logs/test.log" 2>/dev/null; then
-        grep "In game as" "$ROOT/logs/test.log" | sed 's/\x1b\[[0-9;]*m//g'
-        exit 0
-    fi
-    sleep 2
-done
-echo "Timed out; see logs/test.log" >&2
-exit 1
+# Poll the mod itself (hello -> world_ready) instead of grepping the log: reliable across
+# restarts and never fooled by a stale line.
+"$ROOT/scripts/wait-for-game.sh" "${NV_PORT:-8790}" 60 || { echo "Timed out; see logs/test.log" >&2; exit 1; }

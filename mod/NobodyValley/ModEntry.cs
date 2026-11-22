@@ -181,8 +181,10 @@ internal sealed class ModEntry : Mod
         Microsoft.Xna.Framework.Point? Tile() => msg["x"] != null && msg["y"] != null
             ? new Microsoft.Xna.Framework.Point(Int("x", 0), Int("y", 0)) : null;
         var at = Tile();
-        if (at is { } outside)
+        if (at is { } outside && (msg["location"] == null && msg["to"] == null))
         {
+            // Tile commands act on the current map; a debug_warp_player with a destination
+            // location has its tile in *that* map, so it's exempt from this check.
             var loc = Game1.player.currentLocation;
             int w = loc.map.Layers[0].LayerWidth, h = loc.map.Layers[0].LayerHeight;
             if (outside.X < 0 || outside.Y < 0 || outside.X >= w || outside.Y >= h)
@@ -304,6 +306,31 @@ internal sealed class ModEntry : Mod
                 var script = Str("script") ?? "none/0 0/speak Willy \"This is a watched cutscene.\"/end";
                 Game1.currentLocation.currentEvent = new Event(script); // the game runs it and cleans up when it ends
                 return new JObject { ["event"] = script };
+            }
+
+            case "debug_warp_player":
+            {
+                // Debug aid: warp the local farmer somewhere without walking (location + x,y, or
+                // just x,y for a tile in the current map). Accepts familiar names ("Pierre's").
+                var who = Game1.player;
+                string? location = Str("location") ?? Str("to");
+                int wx = Int("x", (int)who.Tile.X);
+                int wy = Int("y", (int)who.Tile.Y);
+                Game1.activeClickableMenu = null; // a debug warp shouldn't leave a menu behind
+                if (location != null)
+                {
+                    string? target = Places.Find(location)?.Location
+                        ?? Navigation.GetLocation(location)?.NameOrUniqueName
+                        ?? location;
+                    Game1.warpFarmer(target, wx, wy, flip: false);
+                }
+                else
+                {
+                    who.Position = new Microsoft.Xna.Framework.Vector2(wx * 64, wy * 64);
+                }
+                who.controller = null;
+                who.Halt();
+                return new JObject { ["warped"] = $"{who.currentLocation?.NameOrUniqueName} {who.TilePoint.X},{who.TilePoint.Y}" };
             }
 
             case "debug_warp_npc":

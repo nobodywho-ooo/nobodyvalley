@@ -204,6 +204,7 @@ uv run python -m nobodyvalley.cli use x=5 y=18     # waits for the job and print
 uv run python -m nobodyvalley.cli click 'Parsnip Seeds'   # click the open menu's button
 uv run python -m nobodyvalley.cli screenshot       # whole-map screenshot into the game's Screenshots folder
 uv run python -m nobodyvalley.cli debug_set_time time=900
+uv run python -m nobodyvalley.cli debug_warp_player location="Pierre's" x=5 y=19   # teleport for testing (or just x= y= within the current map)
 uv run python -m nobodyvalley.fake_game            # fake game on ports 9765+ for testing the agent loop...
 uv run nobodyvalley --base-port 9765               # ...without Stardew running
 ```
