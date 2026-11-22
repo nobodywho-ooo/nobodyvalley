@@ -66,10 +66,6 @@ Personalities per farmer go in `agents/personas.toml`: a `personality` and a `jo
 included in the system prompt, not repeated every turn). Put your own farmers in `agents/personas.local.toml`
 (gitignored); it's used instead of `personas.toml` when it exists.
 
-Each farmer gets a random look (the character creator's dice), seeded by their name, so it's the same
-every launch. Set `"LookSeed"` in `Mods/NobodyValley/config.json` to roll new looks, or `"RandomLooks": false`
-to keep the saved ones.
-
 ## How it works
 
 ### The mod (`mod/NobodyValley`, C#)

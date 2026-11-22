@@ -64,8 +64,6 @@ internal sealed class ModEntry : Mod
         {
             Game1.options.pauseWhenOutOfFocus = false;
             ApplyUiScale();
-            if (Config.RandomLooks)
-                Looks.Randomize(Monitor, Config.LookSeed);
             WindowPlacement.Apply(Monitor);
             WindowPlacement.SetTitle(Game1.player.Name);
             Monitor.Log($"In game as {Game1.player.Name} ({(Context.IsMainPlayer ? "host" : "farmhand")}), agent port {server.Port}.", LogLevel.Info);
