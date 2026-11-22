@@ -46,6 +46,7 @@ internal static class MenuAgent
         {
             ShopMenu shop => Shop(shop),
             PurchaseAnimalsMenu animals => Animals(animals),
+            CarpenterMenu carpentry => Carpentry(carpentry),
             ItemGrabMenu grab => Grab(grab),
             LevelUpMenu level => Level(level),
             JunimoNoteMenu note => Bundle(note),
@@ -70,6 +71,7 @@ internal static class MenuAgent
         {
             ShopMenu shop => ShopClick(shop, element, n),
             PurchaseAnimalsMenu animals => AnimalClick(animals, element),
+            CarpenterMenu carpentry => CarpentryClick(carpentry, element),
             ItemGrabMenu grab => GrabClick(grab, element),
             LevelUpMenu level => LevelClick(level, element),
             JunimoNoteMenu note => BundleClick(note, element, n),
@@ -91,6 +93,8 @@ internal static class MenuAgent
             yield return PacedCraft(job, page, element, n);
         else if (m is PurchaseAnimalsMenu)
             yield return PacedAnimalClick(job, element);
+        else if (m is CarpenterMenu)
+            yield return PacedCarpentryClick(job, element);
         else
         {
             job.Summary = Click(element, n); // chests, bundles, single-shop clicks, ...
@@ -98,12 +102,24 @@ internal static class MenuAgent
         }
     }
 
-    /// <summary>A paced click in Marnie's animal shop. Buying (and backing out) fades to black
-    /// to show the farm; wait the fade out first, like a player waiting for the screen to change.</summary>
+    /// <summary>A paced click in Marnie's animal shop / Robin's shop. Buying (and backing out)
+    /// fades to black to show the farm; wait the fade out first, like a player waiting for the
+    /// screen to change.</summary>
     public static IEnumerator PacedAnimalClick(Job job, string element)
     {
+        yield return FadeWaitAndClick(job, element);
+    }
+
+    /// <summary>A paced click in Robin's construction menu (builds/demolish/move fade to the farm).</summary>
+    public static IEnumerator PacedCarpentryClick(Job job, string element)
+    {
+        yield return FadeWaitAndClick(job, element);
+    }
+
+    private static IEnumerator FadeWaitAndClick(Job job, string element)
+    {
         int guard = 0;
-        while (Game1.IsFading() && guard++ < 240) // ~4s at 60fps: the buy/back fades
+        while (Game1.IsFading() && guard++ < 240) // ~4s at 60fps: the placement fades
             yield return null;
         yield return PacedWait();
         job.Summary = Click(element, 1);
@@ -956,6 +972,182 @@ internal static class MenuAgent
         menu.receiveLeftClick(salable.bounds.Center.X, salable.bounds.Center.Y);
         return $"Picked a {salable.hoverText} ({price}g) - now choose its home: click=\"place in <building>\". "
             + "(click=\"back\" to cancel)";
+    }
+
+    // ---------------------------------------------------------------- buildings (Robin's shop)
+
+    /// <summary>Robin's construction menu: the blueprint browser, and the farm view after a build/
+    /// demolish/move click. The actions are the vanilla ones - the agent just picks blueprint,
+    /// tiles and buttons.</summary>
+    private static string Carpentry(CarpenterMenu menu)
+    {
+        var sb = new StringBuilder("[Robin's carpentry shop]");
+        if (menu.onFarm)
+        {
+            var bp = menu.Blueprint;
+            string what = menu.Action switch
+            {
+                CarpenterMenu.CarpentryAction.Demolish => "Which building do you want to demolish?",
+                CarpenterMenu.CarpentryAction.Move => "Which building do you want to move?",
+                CarpenterMenu.CarpentryAction.Paint => "which building to paint",
+                CarpenterMenu.CarpentryAction.Upgrade => $"Pick the {bp.GetDisplayNameForBuildingToUpgrade() ?? bp.DisplayName} to upgrade it to {bp.DisplayName}",
+                _ => bp.IsUpgrade
+                    ? $"Pick the {bp.GetDisplayNameForBuildingToUpgrade() ?? "building"} to turn into {bp.DisplayName}"
+                    : $"Choose where to put the new {bp.DisplayName} (it costs {bp.BuildCost}g + the materials listed)",
+            };
+            sb.Append($"\n{what} You're looking at the farm; the buildings are:");
+            foreach (var b in menu.TargetLocation.buildings)
+                sb.Append($"\n- {BuildingName(b)} at {b.tileX.Value},{b.tileY.Value}");
+            // The agent can't see the farm map from in here, so also list a few genuinely clear
+            // spots: every tile of the building's footprint must pass the same isBuildable the
+            // build click will use (and nothing else prevent construction).
+            var farm = menu.TargetLocation;
+            var door = Game1.getFarm().GetMainFarmHouseEntry();
+            var sample = StardewValley.Buildings.Building.CreateInstanceFromId(menu.Blueprint.Id, Microsoft.Xna.Framework.Vector2.Zero);
+            var spots = new List<string>();
+            for (int dy = 1; dy < 12 && spots.Count < 6; dy++)
+            for (int dx = -6; dx < 40 && spots.Count < 6; dx++)
+            {
+                var t = new Microsoft.Xna.Framework.Vector2(door.X + dx, door.Y + dy);
+                if (t.X < 0 || t.Y < 0)
+                    continue;
+                bool ok = true;
+                for (int y = 0; y < sample.tilesHigh.Value && ok; y++)
+                for (int x = 0; x < sample.tilesWide.Value && ok; x++)
+                {
+                    var ft = t + new Microsoft.Xna.Framework.Vector2(x, y);
+                    ok = farm.isBuildable(ft) && farm.getBuildingAt(ft) == null;
+                }
+                if (ok && sample.isThereAnythingtoPreventConstruction(farm, t) == null)
+                    spots.Add($"{t.X},{t.Y}");
+            }
+            if (spots.Count > 0)
+                sb.Append("\nClear spots near the farmhouse: " + string.Join(", ", spots) + " (click=\"tile <x>,<y>\" to build there).");
+            else
+                sb.Append("\nNo clear spot right by the farmhouse - clear weeds/stones/twigs first (scythe/pickaxe/axe), then look again.");
+            sb.Append("\nActions: click=\"tile X,Y\" (a clear spot or a building), click=\"back\" (cancel).");
+            return sb.ToString();
+        }
+
+        var bp0 = menu.Blueprint;
+        sb.Append($"\nBlueprint {bp0.Index + 1} of {menu.Blueprints.Count}: {bp0.DisplayName}"
+            + (bp0.IsUpgrade ? $" (upgrade for a {bp0.GetDisplayNameForBuildingToUpgrade() ?? "building"})" : ""));
+        var have = new List<string>();
+        var lack = new List<string>();
+        foreach (var ing in menu.ingredients)
+        {
+            int count = Me.Items.Sum(i => i != null && i.QualifiedItemId == ing.QualifiedItemId ? i.Stack : 0);
+            (count >= ing.Stack ? have : lack).Add($"{ing.Stack} {ing.DisplayName} (have {count})");
+        }
+        sb.Append($"\nCost: {(bp0.BuildCost > 0 ? $"{bp0.BuildCost}g (you have {Me.Money}g)" : "free")}."
+            + (menu.ingredients.Count > 0 ? $" Materials: {string.Join(", ", have.Concat(lack))}." : "")
+            + (menu.CanBuildCurrentBlueprint() ? " You can afford it." : " You CAN'T build this yet.")
+            + (bp0.BuildDays > 0 ? $"\nTakes {bp0.BuildDays} day(s) to build." : ""));
+        sb.Append("\nActions: click=\"next\"/\"prev\" (browse), click=\"select <name>\", click=\"build\" "
+            + "(new buildings: then click a spot on the farm; upgrades: then click the building), "
+            + "click=\"demolish\" or \"move\" (then click a building on the farm), click=\"close\".");
+        return sb.ToString();
+    }
+
+    private static string CarpentryClick(CarpenterMenu menu, string element)
+    {
+        string q = element.Trim();
+        if (menu.onFarm)
+        {
+            if (q.Equals("back", StringComparison.OrdinalIgnoreCase) || q.Equals("cancel", StringComparison.OrdinalIgnoreCase)
+                || q.Equals("close", StringComparison.OrdinalIgnoreCase) || q.Equals("leave", StringComparison.OrdinalIgnoreCase))
+            {
+                // The vanilla cancel button: return to the menu (restores the shop view).
+                menu.receiveLeftClick(menu.cancelButton.bounds.Center.X, menu.cancelButton.bounds.Center.Y);
+                return "Back in Robin's menu (nothing changed).";
+            }
+            if (q.StartsWith("tile ", StringComparison.OrdinalIgnoreCase))
+            {
+                var parts = q["tile ".Length..].Split(',');
+                if (parts.Length == 2 && int.TryParse(parts[0].Trim(), out int tx) && int.TryParse(parts[1].Trim(), out int ty))
+                {
+                    // The on-farm clicks read the real mouse position, so click the way a player
+                    // does: centre the view on the tile, put the mouse there, then the vanilla
+                    // receiveLeftClick performs the build/upgrade/demolish/move.
+                    Game1.viewport.X = (int)(tx * 64 - Game1.viewport.Width / 2f);
+                    Game1.viewport.Y = (int)(ty * 64 - Game1.viewport.Height / 2f);
+                    Game1.clampViewportToGameMap();
+                    int mx = tx * 64 - Game1.viewport.X;
+                    int my = ty * 64 - Game1.viewport.Y;
+                    Game1.setMousePosition(mx, my, ui_scale: false);
+                    menu.receiveLeftClick(mx, my);
+                    return PlacementOutcome(menu);
+                }
+                return "say click=\"tile X,Y\" with two numbers and a comma, e.g. click=\"tile 63,13\"";
+            }
+            return "choose a farm tile: click=\"tile X,Y\" (or click=\"back\" to cancel)";
+        }
+
+        if (q.Equals("close", StringComparison.OrdinalIgnoreCase) || q.Equals("leave", StringComparison.OrdinalIgnoreCase)
+            || q.Equals("cancel", StringComparison.OrdinalIgnoreCase))
+            return Close();
+        if (q.Equals("next", StringComparison.OrdinalIgnoreCase))
+        {
+            menu.SetNewActiveBlueprint(menu.Blueprint.Index + 1); // what the vanilla forward button does
+            return $"Browsing: {menu.Blueprint.DisplayName}.";
+        }
+        if (q.Equals("prev", StringComparison.OrdinalIgnoreCase))
+        {
+            menu.SetNewActiveBlueprint(menu.Blueprint.Index - 1);
+            return $"Browsing: {menu.Blueprint.DisplayName}.";
+        }
+        if (q.StartsWith("select ", StringComparison.OrdinalIgnoreCase))
+        {
+            string name = q["select ".Length..].Trim();
+            var match = menu.Blueprints.FirstOrDefault(bp =>
+                bp.DisplayName.Equals(name, StringComparison.OrdinalIgnoreCase)
+                || bp.DisplayName.Contains(name, StringComparison.OrdinalIgnoreCase))
+                ?? menu.Blueprints.FirstOrDefault(bp => bp.Id.Equals(name, StringComparison.OrdinalIgnoreCase));
+            if (match == null)
+                return $"no blueprint '{name}' here - browse with next/prev to see Robin's list";
+            menu.SetNewActiveBlueprint(match.Index);
+            return $"Selected {menu.Blueprint.DisplayName}" + (menu.Blueprint.IsUpgrade ? " (upgrade)" : "") + " - click=\"build\" to place it.";
+        }
+        if (q.Equals("build", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!menu.CanBuildCurrentBlueprint())
+                return $"you can't afford the {menu.Blueprint.DisplayName} yet - the cost/materials are in the menu; sell crops or gather more first";
+            // Vanilla: the ok button fades to the farm to place the building (or pick the
+            // building to upgrade).
+            menu.receiveLeftClick(menu.okButton.bounds.Center.X, menu.okButton.bounds.Center.Y);
+            return menu.onFarm
+                ? $"On the farm: choose where (click=\"tile X,Y\"){(menu.Action == CarpenterMenu.CarpentryAction.Upgrade ? $" - click the {menu.Blueprint.GetDisplayNameForBuildingToUpgrade() ?? "existing building"} to upgrade" : " to put the new " + menu.Blueprint.DisplayName)}"
+                : "clicked build but nothing happened - did the requirements change?";
+        }
+        if (q.Equals("demolish", StringComparison.OrdinalIgnoreCase))
+        {
+            menu.receiveLeftClick(menu.demolishButton.bounds.Center.X, menu.demolishButton.bounds.Center.Y);
+            return menu.onFarm
+                ? "Pick the building to demolish: click=\"tile X,Y\" on it."
+                : "you can't demolish right now (Robin only demolishes while no building is under construction)";
+        }
+        if (q.Equals("move", StringComparison.OrdinalIgnoreCase))
+        {
+            menu.receiveLeftClick(menu.moveButton.bounds.Center.X, menu.moveButton.bounds.Center.Y);
+            return menu.onFarm
+                ? "Pick the building to move: click=\"tile X,Y\" on it, then where to put it."
+                : "you can't move buildings right now (the host decides, or a building is under construction)";
+        }
+        return "say click=\"next\", \"prev\", \"select <name>\", \"build\", \"demolish\", \"move\", or \"close\"";
+    }
+
+    /// <summary>What the on-farm click just started, read from the menu's state after the click.</summary>
+    private static string PlacementOutcome(CarpenterMenu menu)
+    {
+        if (!menu.onFarm || menu.freeze)
+            return "Done - Robin wraps it up in a moment (answer her message).";
+        if (menu.Action == CarpenterMenu.CarpentryAction.Move && menu.buildingToMove != null)
+            return "Picked up that building - now click where to move it: click=\"tile X,Y\" (or back to cancel).";
+        if (menu.Action == CarpenterMenu.CarpentryAction.Upgrade)
+            return "Clicked the building - if it was the right kind, the upgrade starts and Robin confirms in a moment (answer her).";
+        if (menu.Action == CarpenterMenu.CarpentryAction.Demolish)
+            return "Clicked the building - if it could be demolished it's gone now (a cabin asks first: answer it).";
+        return "Clicked the tile. Check the result: Robin may have a message (answer it), or the buildings list changed.";
     }
 
     // ---------------------------------------------------------------- level ups

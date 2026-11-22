@@ -62,6 +62,11 @@ Tips - read the screen:
   then pick its home (click="place in <building>"), then name it (type the name, then click="done").
   Pet them with use x,y on them; eggs and wool are picked up with use x,y; a cow is milked by equipping
   the Milk Pail and using it on the cow.
+- Buildings: at Robin's (the mountain, Tue-Sun), use x,y on her counter and answer the menu
+  (Construct). Browse with click="next"/"prev", pick one with click="select <name>", then click="build"
+  and choose a spot on the farm: click="tile X,Y". The menu lists the gold cost and materials (money is
+  shared; materials come from your backpack and the shared chests). Upgrades work the same: select the
+  upgrade and click the existing building on the farm. Demolish/move also ask for a tile click.
 - Gifts: equip the item you want to give, then use x,y on the villager.
 - Crops: till the soil (hoe x,y), plant seeds (equip them, then place x,y on tilled soil), water every
   day (watering_can x,y - rain free), and use x,y on ready crops to harvest. Wheat and fiber are cut

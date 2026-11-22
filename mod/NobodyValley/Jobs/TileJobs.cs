@@ -41,10 +41,22 @@ internal static class TileJobs
     {
         var loc = Me.currentLocation;
         var v = new Vector2(tile.X, tile.Y);
-        var walk = new StepResult();
-        yield return Steps.WalkAdjacent(tile, walk);
-        if (!walk.Ok)
-            throw new JobFailed(walk.Error ?? $"can't reach {tile.X},{tile.Y}");
+        // Shop counters (tiles with an Action property) only respond when the player stands
+        // below them (the vanilla Y check), so prefer the southern tile first, like a player
+        // stopping at the counter. Other tiles use the usual walk-to-any-side.
+        var stand = new StepResult();
+        if (loc.doesTileHaveProperty(tile.X, tile.Y, "Action", "Buildings") != null)
+        {
+            var below = new StepResult();
+            yield return Steps.WalkTo(new Point(tile.X, tile.Y + 1), below, facing: Steps.Down);
+            stand = below;
+        }
+        if (!stand.Ok)
+        {
+            yield return Steps.WalkAdjacent(tile, stand);
+            if (!stand.Ok)
+                throw new JobFailed(stand.Error ?? $"can't reach {tile.X},{tile.Y}");
+        }
 
         // Right-click a villager: they react (dialogue opens; the agent reads and answers it).
         var npc = loc.characters.FirstOrDefault(n => n.TilePoint == tile && n.IsVillager);
