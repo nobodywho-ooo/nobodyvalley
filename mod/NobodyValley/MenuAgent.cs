@@ -104,7 +104,7 @@ internal static class MenuAgent
         }
         if (shop.forSale.Count > shown)
             sb.Append($"\n... and {shop.forSale.Count - shown} more - switch tabs to see them; any click on a listed item works.");
-        sb.Append("\nActions: click=\"<item name>\" (buy/sell 1, n=N for N), click=\"tab <name>\", click=\"close\".");
+        sb.Append("\nActions: click=\"<item name>\" (buy 1, n=N for N; if you also carry it, an exact name buys), click=\"sell <item>\" (sell what you carry), click=\"tab <name>\", click=\"close\".");
         return sb.ToString();
     }
 
@@ -131,44 +131,7 @@ internal static class MenuAgent
             shop.receiveLeftClick(shop.upArrow.bounds.Center.X, shop.upArrow.bounds.Center.Y);
             return shop.currentItemIndex < before ? "Scrolled up." : "Already at the top.";
         }
-        // Selling: click the item in the shop's bottom pane (your items, index-aligned with the
-        // real bag), like a player. The pane only reacts to what this shop buys.
-        int carried = -1;
-        for (int i = 0; i < Me.Items.Count && i < shop.inventory.inventory.Count; i++)
-        {
-            if (Me.Items[i] != null && Matches(Me.Items[i]!, q))
-            {
-                carried = i;
-                break;
-            }
-        }
-        if (carried >= 0)
-        {
-            int moneyBeforeSell = Me.Money;
-            int sold = 0;
-            int clicksSell = Math.Clamp(n, 1, 25);
-            for (int c = 0; c < clicksSell; c++)
-            {
-                int sellIdx = -1;
-                for (int j = 0; j < Me.Items.Count && j < shop.inventory.inventory.Count; j++)
-                    if (Me.Items[j] != null && Matches(Me.Items[j]!, q))
-                    {
-                        sellIdx = j;
-                        break;
-                    }
-                if (sellIdx < 0)
-                    break; // sold the whole stack
-                shop.safetyTimer = 0;
-                shop.receiveLeftClick(shop.inventory.inventory[sellIdx].bounds.Center.X, shop.inventory.inventory[sellIdx].bounds.Center.Y);
-                sold++;
-            }
-            int gained = Me.Money - moneyBeforeSell;
-            return gained > 0
-                ? $"Sold {q}: +{gained}g (now {Me.Money}g)."
-                : $"Clicked {q} in the pane but nothing sold - this shop may not buy {q} (ship it instead).";
-        }
-
-        // A tab click: switch the shop's category, like a player clicking its tab.
+        // A tab click switches the shop's category, like a player clicking its tab.
         if (q.StartsWith("tab ", StringComparison.OrdinalIgnoreCase) && shop.tabButtons is { Count: > 0 })
         {
             string tabName = q["tab ".Length..];
@@ -183,12 +146,41 @@ internal static class MenuAgent
             }
             return $"no tab '{tabName}' - tabs are: " + string.Join(", ", shop.tabButtons.Select(t => t.label));
         }
+        // "sell X" / "buy X" pick the pane; a bare name matches exact names first (the shop's
+        // list wins ties, so "Potato Seeds" buys rather than selling the ones you carry), then
+        // falls back to partial names.
+        bool wantSell = q.StartsWith("sell ", StringComparison.OrdinalIgnoreCase);
+        bool wantBuy = q.StartsWith("buy ", StringComparison.OrdinalIgnoreCase);
+        if (wantSell || wantBuy)
+            q = q[(wantSell ? "sell " : "buy ").Length..].Trim();
+        int exactForSale = FindShopItemExact(shop, q);
+        int exactCarried = FindCarriedExact(q);
+
+        if (wantSell || (exactCarried >= 0 && exactForSale < 0))
+        {
+            // Selling: click the item in the shop's bottom pane (your items, index-aligned with
+            // the real bag), like a player. The pane only reacts to what this shop buys.
+            int sellIdx = exactCarried >= 0 ? exactCarried : FindCarried(q);
+            if (sellIdx < 0)
+                return wantSell ? $"you don't carry '{q}' - say sell and the name of something in your bag" : $"you don't carry '{q}'";
+            int moneyBeforeSell = Me.Money;
+            shop.safetyTimer = 0;
+            shop.receiveLeftClick(shop.inventory.inventory[sellIdx].bounds.Center.X, shop.inventory.inventory[sellIdx].bounds.Center.Y);
+            int gained = Me.Money - moneyBeforeSell;
+            return gained > 0
+                ? $"Sold {Me.Items[sellIdx]?.DisplayName ?? q}: +{gained}g (now {Me.Money}g)."
+                : $"Clicked {q} in the pane but nothing sold - this shop may not buy it (ship it instead).";
+        }
 
         // Buying: the whole stock is listed, so scroll to the item first if it isn't on the
         // current page, then click its button once per unit wanted (purchases stack on the cursor).
-        int idx = FindShopItem(shop, q);
+        int idx = wantBuy ? (exactForSale >= 0 ? exactForSale : FindShopItem(shop, q)) : exactForSale >= 0 ? exactForSale : FindShopItem(shop, q);
         if (idx < 0)
-            return $"the shop doesn't sell '{q}' - pick from the list (or switch tabs)";
+            return wantBuy
+                ? $"the shop doesn't sell '{q}' - pick from the list (or switch tabs)"
+                : FindCarried(q) >= 0
+                    ? $"you carry '{q}' but this shop doesn't sell it and won't buy it - ship it instead"
+                    : $"the shop doesn't sell '{q}' and you don't carry it - pick from the list";
         ScrollTo(shop, idx);
         var salable = shop.forSale[idx];
         int moneyBeforeBuy = Me.Money;
@@ -203,6 +195,10 @@ internal static class MenuAgent
                 break; // sold out or scrolled away
             ScrollTo(cur, curIdx);
             var btn = cur.forSaleButtons[curIdx - cur.currentItemIndex];
+            // A previous purchase sitting on the cursor blocks buying anything else (vanilla:
+            // the shop only stacks the same item onto it) - put it away first, like pressing ESC.
+            if (cur.heldItem is Item heldC && !heldC.DisplayName.Equals(salable.DisplayName, StringComparison.OrdinalIgnoreCase))
+                cur.receiveKeyPress(Microsoft.Xna.Framework.Input.Keys.Escape);
             cur.safetyTimer = 0; // purchases arm a repeat-click guard; clears like the real timer would
             cur.receiveLeftClick(btn.bounds.Center.X, btn.bounds.Center.Y); // buys; stacks on the cursor
             done++;
@@ -212,12 +208,21 @@ internal static class MenuAgent
         int spent = moneyBeforeBuy - Me.Money;
         if (shop.heldItem is Item heldH && heldH.DisplayName.Equals(salable.DisplayName, StringComparison.OrdinalIgnoreCase))
             return $"Bought {done} {salable.DisplayName} for {spent}g (money: {Me.Money}g) - it's on your cursor; click=\"close\" to put it in your backpack.";
-        if (done > 0 && spent == 0)
-            return $"the clicks on '{q}' didn't go through - you may be out of money (you have {Me.Money}g)";
-        return $"nothing was bought - '{q}' may be sold out or the shop needs a scroll";
+        string? blocker = shop.heldItem is Item hb ? $"your cursor holds {hb.DisplayName} x{hb.Stack}" : done > 0 ? $"you may be out of money (you have {Me.Money}g)" : null;
+        if (blocker != null)
+            return $"the clicks on '{q}' didn't buy anything - {blocker}. (Put it away with click=\"close\", then buy again.)";
+        return $"nothing was bought - '{q}' may be sold out or needs a scroll";
     }
 
-
+    private static int FindShopItemExact(ShopMenu shop, string name)
+    {
+        for (int i = 0; i < shop.forSale.Count; i++)
+        {
+            if (shop.forSale[i] != null && shop.forSale[i]!.DisplayName.Equals(name, StringComparison.OrdinalIgnoreCase))
+                return i;
+        }
+        return -1;
+    }
 
     private static int FindShopItem(ShopMenu shop, string name)
     {
@@ -226,6 +231,22 @@ internal static class MenuAgent
             if (shop.forSale[i] != null && Matches((Item)shop.forSale[i]!, name))
                 return i;
         }
+        return -1;
+    }
+
+    private static int FindCarriedExact(string name)
+    {
+        for (int i = 0; i < Me.Items.Count; i++)
+            if (Me.Items[i] != null && Me.Items[i]!.DisplayName.Equals(name, StringComparison.OrdinalIgnoreCase))
+                return i;
+        return -1;
+    }
+
+    private static int FindCarried(string name)
+    {
+        for (int i = 0; i < Me.Items.Count; i++)
+            if (Me.Items[i] != null && Matches(Me.Items[i]!, name))
+                return i;
         return -1;
     }
 

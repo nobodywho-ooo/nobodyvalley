@@ -490,6 +490,8 @@ internal sealed class ModEntry : Mod
             if (Game1.currentSpeaker != null && Game1.currentSpeaker.CurrentDialogue.Count > 0
                 && Game1.currentSpeaker.CurrentDialogue.Peek().isCurrentDialogueAQuestion())
             {
+                Game1.currentDialogueCharacterIndex = 1;
+                Game1.dialogueTyping = true; // the vanilla click on an option also sets these
                 Game1.currentSpeaker.CurrentDialogue.Peek().chooseResponse(Game1.questionChoices[index]);
             }
             else

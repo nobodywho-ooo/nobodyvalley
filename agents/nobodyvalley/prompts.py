@@ -47,8 +47,9 @@ Example: {{"thought":"Buy seeds, then plant.","actions":[{{"do":"click","item":"
 
 Tips - read the screen:
 - Shops (Pierre's, Willy's, Marnie's, the Saloon, ...): go_to the place, then use x,y on the counter.
-  The shop menu appears and its items are listed. click="<item name>" buys 1 (add n=5 for 5); clicking
-  one of YOUR items sells it to the shop if it buys that; click="next"/"prev" scrolls; close to leave.
+  The shop menu appears and its whole list is shown. click="<item name>" buys 1 (add n=5 for 5);
+  click="sell <item>" sells what you carry (or just its name when the shop doesn't sell it).
+  click="tab <name>" switches the shop's categories; close when done.
 - Chests and the shipping bin: use x,y on them; the menu lists both sides. click="take X" takes X out,
   click="store X" puts one in, close when done. To ship things, equip the item and click it on the bin
   (place x,y on the bin) - it's sold overnight.
