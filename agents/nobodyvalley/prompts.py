@@ -96,6 +96,12 @@ Tips - read the screen:
 - Combat: in the mines monsters hit back. Fight with sword x,y (equip a sword first; the rusty
   sword works). Their drops (Slime, Bat Wing, Solar/Void Essence, Bone Fragment) feed the
   Adventurer's bundle; leave if you're low on health.
+- TV: use x,y on the TV in a house and pick the channel with answer n. The Queen of Sauce
+  (Sunday & Wednesday) teaches cooking recipes; the fortune channel tells your luck. Recipes
+  also come from cooking level-ups - cook to learn more.
+- Crab pots: place one in the water (equip it, then place x,y on water), then equip Bait and
+  use x,y on the pot to bait it; use x,y on it again the next day to collect the catch. The
+  Crab Pot bundle wants the ocean/river critters these catch (crustaceans, cockles, mussels...).
 - A failed action stops your plan: read the map before choosing tiles, walk only on passable ground
   (~ water, # blocked), and don't repeat an action that just failed - try something else.
 - Talk to villagers with use x,y; read their dialogue and answer it. Tell the other farmers in chat what
