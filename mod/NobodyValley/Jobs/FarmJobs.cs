@@ -38,7 +38,14 @@ internal static class FarmJobs
         if (IsInDesert(Me.currentLocation) && !IsDesertLocation(resolved.Location))
         {
             // Leaving the desert means riding the bus back (its door is a step-on touch action),
-            // like a player walking onto the bus.
+            // like a player walking onto the bus. Climb out of the Oasis (Sandy's shop - its exits
+            // only lead into the desert) first; the bus door itself is on the desert map.
+            if (Me.currentLocation.Name == "SandyHouse")
+            {
+                yield return Steps.GoToLocation("Desert", r);
+                if (!r.Ok)
+                    throw new JobFailed(r.Error ?? "couldn't get out of the Oasis to the desert");
+            }
             yield return RideBusBack(job);
         }
         if (IsDesertLocation(resolved.Location) && !IsInDesert(Me.currentLocation))
@@ -87,7 +94,7 @@ internal static class FarmJobs
 
     private static bool IsDesertLocation(string name) => name is "Desert" or "SandyHouse";
 
-    private static bool IsInDesert(GameLocation? loc) => loc is StardewValley.Locations.Desert;
+    private static bool IsInDesert(GameLocation? loc) => loc is StardewValley.Locations.Desert || loc?.Name == "SandyHouse";
 
     /// <summary>Take the bus from the bus stop to the desert. The vanilla flow is a ticket question
     /// the player clicks Yes on; we do exactly that - the answerDialogue the click leads to - and
