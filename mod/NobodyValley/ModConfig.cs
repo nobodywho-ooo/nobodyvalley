@@ -32,4 +32,10 @@ internal sealed class ModConfig
 
     /// <summary>How long a dialogue/event message is held so an agent can see and answer it.</summary>
     public float MessageReactionSeconds { get; set; } = 20f;
+
+    /// <summary>
+    /// Mute all game audio on farmhand instances (the lab agents shouldn't make noise on the
+    /// machine). The host keeps its sound; this only silences non-main players.
+    /// </summary>
+    public bool DisableSoundForFarmhands { get; set; } = true;
 }

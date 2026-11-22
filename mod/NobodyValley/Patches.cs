@@ -1,8 +1,34 @@
 using HarmonyLib;
+using StardewModdingAPI;
 using StardewValley;
+using StardewValley.Audio;
 using StardewValley.Menus;
 
 namespace NobodyValley;
+
+/// <summary>
+/// Mute all game audio on farmhand instances. Every sound (SFX and music) is an XACT cue whose
+/// volume is applied through its category; the game re-applies the Music/Ambient category volumes
+/// every tick (fading toward the options), so a one-shot mute would be undone — this forces the
+/// requested volume to zero on any category the game adjusts while running as a non-host.
+/// </summary>
+[HarmonyPatch(typeof(AudioCategoryWrapper), nameof(AudioCategoryWrapper.SetVolume))]
+internal static class MuteFarmhandAudioPatch
+{
+    private static void Prefix(ref float volume)
+    {
+        try
+        {
+            if (volume != 0f && ModEntry.Instance.Config.DisableSoundForFarmhands
+                && Context.IsWorldReady && !Context.IsMainPlayer)
+                volume = 0f;
+        }
+        catch (Exception ex)
+        {
+            ModEntry.Instance.Monitor.Log($"Mute audio hook failed: {ex}", StardewModdingAPI.LogLevel.Error);
+        }
+    }
+}
 
 /// <summary>Forward HUD messages (waiting, locked doors, quest hints, ...) to the agent.</summary>
 [HarmonyPatch(typeof(Game1), nameof(Game1.addHUDMessage))]

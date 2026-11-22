@@ -67,6 +67,7 @@ internal sealed class ModEntry : Mod
             WindowPlacement.Apply(Monitor);
             WindowPlacement.SetTitle(Game1.player.Name);
             Monitor.Log($"In game as {Game1.player.Name} ({(Context.IsMainPlayer ? "host" : "farmhand")}), agent port {server.Port}.", LogLevel.Info);
+            ApplySoundMute();
             server.Broadcast("world_ready", Hello());
         };
         helper.Events.GameLoop.DayStarted += (_, _) =>
@@ -140,6 +141,28 @@ internal sealed class ModEntry : Mod
     {
         if (Config.UiScale is { } scale)
             Game1.options.desiredUIScale = Math.Clamp(scale, 0.5f, 1.5f);
+    }
+
+    /// <summary>
+    /// Mute game audio on farmhand instances. The SetVolume patch keeps the categories the game
+    /// re-adjusts (Music/Ambient per tick, Sound/Footsteps on volume init) muted; this seeds the
+    /// '"Default" category (and any the game never Sets the volume of) to zero at load.
+    /// </summary>
+    private void ApplySoundMute()
+    {
+        if (Config.DisableSoundForFarmhands && Context.IsWorldReady && !Context.IsMainPlayer)
+        {
+            try
+            {
+                foreach (string name in new[] { "Music", "Sound", "Ambient", "Footsteps", "Default" })
+                    Game1.audioEngine?.GetCategory(name)?.SetVolume(0f);
+                Monitor.Log("Muted game audio (farmhand instance).", LogLevel.Debug);
+            }
+            catch (Exception ex)
+            {
+                Monitor.Log($"Couldn't mute game audio: {ex}", LogLevel.Error);
+            }
+        }
     }
 
     internal void OnChat(string from, string text, bool isPrivate) =>
