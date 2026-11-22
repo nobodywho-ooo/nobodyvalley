@@ -25,6 +25,8 @@ internal static class Places
         new("AnimalShop", "Marnie's ranch", "ranch", "marnie"),
         new("BusStop", "the bus stop", "bus stop", "bus"),
         new("Railroad", "the railroad and bathhouse path", "railroad", "train", "tracks"),
+        new("Desert", "the Calico Desert", "calico desert", "calico", "desert", "the desert"),
+        new("SandyHouse", "the Oasis (Sandy's shop, in the desert)", "oasis", "sandy's shop", "desert shop"),
         new("Farm", "the shared farm", "farm", "shipping bin", "bin", "field", "crops", "chest"),
         new("FarmHouse", "your farmhouse (the kitchen is upstairs)", "farmhouse", "home house", "the house"),
         new("HaleyHouse", "2 Willow Lane (Haley & Emily's house)", "haley's house", "emily's house", "willow lane"),

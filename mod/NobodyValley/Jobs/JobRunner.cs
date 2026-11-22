@@ -24,6 +24,10 @@ internal sealed class Job
     /// <summary>Keep ticking while a menu is open (for jobs that answer dialogues themselves).</summary>
     public bool RunDuringMenus { get; init; }
 
+    /// <summary>Keep ticking even through cutscenes, warps and fades (the bus ride - the trip to the
+    /// desert is a scripted sequence the job must watch to completion before it can report).</summary>
+    public bool RunThroughEvents { get; set; }
+
     /// <summary>Set by the body as it progresses; reported when the job ends.</summary>
     public string Summary { get; set; } = "";
 }
@@ -101,8 +105,9 @@ internal sealed class JobRunner
             return;
         }
 
-        // Freeze while a menu, cutscene or screen transition is up; resume afterwards.
-        if ((Game1.activeClickableMenu != null && !Current.RunDuringMenus) || Game1.eventUp || Game1.isWarping || Game1.fadeToBlack)
+        // Freeze while a menu, cutscene or screen transition is up; resume afterwards. The bus ride
+        // keeps ticking through all of it (it answers its own ticket question and waits for the warp).
+        if (!Current.RunThroughEvents && ((Game1.activeClickableMenu != null && !Current.RunDuringMenus) || Game1.eventUp || Game1.isWarping || Game1.fadeToBlack))
             return;
 
         if (waitTicks > 0)

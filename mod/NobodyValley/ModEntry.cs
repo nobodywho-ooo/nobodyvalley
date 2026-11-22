@@ -101,10 +101,17 @@ internal sealed class ModEntry : Mod
 
     private int traceTicks;
     private Microsoft.Xna.Framework.Vector2 lastTracePos;
+    private string? lastEventId; // debug: log when a cutscene starts, and where
 
     private void OnUpdateTicked(object? sender, UpdateTickedEventArgs e)
     {
         server.Drain(HandleCommand);
+        if (Context.IsWorldReady && Game1.CurrentEvent?.id != lastEventId)
+        {
+            lastEventId = Game1.CurrentEvent?.id;
+            if (Game1.CurrentEvent != null)
+                Monitor.Log($"EVENT {Game1.CurrentEvent.id} started at {Game1.player.currentLocation?.NameOrUniqueName} {Game1.player.TilePoint}", LogLevel.Debug);
+        }
         if (traceTicks > 0 && Context.IsWorldReady)
         {
             // Debug aid (debug_trace): per-tick movement, to diagnose janky walking.
@@ -129,10 +136,13 @@ internal sealed class ModEntry : Mod
         // Day-end screens (ready check, shipping summary, festivals) are dismissed so a co-op day
         // never hangs; interactive menus (shops, chests, dialogs) are left for the agent.
         janitor.Tick(leaveDialoguesAlone: true);
-        // A cutscene/festival takes over the character: drop any pending job (it can't tick during
-        // the event anyway), so the agent re-plans fresh once it's over.
-        if (Game1.CurrentEvent != null && jobs.Current != null)
-            jobs.Cancel("a cutscene started");
+        // A cutscene/festival takes over the character: the current job can't finish during it,
+        // so cancel it - the agent sees the failure next to the dialogue (screen messages relay
+        // every line) and plans again once the cutscene is over, like a player who was interrupted.
+        // The bus ride is exempt: it is its own scripted sequence and must answer its own ticket
+        // question, so it runs through events (RunThroughEvents).
+        if (Game1.CurrentEvent != null && jobs.Current != null && !jobs.Current.RunThroughEvents)
+            jobs.Cancel("a cutscene started - watch it and answer any question (answer n); the plan is cancelled, plan again when it's over");
         jobs.Tick();
     }
 
@@ -552,7 +562,9 @@ internal sealed class ModEntry : Mod
             case "answer":
             {
                 int option = Int("count", Int("option", 1));
-                return StartJob(cmd, "answering", j => AnswerJob(j, option), runDuringMenus: true);
+                // The one thing that must keep working inside a cutscene: clicking through its
+                // dialogue and answering questions (the agent hears every line as it scrolls).
+                return StartJob(cmd, "answering", j => AnswerJob(j, option), runDuringMenus: true, runThroughEvents: true);
             }
 
             case "click":
@@ -696,9 +708,9 @@ internal sealed class ModEntry : Mod
         throw new CommandException("there's no message on screen to answer");
     }
 
-    private JObject StartJob(string action, string activity, Func<Job, IEnumerator> body, bool runDuringMenus = false)
+    private JObject StartJob(string action, string activity, Func<Job, IEnumerator> body, bool runDuringMenus = false, bool runThroughEvents = false)
     {
-        var job = new Job { Action = action, Activity = activity, Body = body, RunDuringMenus = runDuringMenus };
+        var job = new Job { Action = action, Activity = activity, Body = body, RunDuringMenus = runDuringMenus, RunThroughEvents = runThroughEvents };
         jobs.Start(job);
         return new JObject { ["job_id"] = job.Id, ["started"] = activity };
     }
