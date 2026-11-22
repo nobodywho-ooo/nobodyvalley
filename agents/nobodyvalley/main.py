@@ -59,9 +59,9 @@ RESET = "\033[0m"
 
 def make_printer(log_file: Path | None, prompt_dir: Path | None = None):
     colors: dict[str, str] = {}
-    # A new nobodyvalley process starts a fresh log, rather than appending to a previous run
-    # (the demo also gives each run its own folder).
-    fh = log_file.open("w") if log_file else None
+    # Append rather than truncate: the run's folder is per-run and owns these files, and a python
+    # process restart (e.g. a code fix mid-run) shouldn't throw away what a farmer already said.
+    fh = log_file.open("a") if log_file else None
     prompt_files: dict[str, Any] = {}
 
     def printer(name: str, kind: str, text: str) -> None:
@@ -73,8 +73,8 @@ def make_printer(log_file: Path | None, prompt_dir: Path | None = None):
                 prompt_dir.mkdir(parents=True, exist_ok=True)
                 fh_prompt = prompt_files.get(name)
                 if fh_prompt is None:
-                    # "w" clears any prompts from an earlier nobodyvalley process for this farmer.
-                    fh_prompt = prompt_files[name] = (prompt_dir / f"{name}.log").open("w")
+                    # Append: a restart of this process keeps the farmer's earlier prompts.
+                    fh_prompt = prompt_files[name] = (prompt_dir / f"{name}.log").open("a")
                 label = {
                     "system": "system prompt (persistent)",
                     "prompt": "current prompt (observation; kept in the chat history)",
