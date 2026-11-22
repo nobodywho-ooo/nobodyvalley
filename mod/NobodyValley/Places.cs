@@ -26,6 +26,7 @@ internal static class Places
         new("BusStop", "the bus stop", "bus stop", "bus"),
         new("Railroad", "the railroad and bathhouse path", "railroad", "train", "tracks"),
         new("Farm", "the shared farm", "farm", "shipping bin", "bin", "field", "crops", "chest"),
+        new("FarmHouse", "your farmhouse (the kitchen is upstairs)", "farmhouse", "home house", "the house"),
         new("HaleyHouse", "2 Willow Lane (Haley & Emily's house)", "haley's house", "emily's house", "willow lane"),
         new("SamHouse", "1 Willow Lane (Sam's family house)", "sam's house"),
         new("JoshHouse", "1 River Road (Alex's family house)", "alex's house", "river road"),

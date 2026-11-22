@@ -349,6 +349,20 @@ internal sealed class ModEntry : Mod
                     + (reasons.Count > 0 ? $" (probe {probe.X},{probe.Y}: " + string.Join("; ", reasons.Take(6)) + ")" : ""));
             }
 
+            case "debug_menu":
+            {
+                // Debug aid: open a standalone menu directly for testing. kind=cooking opens the
+                // kitchen's cooking page exactly like the vanilla stove does (fridge contents and
+                // all) - useful when the current farmhouse has no kitchen.
+                var kind = Str("kind") ?? Str("menu") ?? "cooking";
+                if (kind.StartsWith("cook", StringComparison.OrdinalIgnoreCase))
+                {
+                    Game1.player.currentLocation.ActivateKitchen();
+                    return new JObject { ["menu"] = Game1.activeClickableMenu?.GetType().Name };
+                }
+                throw new CommandException("unknown menu kind (cooking)");
+            }
+
             case "debug_bundles":
             {
                 // Debug aid: the Community Center's bundle-spot tiles (Buildings layer indexes 1824-1833).

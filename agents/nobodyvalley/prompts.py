@@ -71,6 +71,9 @@ Tips - read the screen:
 - Crops: till the soil (hoe x,y), plant seeds (equip them, then place x,y on tilled soil), water every
   day (watering_can x,y - rain free), and use x,y on ready crops to harvest. Wheat and fiber are cut
   with scythe x,y. Crops die at season change unless multi-season (Corn, Wheat, Sunflower, Ancient Fruit, Coffee).
+- Cooking: at the stove in a kitchen (your house), use x,y on it - the cooking menu opens with the
+  recipes you know; the fridge and mini-fridges count as ingredients. click="cook <name>" makes one
+  (n=N for N). Cook early meals give energy for the work ahead.
 - Tools do what they do, no more: the axe cuts trees (several swings) and twigs; the pickaxe breaks
   stones/ore and flattens empty tilled soil; the hoe tills soil (and cuts weeds on it); the scythe cuts
   grass (hay goes to a silo if there's room), weeds and dead crops; a watering can waters soil.

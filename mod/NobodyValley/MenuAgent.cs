@@ -51,6 +51,7 @@ internal static class MenuAgent
             LevelUpMenu level => Level(level),
             JunimoNoteMenu note => Bundle(note),
             GameMenu game => Game(game),
+            CraftingPage page => Page(page), // standalone: the kitchen stove cooks, a workbench crafts
             _ => null, // dialogues/letters/ready checks are screen messages
         };
     }
@@ -76,6 +77,7 @@ internal static class MenuAgent
             LevelUpMenu level => LevelClick(level, element),
             JunimoNoteMenu note => BundleClick(note, element, n),
             GameMenu game => GameClick(game, element, n),
+            CraftingPage page => PageClick(page, element, n),
             _ => $"there's no clickable menu open right now (clickable: shop/animals/construction/chest/bin/bundle/crafting/cooking/level-up)",
         };
     }
@@ -95,6 +97,9 @@ internal static class MenuAgent
             yield return PacedAnimalClick(job, element);
         else if (m is CarpenterMenu)
             yield return PacedCarpentryClick(job, element);
+        else if (m is CraftingPage canvas && (element.Trim().StartsWith("cook ", StringComparison.OrdinalIgnoreCase)
+                                              || element.Trim().StartsWith("craft ", StringComparison.OrdinalIgnoreCase)))
+            yield return PacedCraft(job, canvas, element, n); // the kitchen stove (cook) or a workbench (craft)
         else
         {
             job.Summary = Click(element, n); // chests, bundles, single-shop clicks, ...
@@ -192,7 +197,12 @@ internal static class MenuAgent
 
     private static IEnumerator PacedCraft(Job job, CraftingPage page, string element, int n)
     {
-        string q = element.Trim().StartsWith("craft ", StringComparison.OrdinalIgnoreCase) ? element["craft ".Length..].Trim() : element.Trim();
+        string q = element.Trim();
+        if (q.StartsWith("cook ", StringComparison.OrdinalIgnoreCase))
+            q = q["cook ".Length..].Trim();
+        else if (q.StartsWith("craft ", StringComparison.OrdinalIgnoreCase))
+            q = q["craft ".Length..].Trim();
+        bool cook = page.cooking;
         var recipes = page.pagesOfCraftingRecipes[page.currentCraftingPage];
         foreach (var (comp, recipe) in recipes)
         {
@@ -200,12 +210,12 @@ internal static class MenuAgent
                 continue;
             int made = 0;
             int want = Math.Clamp(n, 1, 25);
-            while (made < want && Game1.activeClickableMenu is GameMenu)
+            while (made < want && IsCurrentPage(page))
             {
                 if (TryCraftOne(page, comp) == 0)
                     break;
                 made++;
-                job.Summary = $"Crafted {made} {recipe.DisplayName}.";
+                job.Summary = $"{(cook ? "Cooked" : "Crafted")} {made} {recipe.DisplayName}.";
                 if (made < want)
                 {
                     int wait = Game1.random.Next(8, 20);
@@ -214,8 +224,8 @@ internal static class MenuAgent
                 }
             }
             job.Summary = made > 0
-                ? $"Crafted {made} {recipe.DisplayName}{((Game1.activeClickableMenu is GameMenu gm && gm.pages.ElementAtOrDefault(gm.currentTab) is CraftingPage cp && cp.heldItem != null) ? " - one is on your cursor; click=bag when you have room" : "")}."
-                : $"Clicked {recipe.DisplayName} - you're missing ingredients; read the recipe list.";
+                ? $"{(cook ? "Cooked" : "Crafted")} {made} {recipe.DisplayName}{(page.heldItem != null ? " - one is on your cursor; click=bag when you have room" : "")}."
+                : $"Clicked {recipe.DisplayName} - you're missing ingredients{(cook ? " (the fridge counts)" : "")}; read the recipe list.";
             ArmPace();
             yield break;
         }
@@ -223,6 +233,13 @@ internal static class MenuAgent
             job.Summary = $"no recipe '{q}' on this page - click=\"next\" to scroll";
         ArmPace();
     }
+
+    /// <summary>Whether <paramref name="page"/> is the page the player is actually looking at
+    /// (its tab of the GameMenu, or the standalone kitchen/workbench menu itself).</summary>
+    private static bool IsCurrentPage(CraftingPage page) =>
+        Game1.activeClickableMenu is GameMenu game
+            ? game.pages.ElementAtOrDefault(game.currentTab) is CraftingPage cp && cp == page
+            : Game1.activeClickableMenu == page;
 
     /// <summary>Close the current menu, as if the player pressed the close key. When something is on
     /// the cursor, that means the vanilla ESC flow (which collects the item into the backpack).</summary>
@@ -760,7 +777,7 @@ internal static class MenuAgent
     /// slot. Returns 0 if nothing was crafted (no ingredients / cursor stuck).</summary>
     private static int TryCraftOne(CraftingPage page, ClickableTextureComponent comp)
     {
-        if (Game1.activeClickableMenu is not GameMenu || page.heldItem != null && !DepositHeld(page))
+        if (!IsCurrentPage(page) || page.heldItem != null && !DepositHeld(page))
             return 0; // cursor is stuck full - deal with it first
         page.receiveLeftClick(comp.bounds.Center.X, comp.bounds.Center.Y); // vanilla: item appears on the cursor
         if (page.heldItem == null)
@@ -780,6 +797,97 @@ internal static class MenuAgent
             return false;
         page.receiveLeftClick(page.inventory.inventory[idx].bounds.Center.X, page.inventory.inventory[idx].bounds.Center.Y);
         return page.heldItem == null;
+    }
+
+    // ---------------------------------------------------------------- cooking (the kitchen stove)
+
+    /// <summary>The ingredients a cooking page can draw from besides the backpack: the kitchen's
+    /// fridge and any mini-fridges (the page was given them at open time).</summary>
+    private static List<Item> FridgeContents(CraftingPage page) => page._materialContainers == null
+        ? new List<Item>()
+        : page._materialContainers.SelectMany(c => (IList<Item>)c).Where(i => i != null).ToList();
+
+    /// <summary>A standalone CraftingPage: the kitchen stove's cooking menu (cooking recipes, fridge
+    /// ingredients) or a workbench (crafting). Same page internals as the backpack's craft tab, so
+    /// the actions are the same - the agent just uses "cook" / "craft".</summary>
+    private static string Page(CraftingPage page)
+    {
+        bool cook = page.cooking;
+        var sb = new StringBuilder(cook
+            ? "Cooking menu (the kitchen - fridge and mini-fridge ingredients count)"
+            : "Crafting menu (workbench)");
+        var recipes = page.pagesOfCraftingRecipes.ElementAtOrDefault(page.currentCraftingPage);
+        if (recipes is { Count: > 0 })
+        {
+            var fridge = cook ? FridgeContents(page) : null;
+            foreach (var (comp, recipe) in recipes)
+            {
+                string parts = string.Join(", ", recipe.recipeList.Select(kv => IngredientForCraft(kv)));
+                bool ghosted = cook && comp.hoverText == "ghosted"; // recipe not learned yet
+                sb.Append($"\n- {(ghosted ? "(recipe not learned) " : "")}{recipe.DisplayName}: {parts}"
+                    + (recipe.doesFarmerHaveIngredientsInInventory(fridge) ? " (you have the ingredients)" : " (missing some)"));
+            }
+        }
+        if (cook && FridgeContents(page) is { Count: > 0 } inFridge)
+            sb.Append("\nFridge: " + string.Join(", ", inFridge.Select(i => i.Stack > 1 ? $"{i.DisplayName} x{i.Stack}" : i.DisplayName)));
+        if (page.heldItem != null)
+            sb.Append($"\n(you're holding {page.heldItem.DisplayName} x{page.heldItem.Stack} on the cursor - click=\"bag\" to put it in a free slot)");
+        if (page.pagesOfCraftingRecipes.Count > 1)
+            sb.Append($"\n(page {page.currentCraftingPage + 1} of {page.pagesOfCraftingRecipes.Count} - click=\"next\"/\"prev\")");
+        sb.Append($"\nActions: click=\"{(cook ? "cook" : "craft")} {{name}}\" (n=N for N; each is also clicked into a bag slot for you), "
+            + "click=\"bag\", click=\"next\"/\"prev\", click=\"close\".");
+        return sb.ToString();
+    }
+
+    private static string PageClick(CraftingPage page, string element, int n)
+    {
+        string q = element.Trim();
+        bool cook = page.cooking;
+        if (q.Equals("close", StringComparison.OrdinalIgnoreCase) || q.Equals("leave", StringComparison.OrdinalIgnoreCase))
+            return Close();
+        if (q.Equals("bag", StringComparison.OrdinalIgnoreCase))
+        {
+            if (page.heldItem == null)
+                return "your cursor is empty already";
+            return DepositHeld(page) ? "Put it in your bag." : "No free slot - make room (store things) and click bag again.";
+        }
+        // The standalone page's arrow buttons aren't laid out until a frame later, so switch the
+        // page directly (same as the vanilla down/up arrow click, just without the button).
+        if (q.Equals("next", StringComparison.OrdinalIgnoreCase))
+        {
+            if (page.currentCraftingPage >= Math.Max(0, page.pagesOfCraftingRecipes.Count - 1))
+                return "Already at the last page.";
+            page.currentCraftingPage++;
+            return $"Next {(cook ? "cooking" : "crafting")} page.";
+        }
+        if (q.Equals("prev", StringComparison.OrdinalIgnoreCase))
+        {
+            if (page.currentCraftingPage <= 0)
+                return "Already at the first page.";
+            page.currentCraftingPage--;
+            return $"Previous {(cook ? "cooking" : "crafting")} page.";
+        }
+        if (q.StartsWith("cook ", StringComparison.OrdinalIgnoreCase))
+            q = q["cook ".Length..].Trim();
+        else if (q.StartsWith("craft ", StringComparison.OrdinalIgnoreCase))
+            q = q["craft ".Length..].Trim();
+        var recipes = page.pagesOfCraftingRecipes[page.currentCraftingPage];
+        foreach (var (comp, recipe) in recipes)
+        {
+            if (!recipe.DisplayName.Contains(q, StringComparison.OrdinalIgnoreCase))
+                continue;
+            int made = 0;
+            int want = Math.Clamp(n, 1, 25);
+            for (; made < want; made++)
+            {
+                if (TryCraftOne(page, comp) == 0)
+                    break; // no ingredients or the cursor is stuck
+            }
+            return made > 0
+                ? $"{(cook ? "Cooked" : "Crafted")} {made} {recipe.DisplayName}{(page.heldItem != null ? " - one is on your cursor; click=bag when you have room" : "")}."
+                : $"Clicked {recipe.DisplayName} - you're missing ingredients{(cook ? " (the fridge counts)" : "")}; read the recipe list.";
+        }
+        return $"no recipe '{q}' on this page - click=\"next\" to scroll";
     }
 
     // ---------------------------------------------------------------- animals (Marnie's shop)
