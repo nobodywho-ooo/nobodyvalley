@@ -145,12 +145,13 @@ class Action:
 
 class Agent:
     def __init__(self, conn: GameConnection, backend: Backend, persona: str, n_ctx: int, printer: Callable[[str, str, str], None],
-                 start_delay: float = 0.0, dashboard: Dashboard | None = None):
+                 start_delay: float = 0.0, dashboard: Dashboard | None = None, model: str = ""):
         self.dashboard = dashboard
         self.conn = conn
         self.backend = backend
         self.persona = persona
         self.n_ctx = n_ctx
+        self.model = model  # short model name, shown next to the farmer's on the dashboard
         self.print = printer  # (agent name, kind, text)
         self.start_delay = start_delay
 
@@ -197,6 +198,8 @@ class Agent:
             await self._wait_for_event("world_ready")
             hello = await self.conn.request("hello")
         self.name = hello["farmer"]
+        # Show which model this farmer runs, next to their name on the dashboard.
+        self._dash(model=self.model or self.backend.label)
 
         obs = await self.conn.request("observe")
         self.others = [o["name"] for o in obs.get("others", [])]
@@ -464,7 +467,7 @@ class Agent:
         self._set_health("ok")
         self.others = [o["name"] for o in obs.get("others", [])]
         me, world = obs["me"], obs["world"]
-        self._dash(where=f"{me['location']} - energy {me['energy']}/{me['max_energy']}")
+        self._dash(where=me["location"])
         if self.dashboard:
             self.dashboard.set_world(f"{world['date']}, {world['time']}, {world['weather']} - {me['money']}g")
 

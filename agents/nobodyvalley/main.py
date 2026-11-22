@@ -195,10 +195,15 @@ async def amain(args: argparse.Namespace) -> None:
         hello = await conn.request("hello")
         persona = persona_for(hello)
         farmer = hello.get("farmer") or f"port {conn.port}"
+        # Reserve the dashboard panel now, in discovery order, so the panels don't reorder
+        # themselves as the farmhands connect at staggered times (host is discovered first).
+        if dashboard:
+            dashboard.reserve(farmer)
         # The farmer's own model if their persona sets one, else the --model / NV_MODEL default.
         backend = await resolve_backend(persona.model or args.model, farmer)
         index = conn.port - args.base_port
-        agent = Agent(conn, backend, persona.text, args.n_ctx, printer, start_delay=min(index, 4) * 4.0, dashboard=dashboard)
+        agent = Agent(conn, backend, persona.text, args.n_ctx, printer, start_delay=min(index, 4) * 4.0,
+                      dashboard=dashboard, model=persona.model or args.model)
         agent.is_host = bool(hello.get("is_host"))
         agents[conn.port] = agent
         running[conn.port] = asyncio.create_task(agent.run())

@@ -32,14 +32,15 @@ PAGE = """<!doctype html>
   .clamp2 { -webkit-line-clamp: 2; }
   .clamp3 { -webkit-line-clamp: 3; }
   .name { font-weight: 600; color: var(--c); }
-  .meta { color: #999; font-size: 11px; float: right; }
-  .doing { margin-top: 3px; }
-  .llm { color: #f6c86b; font-size: 11px; margin-left: 6px; }
-  .llm.waiting { color: #999; }
-  .spin { display: inline-block; width: 9px; height: 9px; margin-right: 4px; vertical-align: -1px;
-          border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%;
-          animation: spin 0.8s linear infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
+  /* Line 1: [name] [model] on the left, loading status pinned right. */
+  .head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .who { display: inline-flex; align-items: baseline; gap: 8px; min-width: 0; }
+  .model { color: #a5a0c9; font-size: 10px; font-weight: 400; letter-spacing: 0.3px;
+           font-family: ui-monospace, SFMono-Regular, Menlo, monospace; white-space: nowrap; }
+  .status { color: #f6c86b; font-size: 11px; white-space: nowrap; }
+  .status.waiting { color: #a5a0c9; }
+  /* Line 2: current action. */
+  .doing { color: #ddd; }
   .thought { margin-top: 3px; color: #cfcfe8; font-style: italic; }
   .plan { margin-top: 3px; color: #9fd3a8; font-size: 12px; }
   .result { margin-top: 3px; color: #aaa; font-size: 12px; }
@@ -62,11 +63,14 @@ async function refresh() {
   const color = n => colors[names.indexOf(n) % colors.length];
   document.getElementById("agents").innerHTML = names.map(n => {
     const a = s.agents[n];
-    // The panels are re-rendered every poll; a negative delay keeps the spinner turning smoothly across that.
-    const llm = a.llm ? `<span class="llm ${a.llm}"><span class="spin" style="animation-delay:-${(Date.now() % 800) / 1000}s"></span>` +
-      `${a.llm === "waiting" ? "waiting for the model" : "thinking"} ${Math.max(0, Math.floor(s.now - a.llm_since))}s</span>` : "";
+    // Always have something in the status slot: thinking/waiting while the model runs, otherwise
+    // "performing actions" so the right side of the header never looks empty.
+    let statusText;
+    if (a.llm) statusText = `${a.llm === "waiting" ? "waiting for the model" : "thinking"} ${Math.max(0, Math.floor(s.now - a.llm_since))}s`;
+    else statusText = (a.doing && a.doing !== "idle") ? "performing actions" : "idle";
+    const status = `<span class="status ${a.llm || ""}">${esc(statusText)}</span>`;
     return `<div class="agent" style="--c:${color(n)}">
-      <span class="name">${esc(n)}</span>${llm}<span class="meta">${esc(a.where)}</span>
+      <div class="head"><span class="who"><span class="name">${esc(n)}</span>${a.model ? `<span class="model" title="model">${esc(a.model)}</span>` : ""}</span>${status}</div>
       <div class="doing clamp2">${esc(a.doing || "idle")}</div>
       ${a.thought ? `<div class="thought clamp3" title="${esc(a.thought)}">"${esc(a.thought)}"</div>` : ""}
       ${a.plan ? `<div class="plan clamp2" title="${esc(a.plan)}">Plan: ${esc(a.plan)}</div>` : ""}
@@ -103,6 +107,13 @@ class Dashboard:
         return f"http://127.0.0.1:{self.port}/"
 
     # ---------------------------------------------------------------- updates (called from the agents)
+
+    # Reserve a panel in a fixed order (whatever order the agents call this in), so the panels
+    # always read left-to-right/top-to-bottom the way the instances were discovered (host first),
+    # instead of jumping around as agents connect at staggered times. Later update() calls fill it.
+    def reserve(self, name: str) -> None:
+        with self.lock:
+            self.agents.setdefault(name, {})
 
     def update(self, name: str, **fields: Any) -> None:
         with self.lock:
