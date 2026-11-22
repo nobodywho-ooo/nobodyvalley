@@ -844,7 +844,13 @@ internal static class MenuAgent
         string q = element.Trim();
         bool cook = page.cooking;
         if (q.Equals("close", StringComparison.OrdinalIgnoreCase) || q.Equals("leave", StringComparison.OrdinalIgnoreCase))
+        {
+            // Exiting with something on the cursor would lose it - put it away first (the same
+            // safety the craft loop has, just for a direct close).
+            if (page.heldItem != null && !DepositHeld(page))
+                return "you're holding an item - click=\"bag\" when you have room, then close";
             return Close();
+        }
         if (q.Equals("bag", StringComparison.OrdinalIgnoreCase))
         {
             if (page.heldItem == null)
@@ -1165,8 +1171,12 @@ internal static class MenuAgent
             if (q.Equals("back", StringComparison.OrdinalIgnoreCase) || q.Equals("cancel", StringComparison.OrdinalIgnoreCase)
                 || q.Equals("close", StringComparison.OrdinalIgnoreCase) || q.Equals("leave", StringComparison.OrdinalIgnoreCase))
             {
-                // The vanilla cancel button: return to the menu (restores the shop view).
-                menu.receiveLeftClick(menu.cancelButton.bounds.Center.X, menu.cancelButton.bounds.Center.Y);
+                // The cancel BUTTON is a no-op while a building is picked up (vanilla returns early),
+                // so mimic the ESC key, which cancels the pickup and returns to the shop view.
+                if (menu.Action == CarpenterMenu.CarpentryAction.Move && menu.buildingToMove != null)
+                    menu.returnToCarpentryMenu();
+                else
+                    menu.receiveLeftClick(menu.cancelButton.bounds.Center.X, menu.cancelButton.bounds.Center.Y);
                 return "Back in Robin's menu (nothing changed).";
             }
             if (q.StartsWith("tile ", StringComparison.OrdinalIgnoreCase))
