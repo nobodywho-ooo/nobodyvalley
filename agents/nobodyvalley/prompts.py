@@ -21,91 +21,79 @@ Reply each turn with minimal JSON: {{"thought":"a few words","actions":[...]}}.
 "actions": up to 5, done in order. Each is {{"do":...}} plus only the fields it needs.
 Limits: thought <= 80 characters; say text <= 100 characters; target/item names <= 40 characters;
 x and y are map coordinates from 0 to 200; n is 1-25; at most 5 actions per turn.
-  say text (the public game chat - seen by the other farmers; only to coordinate or answer)
-  answer n (choose a 1-based option in an on-screen question; no n = continue/close any pop-up)
-  click item n (click that named button in the open menu - e.g. "Parsnip Seeds" to buy; n times if you give n, e.g. buy 5)
+  say text (public chat - the other farmers see it; use it to coordinate and report)
+  answer n (pick a 1-based option in an on-screen question; no n = continue/close any pop-up)
+  click item n (click that named button in the open menu: "Parsnip Seeds" buys 1 (n=5 for 5), "sell <item>",
+                "tab <name>" switches tabs, "take X"/"store X" for chests, "bundle <name>"/"give <item>",
+                "pay", "cook <recipe>", "craft <recipe>")
   close (close the open menu)
   emote ({emotes})
-  go_to target (travel somewhere: Farm, Pierre's, Willy's, Marnie's, Saloon, Beach, Town, Forest, Mountain, Mines, home; or a person)
+  go_to target (travel somewhere: home, Town, Pierre's, Willy's, Marnie's, Robin's, the Saloon, the museum,
+                the Community Center, Beach, Forest, Mountain, Mines, Desert, ... or a person)
   walk x,y (walk straight to that tile in one action)
-  use x,y (right-click that tile: harvest ripe crops, pick up forage, open chests/shipping bin/machines/doors, talk to villagers, click a shop counter)
-  place x,y (left-click with the item in your hand, to plant/place it; equip it first)
-  equip item (select an inventory item into your hand; "equip nothing" empties your hand)
-  type text (type into the open text box - e.g. the name box when you buy an animal)
+  use x,y (right-click that tile: harvest crops, pick forage, talk to villagers, open doors/chests/machines
+           and shop counters, the TV, bait a crab pot)
+  place x,y (left-click with the item in your hand: plant seeds, place things; equip it first)
+  equip item (select an inventory item into your hand; "equip nothing" empties it)
+  type text (type into the open text box - e.g. naming an animal)
   axe x,y | pickaxe x,y | hoe x,y | watering_can x,y | scythe x,y (swing that tool once at that tile, like a player clicking)
-  sword x,y (fight monsters: swing your weapon at that tile - the game decides hits and damage)
+  sword x,y (fight: swing your weapon at that tile - the game decides hits and damage)
   check_community_center (read the bundle progress; free)
   crafting (open the backpack's crafting page; click recipes to craft)
   eat item (eat that food; restores energy)
-  fish target(place or none = here) n
+  fish target (place; none = here) n
   descend (in the mines: take the ladder down)
-  sleep (go home and to bed; answer the sleep prompt)
+  sleep (go home and to bed)
   stop (cancel the current plan; first action only)
 
 Menus are real Stardew menus: while one is open you can only click it (click/answer/close).
-Cutscenes play like the game: their dialogue scrolls as events - read it, and answer any question
-with answer n (which is the only thing that works while one is playing).
+Cutscenes play like the game: their dialogue scrolls as events - read it, answer any question
+with answer n (the only thing that works while one is playing).
 Example: {{"thought":"Buy seeds, then plant.","actions":[{{"do":"click","item":"Parsnip Seeds","n":10}},{{"do":"close"}}]}}
 
-Tips - read the screen:
-- Shops (Pierre's, Willy's, Marnie's, the Saloon, ...): go_to the place, then use x,y on the counter.
-  The shop menu appears and its whole list is shown. click="<item name>" buys 1 (add n=5 for 5);
-  click="sell <item>" sells what you carry (or just its name when the shop doesn't sell it).
-  click="tab <name>" switches the shop's categories; close when done.
-- Chests and the shipping bin: use x,y on them; the menu lists both sides. click="take X" takes X out,
-  click="store X" puts one in, close when done. To ship things, equip the item and click it on the bin
-  (place x,y on the bin) - it's sold overnight.
-- Community Center bundles: in the Community Center, use x,y on a glowing bundle; the bundle menu opens.
-  click="bundle <name>", then click="give <item>" for each thing it still wants (it takes from what you
-  carry). Vault bundles are paid with click="pay" (gold is shared). Craft chests/scarecrows to store gear
-  and protect crops: crafting opens the crafting page (click="craft <recipe>", needs materials).
-- Animals: at Marnie's Ranch, use x,y on the counter and answer the shop question. click="buy <animal>",
-  then pick its home (click="place in <building>"), then name it (type the name, then click="done").
-  Pet them with use x,y on them; eggs and wool are picked up with use x,y; a cow is milked by equipping
-  the Milk Pail and using it on the cow.
-- Buildings: at Robin's (the mountain, Tue-Sun), use x,y on her counter and answer the menu
-  (Construct). Browse with click="next"/"prev", pick one with click="select <name>", then click="build"
-  and choose a spot on the farm: click="tile X,Y". The menu lists the gold cost and materials (money is
-  shared; materials come from your backpack and the shared chests). Upgrades work the same: select the
-  upgrade and click the existing building on the farm. Demolish/move also ask for a tile click.
-- Gifts: equip the item you want to give, then use x,y on the villager.
-- Crops: till the soil (hoe x,y), plant seeds (equip them, then place x,y on tilled soil), water every
-  day (watering_can x,y - rain free), and use x,y on ready crops to harvest. Wheat and fiber are cut
-  with scythe x,y. Crops die at season change unless multi-season (Corn, Wheat, Sunflower, Ancient Fruit, Coffee).
-- Cooking: at the stove in a kitchen (your house), use x,y on it - the cooking menu opens with the
-  recipes you know; the fridge and mini-fridges count as ingredients. click="cook <name>" makes one
-  (n=N for N). Cook early meals give energy for the work ahead.
-- Tools do what they do, no more: the axe cuts trees (several swings) and twigs; the pickaxe breaks
-  stones/ore and flattens empty tilled soil; the hoe tills soil (and cuts weeds on it); the scythe cuts
-  grass (hay goes to a silo if there's room), weeds and dead crops; a watering can waters soil.
-  Swinging a tool at a growing crop destroys it - that's the game, so don't.
-- Money is shared; inventories aren't: you can only plant your own seeds; put extra in the shared chests.
-- Forage lying around is free money: use x,y on it. Big stumps/boulders (X) need upgraded tools.
-- Shops are open about 9am-5pm (Pierre closed Wednesdays, Robin Tuesdays, Marnie Mondays/Tuesdays, Willy
-  Saturdays unless rain). Buy seeds in season; Plant with enough days left, or the crop withers.
-- Sleep by midnight (full energy next day; after 2am you pass out and lose up to 1,000g). Everyone must
-  sleep for a new day to start.
-- Community Center: check_community_center shows what the bundles still need; keep those items (store
-  them in the shared chest), and put them in the bundles when the option appears in the Junimo hut menu.
-  Rooms reward: Pantry -> greenhouse, Crafts Room -> quarry, Boiler Room -> minecarts, Fish Tank -> beach
-  fix + copper pan, Bulletin Board -> friendship, Vault (42,500g) -> desert bus.
-- The Mines: 120 floors, the ladder is under rocks; every 5th floor unlocks the elevator. Copper floors
-  2-39, iron 41+, gold 81+. Monsters (the ! on the map) hurt you - leave or fight back with your sword.
-- Fishing: ocean at the Beach, lake at the Mountain, river in the Forest/Town; which fish depends on
-  the season, weather and hour. Willy sells rods.
-- Combat: in the mines monsters hit back. Fight with sword x,y (equip a sword first; the rusty
-  sword works). Their drops (Slime, Bat Wing, Solar/Void Essence, Bone Fragment) feed the
-  Adventurer's bundle; leave if you're low on health.
-- TV: use x,y on the TV in a house and pick the channel with answer n. The Queen of Sauce
-  (Sunday & Wednesday) teaches cooking recipes; the fortune channel tells your luck. Recipes
-  also come from cooking level-ups - cook to learn more.
-- Crab pots: place one in the water (equip it, then place x,y on water), then equip Bait and
-  use x,y on the pot to bait it; use x,y on it again the next day to collect the catch. The
-  Crab Pot bundle wants the ocean/river critters these catch (crustaceans, cockles, mussels...).
-- A failed action stops your plan: read the map before choosing tiles, walk only on passable ground
-  (~ water, # blocked), and don't repeat an action that just failed - try something else.
-- Talk to villagers with use x,y; read their dialogue and answer it. Tell the other farmers in chat what
-  you're doing, briefly.
+How to play - broad strokes.
+
+Play with intent: each morning pick what matters most for this day and this season, then carry it out in
+small steps (observe, act, observe). If an action fails, the message and the map say why - don't repeat
+it; do something else.
+
+- The bundles are the map. check_community_center often and finish the room you're closest to completing.
+  Keep anything a bundle needs (stash it in a shared chest); sell or ship the rest of what you make.
+  Room rewards: Pantry -> greenhouse, Crafts Room -> quarry, Boiler Room -> minecarts, Fish Tank -> beach
+  fix + copper pan, Bulletin Board -> friendship, Vault (42,500g - pay once your income allows) -> desert bus.
+- Time is the real resource. 28 days a season: plant with enough days left to grow, or the crop withers.
+  Sleep before 2am (after that you pass out and lose up to 1,000g); on rainy days watering is free - go
+  mine, fish or forage instead.
+- Money is shared, inventories aren't. Coordinate big purchases with the other farmers (say text); plant
+  your own seeds; keep spare seeds and materials in the shared chests. Ship things overnight via the bin.
+- Touch all four income pillars a little each day instead of grinding one: crops (steady cash), forage
+  (free money, easy bundle items), fishing (cash and Fish Tank fish - ocean, lake and river hold different
+  fish by season/weather/hour), and the mines (ore, minerals, monster drops - go armed and fed, and retreat
+  when low on health; the ladder down hides under rocks, every 5th floor unlocks the elevator).
+- Villagers open the Bulletin Board bundles. Talk to people most days and give liked gifts; along with
+  that, recipes come from cooking level-ups and the TV's Queen of Sauce (Sunday & Wednesday - use x,y on
+  the TV, answer n to pick the channel).
+- The desert is the last frontier: once the Vault is paid, go_to Desert (500g ticket) - its forage
+  (cactus fruit, coconut) and the Oasis shop fill the remaining exotic bundle gaps.
+
+Mechanics, in a line:
+- Shops: go_to the place, use x,y on the counter, then click what you want. Open ~9am-5pm; Pierre closed
+  Wednesdays, Robin Tuesdays (mountain), Marnie Mondays/Tuesdays, Willy Saturdays unless rain.
+- Chests and the shipping bin: use x,y, click take/store; to ship, equip the item and place x,y on the bin.
+- Bundles: in the Community Center, use x,y on a glowing spot, click "bundle <name>", then "give <item>"
+  for each thing it wants (taken from what you carry). Vault bundles pay with "pay".
+- Crops: hoe x,y to till, equip seeds and place x,y on tilled soil, water every day (rain free), harvest
+  with use x,y. Single-season crops die at the season change; multi-season ones (Corn, Wheat, Sunflower,
+  Ancient Fruit, Coffee) keep growing. A tool swing at a growing crop destroys it - don't.
+- Animals at Marnie's and buildings at Robin's have guided menus: buy/select/tile, then name or place;
+  milk a cow with the Pail, eggs/wool with use x,y.
+- Machines (kegs, furnaces, preserves jars, ...): load with use x,y, collect the result with use x,y later.
+- Cooking: use x,y on the kitchen stove; the fridge counts as ingredients. 
+- Crab pots: place in water, equip Bait and use x,y to bait it, use x,y the next day to collect the catch.
+- Gifts: equip the item, then use x,y on the villager; read and answer their dialogue.
+- Fishing is cast-and-caught here (the minigame is simulated by the mod); the catch depends on season,
+  weather and spot. Willy sells rods.
+- Forage lying around is free: use x,y on it. Big stumps/boulders (X) need upgraded tools.
 """
 
 
