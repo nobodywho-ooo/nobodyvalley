@@ -7,25 +7,37 @@ using StardewValley.Menus;
 namespace NobodyValley;
 
 /// <summary>
-/// Mute all game audio on farmhand instances. Every sound (SFX and music) is an XACT cue whose
-/// volume is applied through its category; the game re-applies the Music/Ambient category volumes
-/// every tick (fading toward the options), so a one-shot mute would be undone — this forces the
-/// requested volume to zero on any category the game adjusts while running as a non-host.
+/// Mute the background music (and ambient background noise) on farmhand instances, but keep the
+/// game's short sound effects (tool swings, level-ups, menu clicks) alongside the footsteps on
+/// every instance, so the four tiled windows together still sound alive. Every sound (SFX and
+/// music) is an XACT cue whose volume is applied through its category; the game re-applies these
+/// category volumes every tick (fading toward the options), so a one-shot mute would be undone —
+/// this forces the requested volume to zero on just the background categories while running as a
+/// non-host.
 /// </summary>
 [HarmonyPatch(typeof(AudioCategoryWrapper), nameof(AudioCategoryWrapper.SetVolume))]
-internal static class MuteFarmhandAudioPatch
+internal static class MuteFarmhandMusicPatch
 {
-    private static void Prefix(ref float volume)
+    private static readonly System.Reflection.FieldInfo audioCategoryField =
+        typeof(AudioCategoryWrapper).GetField("audioCategory",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+
+    // The Ambient category is the streaming background noise (wind, birds, the farm ambience), so
+    // it counts as "background" too; Sound and Footsteps are the gameplay cues we keep everywhere.
+    private static bool IsBackground(AudioCategoryWrapper wrapper) =>
+        audioCategoryField.GetValue(wrapper) is Microsoft.Xna.Framework.Audio.AudioCategory c && c.Name is "Music" or "Ambient";
+
+    private static void Prefix(AudioCategoryWrapper __instance, ref float volume)
     {
         try
         {
-            if (volume != 0f && ModEntry.Instance.Config.DisableSoundForFarmhands
-                && Context.IsWorldReady && !Context.IsMainPlayer)
+            if (volume != 0f && ModEntry.Instance.Config.MuteMusicForFarmhands
+                && Context.IsWorldReady && !Context.IsMainPlayer && IsBackground(__instance))
                 volume = 0f;
         }
         catch (Exception ex)
         {
-            ModEntry.Instance.Monitor.Log($"Mute audio hook failed: {ex}", StardewModdingAPI.LogLevel.Error);
+            ModEntry.Instance.Monitor.Log($"Mute music hook failed: {ex}", StardewModdingAPI.LogLevel.Error);
         }
     }
 }

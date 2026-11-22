@@ -154,19 +154,20 @@ internal sealed class ModEntry : Mod
     }
 
     /// <summary>
-    /// Mute game audio on farmhand instances. The SetVolume patch keeps the categories the game
-    /// re-adjusts (Music/Ambient per tick, Sound/Footsteps on volume init) muted; this seeds the
-    /// '"Default" category (and any the game never Sets the volume of) to zero at load.
+    /// Mute the background music on farmhand instances. The SetVolume patch keeps the background
+    /// categories the game re-adjusts (Music/Ambient per tick) muted, but leaves the game's short
+    /// sound effects (Sound/Footsteps) playing everywhere; this seeds the '"Default" category (and
+    /// any the game never Sets the volume of) to zero at load.
     /// </summary>
     private void ApplySoundMute()
     {
-        if (Config.DisableSoundForFarmhands && Context.IsWorldReady && !Context.IsMainPlayer)
+        if (Config.MuteMusicForFarmhands && Context.IsWorldReady && !Context.IsMainPlayer)
         {
             try
             {
-                foreach (string name in new[] { "Music", "Sound", "Ambient", "Footsteps", "Default" })
+                foreach (string name in new[] { "Music", "Ambient", "Default" })
                     Game1.audioEngine?.GetCategory(name)?.SetVolume(0f);
-                Monitor.Log("Muted game audio (farmhand instance).", LogLevel.Debug);
+                Monitor.Log("Muted background music (farmhand instance).", LogLevel.Debug);
             }
             catch (Exception ex)
             {

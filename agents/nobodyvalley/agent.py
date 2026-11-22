@@ -174,6 +174,8 @@ class Agent:
         self.last_turn = 0.0
         self.last_failure: str | None = None
         self.failure_streak = 0
+        self.last_noop: str | None = None  # last "Done but nothing happened" action
+        self.noop_streak = 0
         self.last_say = 0.0
         self.addressed = False  # someone spoke to us by name since our last turn
         self.screen_message: dict[str, Any] | None = None
@@ -312,8 +314,26 @@ class Agent:
         if ev["ok"]:
             self.last_failure = None
             self.failure_streak = 0
-            # Always report it, also mid-plan.
-            self.inbox.append(f"Done {ev['action']}: {ev['summary']}")
+            # A "Done but nothing changed" success is still a stall: the game didn't move or do
+            # anything, and an agent that repeats it (walking to the same spot, go_to where it
+            # already is) can loop forever. Track it like a failure and nudge it to stop.
+            summary = ev.get("summary", "")
+            is_noop = any(m in summary for m in ("nothing changed", "nothing else", "already there",
+                                                 "you're already at", "you're already in",
+                                                 "already at the top of the list"))
+            if is_noop:
+                noop = f"{ev['action']}: {summary}"
+                self.noop_streak = self.noop_streak + 1 if noop == self.last_noop else 1
+                self.last_noop = noop
+            else:
+                self.noop_streak = 0
+                self.last_noop = None
+            note = ""
+            if self.noop_streak >= 3:
+                note = (" You've now done the same thing several times and nothing changed each time. "
+                        "STOP repeating it: the tile/spot/target you keep picking isn't working. Move (walk x,y) "
+                        "somewhere useful and interact with the map's actual Points of interest - not this.")
+            self.inbox.append(f"Done {ev['action']}: {ev['summary']}{note}")
             if self.queue:
                 asyncio.create_task(self._start_next())
                 return

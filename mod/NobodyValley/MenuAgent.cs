@@ -38,6 +38,18 @@ internal static class MenuAgent
     private static void ArmPace() => nextInteractionTick = Game1.ticks + Game1.random.Next(10, 30); // ~170-500 ms
     internal static void ArmPacingNow() => ArmPace();
 
+    // A menu that just appeared (level-up screens, freshly-opened shops) spends a few frames
+    // animating its intro and actually becoming clickable (LevelUpMenu.readyToClose, button hit
+    // boxes). If we click instantly - before the previous action's own pace even - the click lands
+    // on nothing and the agent sees "not ready yet" and has to re-plan. Give it a moment.
+    public static IEnumerator SettleWait()
+    {
+        int at = Game1.ticks;
+        int until = at + 40; // ~0.65s at 60fps: plenty for a menu's intro
+        while (Game1.ticks < until)
+            yield return null;
+    }
+
     /// <summary>Describe the current menu as the agent should see it, or null when none is open.</summary>
     public static string? Describe()
     {
@@ -102,6 +114,15 @@ internal static class MenuAgent
             yield return PacedCraft(job, canvas, element, n); // the kitchen stove (cook) or a workbench (craft)
         else
         {
+            // Give a menu that just appeared (e.g. a level-up screen that animates its intro
+            // before the buttons are live) a moment to become clickable, so the click lands.
+            yield return SettleWait();
+            if (m is LevelUpMenu levelUp)
+            {
+                int guard = 0;
+                while ((!levelUp.readyToClose() || !levelUp.isActive) && guard++ < 120) // ~2s
+                    yield return null;
+            }
             job.Summary = Click(element, n); // chests, bundles, single-shop clicks, ...
             ArmPace();
         }

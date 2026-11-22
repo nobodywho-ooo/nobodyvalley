@@ -22,7 +22,7 @@ from typing import Any
 
 from .agent import DECISION_SCHEMA, Agent
 from .backend import Backend, LocalBackend, RemoteBackend
-from .bridge import GameConnection, discover
+from .bridge import GameConnection, GameError, discover
 from .dashboard import Dashboard
 
 DEFAULT_MODEL = "huggingface:unsloth/Qwen3.5-9B-GGUF/Qwen3.5-9B-Q4_K_M.gguf"

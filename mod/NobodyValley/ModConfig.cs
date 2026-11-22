@@ -34,8 +34,10 @@ internal sealed class ModConfig
     public float MessageReactionSeconds { get; set; } = 20f;
 
     /// <summary>
-    /// Mute all game audio on farmhand instances (the lab agents shouldn't make noise on the
-    /// machine). The host keeps its sound; this only silences non-main players.
+    /// Mute the background music (and ambient background noise) on farmhand instances, but keep
+    /// the game's short sound effects everywhere (tool swings, levels, menu clicks) so the four
+    /// tiled windows together still "sound alive". The host keeps its full sound; this only
+    /// silences the music on non-main players.
     /// </summary>
-    public bool DisableSoundForFarmhands { get; set; } = true;
+    public bool MuteMusicForFarmhands { get; set; } = true;
 }
