@@ -298,6 +298,8 @@ class Agent:
             self.asleep = True
             self.queue.clear()
             return
+        if ev["ok"] and ev["action"] == "answer":
+            self.screen_message = None  # the dialogue/letter was clicked through
         if ev["ok"]:
             self.last_failure = None
             self.failure_streak = 0
@@ -477,27 +479,15 @@ class Agent:
         # "say" and "emote" are actions, but they never queue: handled right away (say goes to the
         # game's chat, emote above the head).
         raw_actions = [a for a in decision.get("actions", []) if isinstance(a, dict)]
-        # "answer" is immediate too: it pokes the current dialogue box instead of queueing a job.
-        answer = next((a for a in raw_actions if a.get("do") == "answer"), None)
-        if answer is not None:
-            option = int(answer.get("n") or 0)
-            self.print(self.name, "info", f"answer({option})")
-            await self._send("answer", count=option)
-            self.screen_message = None
+        # "answer" is now a paced job like click/close; it queues with the rest of the plan.
         info_actions = [a for a in raw_actions if a.get("do") in INFO_ACTIONS]
         for info in info_actions:
             await self._query(info.get("do", ""), target=_blank_if_none(info.get("target")))
-        # Instant actions that answer right away (no job to wait for): equip (pick up an item),
-        # click / close (the open menu).
+        # Instant actions that answer right away (no job to wait for): equip (pick up an item)
+        # and crafting (open the menu). Menu interactions (answer/click/close) are paced jobs now.
         for m in raw_actions:
             if m.get("do") == "equip":
                 await self._query("equip", item=_blank_if_none(m.get("item")))
-            elif m.get("do") == "click":
-                element = _blank_if_none(m.get("element")) or _blank_if_none(m.get("item"))
-                if element:
-                    await self._query("click", element=element, count=int(m.get("n") or 1))
-            elif m.get("do") == "close":
-                await self._query("close")
             elif m.get("do") == "crafting":
                 await self._query("crafting")
         say = " ".join(str(a.get("text", "")) for a in raw_actions if a.get("do") == "say").strip()
@@ -531,7 +521,7 @@ class Agent:
             return
 
         actions, errors = self._parse_actions([a for a in raw_actions
-                                               if a.get("do") not in ("say", "emote", "answer", "equip", "click", "close", "crafting")
+                                               if a.get("do") not in ("say", "emote", "equip", "crafting")
                                                and a.get("do") not in INFO_ACTIONS], obs)
         self.inbox.extend(errors)
         if actions and actions[0].cmd == "stop":

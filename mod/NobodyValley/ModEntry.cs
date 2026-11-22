@@ -419,18 +419,22 @@ internal sealed class ModEntry : Mod
             }
 
             // The menus: answer pop-ups (dialogues, letters, questions), click buttons in real
-            // menus (shops, chests, the shipping bin, level-ups), close menus.
+            // menus (shops, chests, the shipping bin, level-ups), close menus. All are paced
+            // jobs - natural pauses between interactions, like a player's mouse.
             case "answer":
-                return Answer(Int("count", Int("option", 1)));
+            {
+                int option = Int("count", Int("option", 1));
+                return StartJob(cmd, "answering", j => AnswerJob(j, option), runDuringMenus: true);
+            }
 
             case "click":
             {
                 var element = Str("element") ?? Str("item") ?? throw new CommandException("missing 'element' (what to click)");
-                return new JObject { ["summary"] = MenuAgent.Click(element, Int("count", Int("n", 1))) };
+                return StartJob(cmd, $"clicking {element}", j => MenuAgent.PacedClick(j, element, Int("count", Int("n", 1))), runDuringMenus: true);
             }
 
             case "close":
-                return new JObject { ["summary"] = MenuAgent.Close() };
+                return StartJob(cmd, "closing the menu", MenuAgent.PacedClose, runDuringMenus: true);
 
             // Open the backpack's crafting page, like a player pressing the menu key and picking the tab.
             case "crafting":
@@ -476,7 +480,15 @@ internal sealed class ModEntry : Mod
         }
     }
 
-    /// <summary>Click through a pop-up screen, like a player pressing the interact/close key.</summary>
+    /// <summary>Click through a pop-up screen, like a player pressing the interact/close key.
+    /// Wrapped in a paced job by the command switch.</summary>
+    private IEnumerator AnswerJob(Job job, int option)
+    {
+        yield return MenuAgent.PacedWait();
+        job.Summary = (string)Answer(option)["summary"];
+        MenuAgent.ArmPacingNow();
+    }
+
     private JObject Answer(int option)
     {
         // Cutscene questions use the game's own dialogue system (not a menu): answer the way a

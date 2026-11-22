@@ -1,9 +1,11 @@
+using System.Collections;
 using System.Text;
 using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using StardewValley;
 using StardewValley.Menus;
 using StardewValley.Objects;
+using NobodyValley.Jobs;
 using SObject = StardewValley.Object;
 
 namespace NobodyValley;
@@ -20,6 +22,21 @@ internal static class MenuAgent
     internal static IReflectionHelper Reflection = null!;
 
     private static Farmer Me => Game1.player;
+
+    // Human-like input pacing: no menu interaction before this game tick, and a random gap after
+    // each one (the "move the mouse, click" feel instead of everything landing in one frame).
+    private static int nextInteractionTick;
+
+    /// <summary>Wait until this interaction is due. The next gap is armed when an interaction
+    /// finishes (ArmPace), so consecutive agent requests get a natural human-like spacing.</summary>
+    public static IEnumerator PacedWait()
+    {
+        while (Game1.ticks < nextInteractionTick)
+            yield return null;
+    }
+
+    private static void ArmPace() => nextInteractionTick = Game1.ticks + Game1.random.Next(10, 30); // ~170-500 ms
+    internal static void ArmPacingNow() => ArmPace();
 
     /// <summary>Describe the current menu as the agent should see it, or null when none is open.</summary>
     public static string? Describe()
@@ -57,6 +74,110 @@ internal static class MenuAgent
             GameMenu game => GameClick(game, element, n),
             _ => $"there's no clickable menu open right now (clickable: shop/chest/bin/bundle/crafting/level-up)",
         };
+    }
+
+    /// <summary>A paced menu interaction, run as a job: a natural pause first, and multi-clicks
+    /// (buying n, crafting n) spaced like a real player's clicks.</summary>
+    public static IEnumerator PacedClick(Job job, string element, int n)
+    {
+        yield return PacedWait();
+        var m = Game1.activeClickableMenu;
+        if (m is ShopMenu shop && IsShopBuy(shop, element))
+            yield return PacedShopBuy(job, shop, element, n);
+        else if (m is GameMenu game && game.pages.ElementAtOrDefault(game.currentTab) is CraftingPage page
+                 && element.Trim().StartsWith("craft ", StringComparison.OrdinalIgnoreCase))
+            yield return PacedCraft(job, page, element, n);
+        else
+        {
+            job.Summary = Click(element, n); // chests, bundles, single-shop clicks, ...
+            ArmPace();
+        }
+    }
+
+    public static IEnumerator PacedClose(Job job)
+    {
+        yield return PacedWait();
+        job.Summary = Close();
+        ArmPace();
+    }
+
+    /// <summary>Whether a shop click is a buy (mirrors ShopClick's decision for bare names).</summary>
+    private static bool IsShopBuy(ShopMenu shop, string element)
+    {
+        string q = element.Trim();
+        if (q.StartsWith("sell ", StringComparison.OrdinalIgnoreCase))
+            return false;
+        if (q.StartsWith("buy ", StringComparison.OrdinalIgnoreCase))
+            return true;
+        return FindShopItemExact(shop, q) >= 0 || FindCarriedExact(q) < 0;
+    }
+
+    private static IEnumerator PacedShopBuy(Job job, ShopMenu shop, string element, int n)
+    {
+        string q = element.Trim();
+        if (q.StartsWith("buy ", StringComparison.OrdinalIgnoreCase))
+            q = q["buy ".Length..].Trim();
+        int idx = FindShopItem(shop, q);
+        if (idx < 0)
+        {
+            job.Summary = $"the shop doesn't sell '{q}' - pick from the list (or switch tabs)";
+            yield break;
+        }
+        var salable = shop.forSale[idx];
+        int moneyBeforeBuy = Me.Money;
+        int want = Math.Clamp(n, 1, 25);
+        int done = 0;
+        while (done < want && Game1.activeClickableMenu is ShopMenu cur && cur == shop && TryBuyOne(cur, salable.DisplayName))
+        {
+            done++;
+            job.Summary = $"Bought {done} {salable.DisplayName} (money: {Me.Money}g).";
+            if (done < want)
+            {
+                int wait = Game1.random.Next(8, 20); // ~130-330 ms between clicks
+                for (int t = 0; t < wait; t++)
+                    yield return null;
+            }
+        }
+        int spent = moneyBeforeBuy - Me.Money;
+        if (shop.heldItem is Item heldH && heldH.DisplayName.Equals(salable.DisplayName, StringComparison.OrdinalIgnoreCase))
+            job.Summary = $"Bought {done} {salable.DisplayName} for {spent}g (money: {Me.Money}g) - it's on your cursor; click=\"close\" to put it in your backpack.";
+        else if (done == 0)
+            job.Summary = $"the clicks on '{q}' didn't buy anything - check your money ({Me.Money}g) and the stock";
+        ArmPace();
+    }
+
+    private static IEnumerator PacedCraft(Job job, CraftingPage page, string element, int n)
+    {
+        string q = element.Trim().StartsWith("craft ", StringComparison.OrdinalIgnoreCase) ? element["craft ".Length..].Trim() : element.Trim();
+        var recipes = page.pagesOfCraftingRecipes[page.currentCraftingPage];
+        foreach (var (comp, recipe) in recipes)
+        {
+            if (!recipe.DisplayName.Contains(q, StringComparison.OrdinalIgnoreCase))
+                continue;
+            int made = 0;
+            int want = Math.Clamp(n, 1, 25);
+            while (made < want && Game1.activeClickableMenu is GameMenu)
+            {
+                if (TryCraftOne(page, comp) == 0)
+                    break;
+                made++;
+                job.Summary = $"Crafted {made} {recipe.DisplayName}.";
+                if (made < want)
+                {
+                    int wait = Game1.random.Next(8, 20);
+                    for (int t = 0; t < wait; t++)
+                        yield return null;
+                }
+            }
+            job.Summary = made > 0
+                ? $"Crafted {made} {recipe.DisplayName}{((Game1.activeClickableMenu is GameMenu gm && gm.pages.ElementAtOrDefault(gm.currentTab) is CraftingPage cp && cp.heldItem != null) ? " - one is on your cursor; click=bag when you have room" : "")}."
+                : $"Clicked {recipe.DisplayName} - you're missing ingredients; read the recipe list.";
+            ArmPace();
+            yield break;
+        }
+        if (job.Summary.Length == 0)
+            job.Summary = $"no recipe '{q}' on this page - click=\"next\" to scroll";
+        ArmPace();
     }
 
     /// <summary>Close the current menu, as if the player pressed the close key. When something is on
@@ -174,35 +295,19 @@ internal static class MenuAgent
 
         // Buying: the whole stock is listed, so scroll to the item first if it isn't on the
         // current page, then click its button once per unit wanted (purchases stack on the cursor).
-        int idx = wantBuy ? (exactForSale >= 0 ? exactForSale : FindShopItem(shop, q)) : exactForSale >= 0 ? exactForSale : FindShopItem(shop, q);
+        int idx = FindShopItem(shop, q);
         if (idx < 0)
             return wantBuy
                 ? $"the shop doesn't sell '{q}' - pick from the list (or switch tabs)"
                 : FindCarried(q) >= 0
                     ? $"you carry '{q}' but this shop doesn't sell it and won't buy it - ship it instead"
                     : $"the shop doesn't sell '{q}' and you don't carry it - pick from the list";
-        ScrollTo(shop, idx);
         var salable = shop.forSale[idx];
         int moneyBeforeBuy = Me.Money;
         int clicks = Math.Clamp(n, 1, 25);
         int done = 0;
-        for (int i = 0; i < clicks; i++)
-        {
-            if (Game1.activeClickableMenu is not ShopMenu cur || cur != shop)
-                break;
-            int curIdx = FindShopItem(cur, q);
-            if (curIdx < 0)
-                break; // sold out or scrolled away
-            ScrollTo(cur, curIdx);
-            var btn = cur.forSaleButtons[curIdx - cur.currentItemIndex];
-            // A previous purchase sitting on the cursor blocks buying anything else (vanilla:
-            // the shop only stacks the same item onto it) - put it away first, like pressing ESC.
-            if (cur.heldItem is Item heldC && !heldC.DisplayName.Equals(salable.DisplayName, StringComparison.OrdinalIgnoreCase))
-                cur.receiveKeyPress(Microsoft.Xna.Framework.Input.Keys.Escape);
-            cur.safetyTimer = 0; // purchases arm a repeat-click guard; clears like the real timer would
-            cur.receiveLeftClick(btn.bounds.Center.X, btn.bounds.Center.Y); // buys; stacks on the cursor
+        for (int i = 0; i < clicks && TryBuyOne(shop, salable.DisplayName); i++)
             done++;
-        }
         // The vanilla purchase sits on the cursor; closing the shop returns it to your backpack
         // (a full backpack shows an "items that didn't fit" menu the agent can clear out).
         int spent = moneyBeforeBuy - Me.Money;
@@ -212,6 +317,24 @@ internal static class MenuAgent
         if (blocker != null)
             return $"the clicks on '{q}' didn't buy anything - {blocker}. (Put it away with click=\"close\", then buy again.)";
         return $"nothing was bought - '{q}' may be sold out or needs a scroll";
+    }
+
+    /// <summary>One buy click on the shop's button for <paramref name="desiredName"/>. Returns
+    /// whether the click was made. Any different purchase on the cursor is put away first.</summary>
+    private static bool TryBuyOne(ShopMenu shop, string desiredName)
+    {
+        if (Game1.activeClickableMenu is not ShopMenu cur || cur != shop)
+            return false;
+        int idx = FindShopItem(cur, desiredName);
+        if (idx < 0)
+            return false; // sold out or scrolled away
+        ScrollTo(cur, idx);
+        var btn = cur.forSaleButtons[idx - cur.currentItemIndex];
+        if (cur.heldItem is Item heldC && !heldC.DisplayName.Equals(desiredName, StringComparison.OrdinalIgnoreCase))
+            cur.receiveKeyPress(Microsoft.Xna.Framework.Input.Keys.Escape);
+        cur.safetyTimer = 0; // purchases arm a repeat-click guard; clears like the real timer would
+        cur.receiveLeftClick(btn.bounds.Center.X, btn.bounds.Center.Y);
+        return true;
     }
 
     private static int FindShopItemExact(ShopMenu shop, string name)
@@ -547,24 +670,30 @@ internal static class MenuAgent
                 continue;
             int made = 0;
             int want = Math.Clamp(n, 1, 25);
-            for (int i = 0; i < want; i++)
+            for (; made < want; made++)
             {
-                if (Game1.activeClickableMenu is not GameMenu || game.pages.ElementAtOrDefault(game.currentTab) is not CraftingPage cur)
-                    break;
-                if (cur.heldItem != null && !DepositHeld(cur))
-                    break; // cursor is stuck full - deal with it first
-                cur.receiveLeftClick(comp.bounds.Center.X, comp.bounds.Center.Y); // vanilla: item appears on the cursor
-                if (cur.heldItem == null)
-                    break; // no ingredients
-                made++;
-                if (!DepositHeld(cur))
-                    break; // crafted but the cursor is stuck full; the menu note mentions it
+                int r = TryCraftOne(page, comp);
+                if (r == 0)
+                    break; // no ingredients or the cursor is stuck
             }
             return made > 0
                 ? $"Crafted {made} {recipe.DisplayName}{((Game1.activeClickableMenu is GameMenu gm && gm.pages.ElementAtOrDefault(gm.currentTab) is CraftingPage cp && cp.heldItem != null) ? " - one is on your cursor; click=bag when you have room" : "")}."
                 : $"Clicked {recipe.DisplayName} - you're missing ingredients; read the recipe list.";
         }
         return $"no recipe '{name}' on this page - click=\"next\" to scroll";
+    }
+
+    /// <summary>One craft: the recipe click (item onto the cursor) plus clicking it into a bag
+    /// slot. Returns 0 if nothing was crafted (no ingredients / cursor stuck).</summary>
+    private static int TryCraftOne(CraftingPage page, ClickableTextureComponent comp)
+    {
+        if (Game1.activeClickableMenu is not GameMenu || page.heldItem != null && !DepositHeld(page))
+            return 0; // cursor is stuck full - deal with it first
+        page.receiveLeftClick(comp.bounds.Center.X, comp.bounds.Center.Y); // vanilla: item appears on the cursor
+        if (page.heldItem == null)
+            return 0; // no ingredients
+        DepositHeld(page);
+        return 1;
     }
 
     /// <summary>Click a bag slot to put the cursor item away (the second half of a craft click).

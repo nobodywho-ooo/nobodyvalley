@@ -17,7 +17,7 @@ import random
 from typing import Any
 
 JOB_SECONDS = {"go_to": 4, "walk": 2, "use": 3, "place": 3, "axe": 4, "pickaxe": 4, "hoe": 3, "watering_can": 3,
-               "scythe": 3, "eat": 2, "sleep": 3, "fish": 6, "descend": 3}
+               "scythe": 3, "eat": 2, "sleep": 3, "fish": 6, "descend": 3, "answer": 1, "click": 2, "close": 1}
 
 
 class World:
@@ -90,7 +90,7 @@ class FakeInstance:
                 self.job.cancel()
             return {"summary": "Stopped."}
         # Instant commands: no job_id, reply right away.
-        if cmd in ("answer", "click", "close", "equip", "crafting", "check_community_center"):
+        if cmd in ("equip", "crafting", "check_community_center"):
             return {"summary": "ok"}
         if cmd in JOB_SECONDS:
             if self.job:
