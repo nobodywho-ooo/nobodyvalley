@@ -127,8 +127,20 @@ internal static class MenuAgent
         int moneyBeforeBuy = Me.Money;
         int want = Math.Clamp(n, 1, 25);
         int done = 0;
-        while (done < want && Game1.activeClickableMenu is ShopMenu cur && cur == shop && TryBuyOne(cur, salable.DisplayName))
+        while (done < want && Game1.activeClickableMenu is ShopMenu cur && cur == shop)
         {
+            // Scroll toward the item first, one visible row per step - like a player clicking
+            // the shop's arrow (the list visibly moves; no warping to the item).
+            int targetIdx = FindShopItem(cur, q);
+            int steps = 0;
+            while (targetIdx >= 0 && !IsVisible(cur, targetIdx) && ScrollStep(cur, targetIdx) && steps++ < 60)
+            {
+                int w = Game1.random.Next(6, 14); // ~100-230 ms per scroll click
+                for (int t = 0; t < w; t++)
+                    yield return null;
+            }
+            if (!TryBuyOne(cur, salable.DisplayName))
+                break;
             done++;
             job.Summary = $"Bought {done} {salable.DisplayName} (money: {Me.Money}g).";
             if (done < want)
@@ -373,13 +385,42 @@ internal static class MenuAgent
         return -1;
     }
 
-    /// <summary>Bring an item's page into view so its button is clickable (the shop only clicks the
-    /// visible rows). Direct, like scrolling - the agent sees the whole list anyway.</summary>
-    private static void ScrollTo(ShopMenu shop, int idx)
+    /// <summary>Whether the item at <paramref name="idx"/> is on the shop's visible page.</summary>
+    private static bool IsVisible(ShopMenu shop, int idx)
     {
         int pageSize = Math.Max(1, shop.forSaleButtons.Count);
-        if (idx < shop.currentItemIndex || idx >= shop.currentItemIndex + pageSize)
-            shop.currentItemIndex = Math.Clamp(idx, 0, Math.Max(0, shop.forSale.Count - pageSize));
+        return idx >= shop.currentItemIndex && idx < shop.currentItemIndex + pageSize;
+    }
+
+    /// <summary>One scroll step toward the item, like a player clicking the shop's arrow.
+    /// Returns whether the list moved.</summary>
+    private static bool ScrollStep(ShopMenu shop, int idx)
+    {
+        if (IsVisible(shop, idx))
+            return false;
+        if (idx < shop.currentItemIndex)
+        {
+            if (shop.currentItemIndex <= 0)
+                return false;
+            Reflection.GetMethod(shop, "upArrowPressed").Invoke();
+            Game1.playSound("shwip");
+        }
+        else
+        {
+            if (shop.currentItemIndex >= Math.Max(0, shop.forSale.Count - shop.forSaleButtons.Count))
+                return false;
+            Reflection.GetMethod(shop, "downArrowPressed").Invoke();
+            Game1.playSound("shwip");
+        }
+        return true;
+    }
+
+    /// <summary>Scroll the list to the item (one row per step - no warping). Sync, for the CLI path.</summary>
+    private static void ScrollTo(ShopMenu shop, int idx)
+    {
+        for (int i = 0; i < 60 && !IsVisible(shop, idx); i++)
+            if (!ScrollStep(shop, idx))
+                break;
     }
 
     // ---------------------------------------------------------------- chests / shipping bin
