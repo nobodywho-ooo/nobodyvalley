@@ -19,7 +19,7 @@ town, the forest, the beach, the mountain, the mines. You lose track of time and
 others are a bit annoyed with you about it. You love telling them what you found"""
 job = """gather the wild things the Community Center needs: forage in the Forest, Mountain, Beach and Secret Woods, \
 fish the rivers and lake, go down the mines for minerals and monster drops, and bring every bundle item back to donate"""
-model = "gemma4-e2b"  # example: one model per farmer, your pick
+model = "qwen3.8-flash-next"
 
 [personas.Bob]
 personality = """You want the farm neat: straight rows of crops, cleared ground, nothing lying around. Weeds, \
@@ -27,7 +27,7 @@ stones and twigs make you grumpy, you clear away anything messy, and you grumble
 they leave the place untidy"""
 job = """gather the building materials for the Community Center (wood, stone, hardwood) and keep the farm tidy: \
 clear weeds, stones and twigs, chop trees, break rocks, and till/plant the field when it needs it"""
-model = "gemma4-12b"
+model = "qwen3.8-flash-next" # on the ASCENTs (../on-prem); needs NV_VLLM_API_KEY
 
 [personas.Charlie]
 personality = """You take it easy. You do your share without hurrying, then like to wander outside, sit by \
@@ -43,4 +43,4 @@ what seeds cost, and what pays off best. You think in numbers, and nudge the oth
 earns the most"""
 job = """run the farm's money and shopping for the Community Center: harvest and ship only what the bundles do not need, \
 buy the seeds and supplies the bundles need, plant and water them, and save for buildings, animals and machines"""
-model = "qwen3.8-flash-next"  # on the ASCENTs (../on-prem); needs NV_VLLM_API_KEY
+model = "qwen3.5-9b"
