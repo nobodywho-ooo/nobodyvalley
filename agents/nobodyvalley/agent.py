@@ -56,6 +56,7 @@ ACTIONS: dict[str, Spec] = {
     "hoe": Spec("hoe", xy=True, needs=("xy",)),
     "watering_can": Spec("watering_can", xy=True, needs=("xy",)),
     "scythe": Spec("scythe", xy=True, needs=("xy",)),
+    "sword": Spec("sword", xy=True, needs=("xy",)),
     "answer": Spec("answer", n=True),
     "click": Spec("click", item="element", n=True, needs=("item",)),
     "close": Spec("close"),
@@ -509,6 +510,7 @@ class Agent:
         # A real menu (shop/chest/bin/level-up) is blocking the game: the mod refuses everything
         # else. Nudge the model once if it didn't click/answer/close.
         clicked = any(a.get("do") in ("click", "close", "answer") for a in raw_actions)
+        answered = any(a.get("do") == "answer" for a in raw_actions)
         if obs.get("menu") and not clicked and not self.screen_message_ignored:
             self.screen_message_ignored = True
             self.inbox.append("A menu is open and blocking you. React first: click its buttons, answer n, or close.")
@@ -517,7 +519,7 @@ class Agent:
         # A real dialogue or question is up. If the model didn't answer it, nudge it once - saying
         # something does NOT click through the message, so the game stays blocked until answer.
         kind = self.screen_message.get("kind") if has_screen and self.screen_message is not None else None
-        if kind in ("dialogue", "event", "letter") and not answer and not self.screen_message_ignored:
+        if kind in ("dialogue", "event", "letter") and not answered and not self.screen_message_ignored:
             self.screen_message_ignored = True
             self.inbox.append("A message is STILL on screen and blocks you - only `answer` clicks through it "
                               "(answer n for an option, or answer with no n to continue). Say doesn't clear it.")

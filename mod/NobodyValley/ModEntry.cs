@@ -530,6 +530,16 @@ internal sealed class ModEntry : Mod
                 return StartJob(cmd, $"swinging the {cmd}{AtText()}", j => TileJobs.Swing(j, t, cmd));
             }
 
+            // Fight: swing the equipped weapon at a tile with a monster on or near it (the game
+            // decides hits and damage - this is just a player's weapon swing, repeated).
+            case "sword":
+            case "fight":
+            case "attack":
+            {
+                var t = at ?? throw new CommandException("missing x, y");
+                return StartJob(cmd, $"fighting at {t.X},{t.Y}", j => CombatJobs.Attack(j, t));
+            }
+
             // Select an inventory item (the hand), like picking a toolbar slot. "nothing" = empty hand.
             case "equip":
             {

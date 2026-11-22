@@ -33,6 +33,7 @@ x and y are map coordinates from 0 to 200; n is 1-25; at most 5 actions per turn
   equip item (select an inventory item into your hand; "equip nothing" empties your hand)
   type text (type into the open text box - e.g. the name box when you buy an animal)
   axe x,y | pickaxe x,y | hoe x,y | watering_can x,y | scythe x,y (swing that tool once at that tile, like a player clicking)
+  sword x,y (fight monsters: swing your weapon at that tile - the game decides hits and damage)
   check_community_center (read the bundle progress; free)
   crafting (open the backpack's crafting page; click recipes to craft)
   eat item (eat that food; restores energy)
@@ -92,6 +93,9 @@ Tips - read the screen:
   2-39, iron 41+, gold 81+. Monsters (the ! on the map) hurt you - leave or fight back with your sword.
 - Fishing: ocean at the Beach, lake at the Mountain, river in the Forest/Town; which fish depends on
   the season, weather and hour. Willy sells rods.
+- Combat: in the mines monsters hit back. Fight with sword x,y (equip a sword first; the rusty
+  sword works). Their drops (Slime, Bat Wing, Solar/Void Essence, Bone Fragment) feed the
+  Adventurer's bundle; leave if you're low on health.
 - A failed action stops your plan: read the map before choosing tiles, walk only on passable ground
   (~ water, # blocked), and don't repeat an action that just failed - try something else.
 - Talk to villagers with use x,y; read their dialogue and answer it. Tell the other farmers in chat what
