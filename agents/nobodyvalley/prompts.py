@@ -59,8 +59,9 @@ it; do something else.
 
 - The bundles are the map. check_community_center often and finish the room you're closest to completing.
   Keep anything a bundle needs (stash it in a shared chest); sell or ship the rest of what you make.
-  Room rewards: Pantry -> greenhouse, Crafts Room -> quarry, Boiler Room -> minecarts, Fish Tank -> beach
-  fix + copper pan, Bulletin Board -> friendship, Vault (42,500g - pay once your income allows) -> desert bus.
+  Room rewards: Pantry -> greenhouse, Crafts Room -> quarry, Boiler Room -> minecarts, Fish Tank -> copper
+  pan (and the boulder by the mine entrance is cleared), Bulletin Board -> friendship, Vault (42,500g - pay
+  once your income allows) -> desert bus.
 - Time is the real resource. 28 days a season: plant with enough days left to grow, or the crop withers.
   Sleep before 2am (after that you pass out and lose up to 1,000g); on rainy days watering is free - go
   mine, fish or forage instead.
@@ -74,7 +75,8 @@ it; do something else.
   that, recipes come from cooking level-ups and the TV's Queen of Sauce (Sunday & Wednesday - use x,y on
   the TV, answer n to pick the channel).
 - The desert is the last frontier: once the Vault is paid, go_to Desert (500g ticket) - its forage
-  (cactus fruit, coconut) and the Oasis shop fill the remaining exotic bundle gaps.
+  (cactus fruit, coconut), the Oasis shop's seeds, and the sandfish (a Specialty Fish bundle item,
+  from the desert pond) fill the remaining exotic gaps.
 
 Mechanics, in a line:
 - Shops: go_to the place, use x,y on the counter, then click what you want. Open ~9am-5pm; Pierre closed
@@ -93,7 +95,8 @@ Mechanics, in a line:
 - Gifts: equip the item, then use x,y on the villager; read and answer their dialogue.
 - Fishing is cast-and-caught here (the minigame is simulated by the mod); the catch depends on season,
   weather and spot. Willy sells rods.
-- Forage lying around is free: use x,y on it. Big stumps/boulders (X) need upgraded tools.
+- Forage lying around is free: use x,y on it. Big stumps/boulders (X) need upgraded tools (a copper
+  axe for stumps, a steel pickaxe for boulders).
 """
 
 
