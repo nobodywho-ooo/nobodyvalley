@@ -61,13 +61,64 @@ internal static class Observer
             ["mine_level"] = me.currentLocation is StardewValley.Locations.MineShaft shaft ? shaft.mineLevel : null,
             ["machines"] = new JArray(Jobs.MoreJobs.Machines()),
             ["menu"] = OpenMenu(),
+            ["dialog"] = OpenDialogue(),
             ["event"] = Game1.CurrentEvent is { } ev ? (ev.isFestival ? "festival" : $"cutscene {ev.id}") : null,
         };
     }
 
+    /// <summary>The current blocking dialogue/question/letter, as the agent should see it — queried
+    /// live from the game each observe, exactly like <see cref="OpenMenu"/>. The mod keeps no idea
+    /// of "which menu is open"; the game is the single source of truth. Returns null when none.</summary>
+    public static JObject? OpenDialogue()
+    {
+        // A dialogue box or question pop-up the agent must answer.
+        if (Game1.activeClickableMenu is DialogueBox box)
+        {
+            string text = box.getCurrentString() ?? "";
+            var options = box.isQuestion && box.responses.Length > 0
+                ? box.responses.Select(r => r.responseText).ToArray()
+                : Array.Empty<string>();
+            string? speaker = box.characterDialogue?.speaker?.displayName;
+            return text.Length == 0 ? null : new JObject
+            {
+                ["kind"] = "dialogue",
+                ["text"] = text,
+                ["speaker"] = speaker,
+                ["options"] = new JArray(options),
+            };
+        }
+        // An open letter.
+        if (Game1.activeClickableMenu is LetterViewerMenu letter)
+        {
+            return new JObject
+            {
+                ["kind"] = "letter",
+                ["text"] = (letter.mailTitle ?? "a letter") + "\n" + string.Join("\n", letter.mailMessage),
+                ["options"] = new JArray(),
+            };
+        }
+        // An event cutscene's current line or question.
+        if (Game1.CurrentEvent != null && Game1.currentSpeaker?.CurrentDialogue.Count > 0)
+        {
+            var d = Game1.currentSpeaker.CurrentDialogue.Peek();
+            string text = d.getCurrentDialogue() ?? "";
+            var options = d.isCurrentDialogueAQuestion()
+                ? d.getNPCResponseOptions().Select(r => r.responseText).ToArray()
+                : Array.Empty<string>();
+            return text.Length == 0 ? null : new JObject
+            {
+                ["kind"] = "event",
+                ["text"] = text,
+                ["speaker"] = Game1.currentSpeaker.displayName,
+                ["options"] = new JArray(options),
+            };
+        }
+        return null;
+    }
+
     /// <summary>The current blocking screen, as the agent should see it: interactive menus are
     /// described in detail (the agent clicks them); the day-end ready check is a short notice.
-    /// Dialogues and letters are reported by ScreenMessages instead.</summary>
+    /// Dialogues and letters are queried live by <see cref="OpenDialogue"/>.</summary>
     public static string? OpenMenu()
     {
         if (Game1.activeClickableMenu == null)

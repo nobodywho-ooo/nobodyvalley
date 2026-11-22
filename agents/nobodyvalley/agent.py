@@ -111,6 +111,9 @@ DECISION_SCHEMA = {
 IDLE_TURN_SECONDS = 20.0
 # Minimum time between two turns of the same agent.
 MIN_TURN_GAP_SECONDS = 3.0
+# Re-nudge an agent that's ignoring a blocking pop-up (a persistent dialogue never sends a fresh
+# screen message, so the once-only nudge used to get stuck forever).
+NUDGE_COOLDOWN = 15.0
 # An observe that gets no reply at all (the game's main loop is stuck, or we lost the socket)
 # means the instance is unresponsive: back off instead of hammering it, and give up after a few.
 OBSERVE_TIMEOUT = 30.0
@@ -176,6 +179,7 @@ class Agent:
         self.screen_message: dict[str, Any] | None = None
         self.screen_message_at = 0.0
         self.screen_message_ignored = False
+        self.screen_message_nudged_at = 0.0  # last time we told the model a pop-up blocked it
         self.report_turn = False  # just talked to a villager, so allow a summary even during the say gap
 
     def _set_health(self, health: str, detail: Any = None) -> None:
@@ -297,9 +301,12 @@ class Agent:
         self._dash(result=ev["summary"], result_ok=ev["ok"], doing=self.busy.describe() if self.busy else "", plan=self._plan_text())
 
         if ev["ok"] and ev["action"] == "sleep":
-            self.asleep = True
+            # The sleep job parks the farmer at the vanilla "Go to sleep for the night?" question
+            # (the mod leaves it up so the agent can answer Yes or No like any other dialog). Don't
+            # mark the agent asleep yet - it must take a turn to answer. Once it answers Yes and the
+            # "waiting for the other players" ready check is up, the observe handler (waiting_day_end)
+            # stops turns until morning.
             self.queue.clear()
-            return
         if ev["ok"] and ev["action"] == "answer":
             self.screen_message = None  # the dialogue/letter was clicked through
         if ev["ok"]:
@@ -450,7 +457,13 @@ class Agent:
             self.print(self.name, "info", str(menu))
             return
 
-        has_screen = self.screen_message is not None and time.monotonic() - self.screen_message_at < 30
+        # What's on a blocking pop-up right now, queried live from the game (the observe 'dialog'
+        # field the mod derives from the real menu), not from a possibly-stale relayed screen
+        # message. Show the live one first; fall back to a fresh relayed copy for the transient
+        # things observe can't see (cutscene HUD lines, "it's getting late" notices).
+        live_dialog = obs.get("dialog")
+        has_screen = (live_dialog is not None or
+                      (self.screen_message is not None and time.monotonic() - self.screen_message_at < 30))
         may_speak = self.addressed or self.report_turn or has_screen or time.monotonic() - self.last_say > MIN_SAY_GAP_SECONDS
         self.addressed = False
         self.report_turn = False
@@ -461,8 +474,9 @@ class Agent:
         # No "Working on" note: the model is only asked when its plan is done or failed (or someone
         # addressed it mid-job), so the events and the observation's "Currently: ..." carry that context.
         status = "" if may_speak else "No 'say' action this turn."
+        screen_for_prompt = live_dialog or (self.screen_message if has_screen else None)
         observation = prompts.format_observation(
-            obs, events, status, self.screen_message if has_screen else None
+            obs, events, status, screen_for_prompt
         )
         prompt = f"{observation}\n\nWhat do you do?"
 
@@ -508,19 +522,27 @@ class Agent:
             await self._send("emote", emote=emote)
 
         # A real menu (shop/chest/bin/level-up) is blocking the game: the mod refuses everything
-        # else. Nudge the model once if it didn't click/answer/close.
+        # else. Nudge the model (re-nudging after a cooldown, since a persistent pop-up never sends
+        # a fresh screen message) if it didn't click/answer/close.
         clicked = any(a.get("do") in ("click", "close", "answer") for a in raw_actions)
         answered = any(a.get("do") == "answer" for a in raw_actions)
-        if obs.get("menu") and not clicked and not self.screen_message_ignored:
+        now = time.monotonic()
+        # Re-nudge while a blocking screen persists; only nudge once per NUDGE_COOLDOWN, and always
+        # on the first time it appears (screen_message_ignored tracks the fresh relayed copy).
+        nudgable = not self.screen_message_ignored or now - self.screen_message_nudged_at >= NUDGE_COOLDOWN
+        if obs.get("menu") and not clicked and nudgable:
             self.screen_message_ignored = True
+            self.screen_message_nudged_at = now
             self.inbox.append("A menu is open and blocking you. React first: click its buttons, answer n, or close.")
             self.wake.set()
             return
-        # A real dialogue or question is up. If the model didn't answer it, nudge it once - saying
-        # something does NOT click through the message, so the game stays blocked until answer.
-        kind = self.screen_message.get("kind") if has_screen and self.screen_message is not None else None
-        if kind in ("dialogue", "event", "letter") and not answered and not self.screen_message_ignored:
+        # A real dialogue or question is up (only when the game says so this very observe). If the
+        # model didn't answer it, nudge it - saying something does NOT click through the
+        # message, so the game stays blocked until answer. Never from a stale relayed copy.
+        kind = obs.get("dialog", {}).get("kind") if live_dialog else None
+        if kind in ("dialogue", "event", "letter") and not answered and nudgable:
             self.screen_message_ignored = True
+            self.screen_message_nudged_at = now
             self.inbox.append("A message is STILL on screen and blocks you - only `answer` clicks through it "
                               "(answer n for an option, or answer with no n to continue). Say doesn't clear it.")
             self.wake.set()
@@ -605,9 +627,9 @@ class Agent:
             if obs.get("menu") and cmd not in ("answer", "click", "close", "type"):
                 errors.append(f"Skipped {cmd}: a menu is open - react to it first (click/answer/close).")
                 continue
-            # A blocking dialogue/question is up too (it's not in the menu field - it's a pop-up).
-            if (self.screen_message and self.screen_message.get("kind") in ("dialogue", "event", "letter")
-                    and cmd not in ("answer", "say", "emote")):
+            # A blocking dialogue/question is up too (reported live by the mod in the same observe
+            # as everything else, so it can't be a stale copy). Letters block everything but answer.
+            if obs.get("dialog") and cmd not in ("answer", "say", "emote"):
                 errors.append(f"Skipped {cmd}: a message is on screen - answer it first (answer n, or answer to continue).")
                 continue
             # A cutscene is playing (even between its spoken lines): everything except answering is blocked.

@@ -244,7 +244,7 @@ internal static class FarmJobs
         {
             if (Game1.activeClickableMenu is StardewValley.Menus.DialogueBox { isQuestion: true } box && Me.currentLocation.lastQuestionKey == "Sleep")
             {
-                job.Summary = "The 'go to sleep?' prompt is up - answer it (answer or click Yes to sleep).";
+                job.Summary = "The 'go to sleep for the night?' prompt is up - answer it (answer 1 = Yes, to sleep, or answer 2 = No, to stay awake).";
                 yield break;
             }
             if (Game1.activeClickableMenu == null && i == 60)

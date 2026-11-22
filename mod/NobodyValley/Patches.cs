@@ -52,6 +52,20 @@ internal static class RawDialoguePatch
     }
 }
 
+/// <summary>Once an agent has committed to going to bed (answered the "Go to sleep for the
+/// night?" question), the "waiting for the other players" ready check must not offer a cancel
+/// button. The agent is in bed and can't back out; the day rolls over on its own once every
+/// farmer is ready (ReadyCheckDialog.update auto-confirms when all are ready).</summary>
+[HarmonyPatch(typeof(ReadyCheckDialog), nameof(ReadyCheckDialog.isCancelable))]
+internal static class SleepReadyCheckNotCancelablePatch
+{
+    private static void Postfix(ReadyCheckDialog __instance, ref bool __result)
+    {
+        if (__instance.checkName == "sleep")
+            __result = false;
+    }
+}
+
 /// <summary>Forward chat messages from other players to the agent as events.</summary>
 [HarmonyPatch(typeof(ChatBox), nameof(ChatBox.receiveChatMessage))]
 internal static class ChatPatch
