@@ -45,6 +45,7 @@ internal static class MenuAgent
         return m switch
         {
             ShopMenu shop => Shop(shop),
+            PurchaseAnimalsMenu animals => Animals(animals),
             ItemGrabMenu grab => Grab(grab),
             LevelUpMenu level => Level(level),
             JunimoNoteMenu note => Bundle(note),
@@ -68,11 +69,12 @@ internal static class MenuAgent
         return m switch
         {
             ShopMenu shop => ShopClick(shop, element, n),
+            PurchaseAnimalsMenu animals => AnimalClick(animals, element),
             ItemGrabMenu grab => GrabClick(grab, element),
             LevelUpMenu level => LevelClick(level, element),
             JunimoNoteMenu note => BundleClick(note, element, n),
             GameMenu game => GameClick(game, element, n),
-            _ => $"there's no clickable menu open right now (clickable: shop/chest/bin/bundle/crafting/level-up)",
+            _ => $"there's no clickable menu open right now (clickable: shop/animals/construction/chest/bin/bundle/crafting/cooking/level-up)",
         };
     }
 
@@ -87,11 +89,25 @@ internal static class MenuAgent
         else if (m is GameMenu game && game.pages.ElementAtOrDefault(game.currentTab) is CraftingPage page
                  && element.Trim().StartsWith("craft ", StringComparison.OrdinalIgnoreCase))
             yield return PacedCraft(job, page, element, n);
+        else if (m is PurchaseAnimalsMenu)
+            yield return PacedAnimalClick(job, element);
         else
         {
             job.Summary = Click(element, n); // chests, bundles, single-shop clicks, ...
             ArmPace();
         }
+    }
+
+    /// <summary>A paced click in Marnie's animal shop. Buying (and backing out) fades to black
+    /// to show the farm; wait the fade out first, like a player waiting for the screen to change.</summary>
+    public static IEnumerator PacedAnimalClick(Job job, string element)
+    {
+        int guard = 0;
+        while (Game1.IsFading() && guard++ < 240) // ~4s at 60fps: the buy/back fades
+            yield return null;
+        yield return PacedWait();
+        job.Summary = Click(element, 1);
+        ArmPace();
     }
 
     public static IEnumerator PacedClose(Job job)
@@ -748,6 +764,198 @@ internal static class MenuAgent
             return false;
         page.receiveLeftClick(page.inventory.inventory[idx].bounds.Center.X, page.inventory.inventory[idx].bounds.Center.Y);
         return page.heldItem == null;
+    }
+
+    // ---------------------------------------------------------------- animals (Marnie's shop)
+
+    /// <summary>A building's display name, for the 'place in <name>' clicks.</summary>
+    private static string BuildingName(StardewValley.Buildings.Building b) =>
+        StardewValley.TokenizableStrings.TokenParser.ParseText(b.GetData()?.Name) ?? b.buildingType.Value;
+
+    /// <summary>Type into the current text box (the animal-naming box at Marnie's today).</summary>
+    public static string Type(string text)
+    {
+        if (Game1.activeClickableMenu is not PurchaseAnimalsMenu { namingAnimal: true } menu)
+            return "there's no text box to type into right now";
+        if (string.IsNullOrWhiteSpace(text))
+            return "type a name first: type \"<name>\"";
+        menu.textBox.Text = text;
+        return $"Typed \"{menu.textBox.Text}\" - click=\"done\" to confirm the purchase.";
+    }
+
+    /// <summary>The whole animal shop, as the agent should see it: the price list, then the two
+    /// steps after buying one - choosing a building to put it in, then naming it.</summary>
+    private static string Animals(PurchaseAnimalsMenu menu)
+    {
+        var sb = new StringBuilder("[Marnie's ranch - animals]");
+        if (menu.namingAnimal)
+        {
+            sb.Append($"\nYou're naming your {menu.animalBeingPurchased?.displayType ?? "animal"} (it will cost {menu.priceOfAnimal}g).");
+            if (menu.textBox.Text.Length > 0)
+                sb.Append($"\nCurrent name: {menu.textBox.Text}");
+            sb.Append("\nActions: type \"<name>\" to name it, click=\"done\" to buy it, click=\"random\" "
+                + "for a random name, click=\"back\" to cancel the purchase.");
+            return sb.ToString();
+        }
+        if (menu.onFarm)
+        {
+            var animal = menu.animalBeingPurchased;
+            sb.Append($"\nChoose a home for your {animal?.displayType ?? "animal"} ({menu.priceOfAnimal}g).");
+            bool any = false;
+            foreach (var b in Game1.getFarm().buildings)
+            {
+                if (b.isUnderConstruction() || b.GetIndoors() is not StardewValley.AnimalHouse h)
+                    continue;
+                any = true;
+                bool full = h.isFull();
+                bool fits = animal == null || animal.CanLiveIn(b);
+                sb.Append($"\n- {BuildingName(b)} at {b.tileX.Value},{b.tileY.Value} "
+                    + $"({h.animalsThatLiveHere.Count}/{h.animalLimit.Value} in)"
+                    + (full ? " - full" : "")
+                    + (fits ? " (click=\"place in " + BuildingName(b) + "\")" : $" - won't hold a {animal!.displayType}"));
+            }
+            if (!any)
+                sb.Append("\nThere's no animal building on the farm yet - build a Coop or a Barn at Robin's first, then come back.");
+            sb.Append("\nActions: click=\"place in <building>\", click=\"back\" (cancel).");
+            return sb.ToString();
+        }
+
+        // The price list (the shop itself).
+        sb.Append($" You have {Me.Money}g.");
+        int shown = 0;
+        foreach (var entry in menu.animalsToPurchase)
+        {
+            if (entry?.item is not SObject o)
+                continue;
+            string name = FarmAnimal.GetDisplayName(entry.hoverText, forShop: true);
+            int price = o.salePrice();
+            if (o.Type != null)
+                sb.Append($"\n- {name} ({price}g) - needs {o.Type}"); // greyed out until the requirement is met
+            else
+                sb.Append($"\n- {name} ({price}g) (click=\"buy {name}\")");
+            if (++shown >= 15)
+                break;
+        }
+        if (menu.animalsToPurchase.Count > shown)
+            sb.Append($"\n... and {menu.animalsToPurchase.Count - shown} more (click=\"next\"/\"prev\" scrolls)");
+        sb.Append("\nActions: click=\"buy <animal>\", click=\"next\"/\"prev\" (scroll), click=\"close\" (the animal "
+            + "goes to its new home: you pick the building, then type its name).");
+        return sb.ToString();
+    }
+
+    private static string AnimalClick(PurchaseAnimalsMenu menu, string element)
+    {
+        string q = element.Trim();
+        if (menu.namingAnimal)
+        {
+            // Leaving while naming (or on the farm view) must cancel the placement the vanilla way
+            // (setUpForReturnToShopMenu restores the HUD/viewport); a bare exit would leave the
+            // farm view stuck.
+            if (q.Equals("close", StringComparison.OrdinalIgnoreCase) || q.Equals("leave", StringComparison.OrdinalIgnoreCase)
+                || q.Equals("back", StringComparison.OrdinalIgnoreCase) || q.Equals("cancel", StringComparison.OrdinalIgnoreCase))
+            {
+                menu.setUpForReturnToShopMenu();
+                return "Cancelled - back in the animal shop; your gold is untouched.";
+            }
+            if (q.Equals("done", StringComparison.OrdinalIgnoreCase) || q.Equals("ok", StringComparison.OrdinalIgnoreCase)
+                || q.Equals("confirm", StringComparison.OrdinalIgnoreCase))
+            {
+                if (string.IsNullOrWhiteSpace(menu.textBox.Text))
+                    return "type a name first: type \"<name>\", then click=\"done\".";
+                string named = menu.textBox.Text;
+                string typ = menu.animalBeingPurchased?.displayType ?? "animal";
+                // The vanilla done button: adopt the animal, pay for it, and warp back to Marnie's
+                // (her "goodbye" dialogue follows - answer it).
+                menu.receiveLeftClick(menu.doneNamingButton.bounds.Center.X, menu.doneNamingButton.bounds.Center.Y);
+                return $"Bought the {typ} \"{named}\" for {menu.priceOfAnimal}g (money: {Me.Money}g). Marnie has a message - answer it.";
+            }
+            if (q.Equals("random", StringComparison.OrdinalIgnoreCase))
+            {
+                menu.receiveLeftClick(menu.randomButton.bounds.Center.X, menu.randomButton.bounds.Center.Y);
+                return $"Random name: {menu.textBox.Text} - click=\"done\" to confirm.";
+            }
+            return "you're naming the animal: type \"<name>\", then click=\"done\" (or \"random\", \"back\").";
+        }
+
+        if (menu.onFarm)
+        {
+            if (q.Equals("close", StringComparison.OrdinalIgnoreCase) || q.Equals("leave", StringComparison.OrdinalIgnoreCase)
+                || q.Equals("back", StringComparison.OrdinalIgnoreCase) || q.Equals("cancel", StringComparison.OrdinalIgnoreCase))
+            {
+                menu.setUpForReturnToShopMenu();
+                return "Cancelled - back in the animal shop.";
+            }
+            // Choosing the building: center the view on it and click its door tile, exactly like a
+            // player moving the mouse over the building and clicking (same screen coordinates).
+            if (q.StartsWith("place ", StringComparison.OrdinalIgnoreCase) || q.StartsWith("put ", StringComparison.OrdinalIgnoreCase))
+            {
+                string name = q;
+                if (q.StartsWith("place in ", StringComparison.OrdinalIgnoreCase))
+                    name = q["place in ".Length..].Trim();
+                else if (q.StartsWith("place ", StringComparison.OrdinalIgnoreCase))
+                    name = q["place ".Length..].Trim();
+                else if (q.StartsWith("put in ", StringComparison.OrdinalIgnoreCase))
+                    name = q["put in ".Length..].Trim();
+                else if (q.StartsWith("put ", StringComparison.OrdinalIgnoreCase))
+                    name = q["put ".Length..].Trim();
+                var building = Game1.getFarm().buildings.FirstOrDefault(b =>
+                    !b.isUnderConstruction() && b.GetIndoors() is StardewValley.AnimalHouse h && !h.isFull()
+                    && BuildingName(b).Contains(name, StringComparison.OrdinalIgnoreCase));
+                if (building == null)
+                    return $"no building named '{name}' with room - pick from the list (or build one at Robin's)";
+                if (menu.animalBeingPurchased != null && !menu.animalBeingPurchased.CanLiveIn(building))
+                    return $"a {menu.animalBeingPurchased.displayType} can't live in {BuildingName(building)} - pick a building from the list";
+                var view = menu.GetTopLeftPixelToCenterBuilding(building);
+                Game1.viewport.X = view.X; // xTile viewport: center it on the chosen building
+                Game1.viewport.Y = view.Y;
+                var door = building.humanDoor.Value;
+                var tile = new Microsoft.Xna.Framework.Vector2(building.tileX.Value + door.X, building.tileY.Value + door.Y);
+                int cx = (int)((tile.X * 64 - Game1.viewport.X) * Game1.options.zoomLevel / Game1.options.uiScale);
+                int cy = (int)((tile.Y * 64 - Game1.viewport.Y) * Game1.options.zoomLevel / Game1.options.uiScale);
+                Game1.setMousePosition(cx, cy);
+                menu.receiveLeftClick(cx, cy);
+                if (menu.namingAnimal)
+                    return $"It's going into {BuildingName(building)} - name it: type \"<name>\", then click=\"done\".";
+                return $"clicked {BuildingName(building)} but it didn't take - try again, or pick from the list";
+            }
+            if (q.Equals("back", StringComparison.OrdinalIgnoreCase) || q.Equals("cancel", StringComparison.OrdinalIgnoreCase))
+            {
+                menu.setUpForReturnToShopMenu();
+                return "Cancelled - back in the animal shop.";
+            }
+            return "choose a home: click=\"place in <building>\" from the list (or click=\"back\").";
+        }
+
+        // The shop list itself.
+        if (q.Equals("close", StringComparison.OrdinalIgnoreCase) || q.Equals("leave", StringComparison.OrdinalIgnoreCase))
+            return Close();
+        if (q.Equals("next", StringComparison.OrdinalIgnoreCase))
+        {
+            int before = menu.currentScroll;
+            menu.Scroll(1);
+            return menu.currentScroll > before ? "Scrolled down." : "Already at the bottom.";
+        }
+        if (q.Equals("prev", StringComparison.OrdinalIgnoreCase))
+        {
+            int before = menu.currentScroll;
+            menu.Scroll(-1);
+            return menu.currentScroll < before ? "Scrolled up." : "Already at the top.";
+        }
+        if (q.StartsWith("buy ", StringComparison.OrdinalIgnoreCase))
+            q = q["buy ".Length..].Trim();
+        var salable = menu.animalsToPurchase.FirstOrDefault(a => a?.item is SObject ao && ao.Type == null
+            && FarmAnimal.GetDisplayName(a.hoverText, forShop: true).Contains(q, StringComparison.OrdinalIgnoreCase));
+        if (salable is not { item: SObject so })
+            return menu.animalsToPurchase.Any(a => a?.item is SObject oo && oo.Type == null)
+                ? $"the ranch doesn't sell '{q}' - pick from the list"
+                : "no animals for sale right now";
+        int price = so.salePrice();
+        if (Me.Money < price)
+            return $"that's {price}g and you have {Me.Money}g - sell crops first (money is shared)";
+        // A player clicks the animal: the screen fades to the farm, where they choose a building.
+        menu.receiveLeftClick(salable.bounds.Center.X, salable.bounds.Center.Y);
+        return $"Picked a {salable.hoverText} ({price}g) - now choose its home: click=\"place in <building>\". "
+            + "(click=\"back\" to cancel)";
     }
 
     // ---------------------------------------------------------------- level ups

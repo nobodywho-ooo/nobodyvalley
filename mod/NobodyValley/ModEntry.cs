@@ -283,6 +283,72 @@ internal sealed class ModEntry : Mod
                 return new JObject { ["finished"] = true };
             }
 
+            case "debug_build":
+            {
+                // Debug aid: place and finish a building right away (e.g. a Coop, to test the
+                // animal shop without first playing through Robin's construction), like the vanilla
+                // construction path but with zero build days. Small debris (weeds, twigs, little
+                // stones - what a player clears with basic tools) is removed first.
+                var name = Str("name") ?? Str("item") ?? throw new CommandException("missing 'name' (e.g. Coop)");
+                var farm = Game1.getFarm();
+                if (!Game1.buildingData.TryGetValue(name, out var data))
+                    throw new CommandException($"unknown building '{name}'");
+                var door = farm.GetMainFarmHouseEntry();
+                // Clear the small debris near the farmhouse first (what a player would clear with
+                // basic tools before building); big stumps/rocks and trees stay blocking.
+                var clear = new List<KeyValuePair<Microsoft.Xna.Framework.Vector2, StardewValley.Object>>();
+                foreach (var kv in farm.objects.Pairs)
+                    if (kv.Value.IsWeeds() || kv.Value.IsTwig() || kv.Value.IsBreakableStone())
+                        if (Math.Abs(kv.Key.X - door.X) < 26 && Math.Abs(kv.Key.Y - door.Y) < 12)
+                            clear.Add(kv);
+                foreach (var kv in clear)
+                    farm.objects.Remove(kv.Key);
+                // Scan a grid east and south of the farmhouse door for a clear spot.
+                // isBuildable reads Game1.currentLocation's tile properties, so do this as if the
+                // player stood on the farm (the vanilla placement view does the same).
+                var previous = Game1.currentLocation;
+                Game1.currentLocation = farm;
+                try
+                {
+                    for (int dy = 1; dy < 10; dy++)
+                    for (int dx = 2; dx < 24; dx++)
+                    {
+                        var tile = new Microsoft.Xna.Framework.Vector2(door.X + dx, door.Y + dy);
+                        if (farm.buildStructure(name, tile, Game1.player, out var constructed, magicalConstruction: false))
+                        {
+                            constructed.FinishConstruction();
+                            return new JObject { ["built"] = $"{name} at {tile.X},{tile.Y}" };
+                        }
+                    }
+                }
+                finally
+                {
+                    Game1.currentLocation = previous;
+                }
+                // Report why the (first) candidate spot wouldn't take, so a human can pick a spot.
+                var probe = new Microsoft.Xna.Framework.Vector2(door.X + 4, door.Y + 4);
+                var reasons = new List<string>();
+                var building = StardewValley.Buildings.Building.CreateInstanceFromId(name, probe);
+                for (int y = 0; y < building.tilesHigh.Value; y++)
+                for (int x = 0; x < building.tilesWide.Value; x++)
+                {
+                    var t = probe + new Microsoft.Xna.Framework.Vector2(x, y);
+                    if (!farm.isBuildable(t))
+                    {
+                        reasons.Add($"{t.X},{t.Y} not buildable"
+                            + (farm.hasTileAt((int)t.X, (int)t.Y, "Back") ? "" : " noBackLayer")
+                            + (farm.isWaterTile((int)t.X, (int)t.Y) ? " water" : "")
+                            + (farm.isTilePlaceable(t) ? "" : " notPlaceable")
+                            + (farm.IsTileOccupiedBy(t, StardewValley.CollisionMask.All, StardewValley.CollisionMask.None, useFarmerTile: true) ? " collides" : "")
+                            + (farm.isTilePassable(t) ? "" : " impassable"));
+                    }
+                }
+                if (building.isThereAnythingtoPreventConstruction(farm, probe) is { } blocked)
+                    reasons.Add(blocked);
+                throw new CommandException("no clear spot near the farmhouse"
+                    + (reasons.Count > 0 ? $" (probe {probe.X},{probe.Y}: " + string.Join("; ", reasons.Take(6)) + ")" : ""));
+            }
+
             case "debug_bundles":
             {
                 // Debug aid: the Community Center's bundle-spot tiles (Buildings layer indexes 1824-1833).
@@ -462,6 +528,15 @@ internal sealed class ModEntry : Mod
 
             case "close":
                 return StartJob(cmd, "closing the menu", MenuAgent.PacedClose, runDuringMenus: true);
+
+            // Type into the current text box (e.g. the name box when buying an animal at Marnie's).
+            case "type":
+            {
+                var text = Str("text") ?? Str("item") ?? throw new CommandException("missing 'text' (what to type)");
+                if (text.Length > 60)
+                    text = text[..60];
+                return new JObject { ["summary"] = MenuAgent.Type(text) };
+            }
 
             // Open the backpack's crafting page, like a player pressing the menu key and picking the tab.
             case "crafting":

@@ -31,6 +31,7 @@ x and y are map coordinates from 0 to 200; n is 1-25; at most 5 actions per turn
   use x,y (right-click that tile: harvest ripe crops, pick up forage, open chests/shipping bin/machines/doors, talk to villagers, click a shop counter)
   place x,y (left-click with the item in your hand, to plant/place it; equip it first)
   equip item (select an inventory item into your hand; "equip nothing" empties your hand)
+  type text (type into the open text box - e.g. the name box when you buy an animal)
   axe x,y | pickaxe x,y | hoe x,y | watering_can x,y | scythe x,y (swing that tool once at that tile, like a player clicking)
   check_community_center (read the bundle progress; free)
   crafting (open the backpack's crafting page; click recipes to craft)
@@ -57,6 +58,10 @@ Tips - read the screen:
   click="bundle <name>", then click="give <item>" for each thing it still wants (it takes from what you
   carry). Vault bundles are paid with click="pay" (gold is shared). Craft chests/scarecrows to store gear
   and protect crops: crafting opens the crafting page (click="craft <recipe>", needs materials).
+- Animals: at Marnie's Ranch, use x,y on the counter and answer the shop question. click="buy <animal>",
+  then pick its home (click="place in <building>"), then name it (type the name, then click="done").
+  Pet them with use x,y on them; eggs and wool are picked up with use x,y; a cow is milked by equipping
+  the Milk Pail and using it on the cow.
 - Gifts: equip the item you want to give, then use x,y on the villager.
 - Crops: till the soil (hoe x,y), plant seeds (equip them, then place x,y on tilled soil), water every
   day (watering_can x,y - rain free), and use x,y on ready crops to harvest. Wheat and fiber are cut

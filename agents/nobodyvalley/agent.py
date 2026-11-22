@@ -59,6 +59,7 @@ ACTIONS: dict[str, Spec] = {
     "answer": Spec("answer", n=True),
     "click": Spec("click", item="element", n=True, needs=("item",)),
     "close": Spec("close"),
+    "type": Spec("type", item="text", needs=("item",)),
     "check_community_center": Spec("check_community_center"),
     "crafting": Spec("crafting"),
     "eat": Spec("eat", item="item"),
@@ -483,13 +484,16 @@ class Agent:
         info_actions = [a for a in raw_actions if a.get("do") in INFO_ACTIONS]
         for info in info_actions:
             await self._query(info.get("do", ""), target=_blank_if_none(info.get("target")))
-        # Instant actions that answer right away (no job to wait for): equip (pick up an item)
-        # and crafting (open the menu). Menu interactions (answer/click/close) are paced jobs now.
+        # Instant actions that answer right away (no job to wait for): equip (pick up an item),
+        # crafting (open the menu) and type (into the open text box, e.g. naming an animal.
+        # Menu interactions (answer/click/close) are paced jobs now.
         for m in raw_actions:
             if m.get("do") == "equip":
                 await self._query("equip", item=_blank_if_none(m.get("item")))
             elif m.get("do") == "crafting":
                 await self._query("crafting")
+            elif m.get("do") == "type":
+                await self._query("type", text=_blank_if_none(m.get("item")))
         say = " ".join(str(a.get("text", "")) for a in raw_actions if a.get("do") == "say").strip()
         if len(say) >= MAX_SAY_LENGTH:  # hit the limit mid-sentence
             say = say[: say.rfind(" ")].rstrip(",;:") + "…" if " " in say else say
@@ -521,7 +525,7 @@ class Agent:
             return
 
         actions, errors = self._parse_actions([a for a in raw_actions
-                                               if a.get("do") not in ("say", "emote", "equip", "crafting")
+                                               if a.get("do") not in ("say", "emote", "equip", "crafting", "type")
                                                and a.get("do") not in INFO_ACTIONS], obs)
         self.inbox.extend(errors)
         if actions and actions[0].cmd == "stop":
@@ -596,7 +600,7 @@ class Agent:
                               "Keep working; go to bed in the evening.")
                 continue
             # A menu is open: only menu actions make sense (the mod refuses everything else anyway).
-            if obs.get("menu") and cmd not in ("answer", "click", "close"):
+            if obs.get("menu") and cmd not in ("answer", "click", "close", "type"):
                 errors.append(f"Skipped {cmd}: a menu is open - react to it first (click/answer/close).")
                 continue
             # A blocking dialogue/question is up too (it's not in the menu field - it's a pop-up).
