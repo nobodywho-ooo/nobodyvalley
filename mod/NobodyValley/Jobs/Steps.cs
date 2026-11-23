@@ -135,6 +135,11 @@ internal static class Steps
         {
             var p = Game1.player;
             var here = p.currentLocation;
+            if (here == null)
+            {
+                yield return Wait.Ticks(10); // between maps / mid-warp: retry rather than give up
+                continue;
+            }
             if (here.NameOrUniqueName.Equals(locationName, StringComparison.OrdinalIgnoreCase))
             {
                 r.Ok = true;

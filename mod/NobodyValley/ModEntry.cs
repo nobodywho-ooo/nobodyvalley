@@ -655,7 +655,7 @@ internal sealed class ModEntry : Mod
     private IEnumerator AnswerJob(Job job, int option)
     {
         yield return MenuAgent.PacedWait();
-        job.Summary = (string)Answer(option)["summary"];
+        job.Summary = (string?)Answer(option)["summary"] ?? "";
         MenuAgent.ArmPacingNow();
     }
 
