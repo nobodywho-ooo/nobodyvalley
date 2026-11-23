@@ -50,9 +50,8 @@ internal static class MenuAgent
             yield return null;
     }
 
-    /// <summary>True for the interactive menus the agent clicks (shops, chests, level-ups, ...).
-    /// Dialogues, letters and ready-checks are handled elsewhere and are not "interactive menus"
-    /// in the mod's sense - and must never be closed for the agent (they're real messages).</summary>
+    /// <summary>The menus the agent clicks (shops, chests, level-ups, ...). Dialogues, letters and
+    /// ready-checks are real messages and are deliberately excluded.</summary>
     public static bool IsInteractiveMenu(IClickableMenu? m) => m switch
     {
         ShopMenu or PurchaseAnimalsMenu or CarpenterMenu or ItemGrabMenu or LevelUpMenu
