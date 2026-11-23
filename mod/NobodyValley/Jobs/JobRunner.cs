@@ -107,7 +107,18 @@ internal sealed class JobRunner
 
         // Freeze while a menu, cutscene or screen transition is up; resume afterwards. The bus ride
         // keeps ticking through all of it (it answers its own ticket question and waits for the warp).
-        if (!Current.RunThroughEvents && ((Game1.activeClickableMenu != null && !Current.RunDuringMenus) || Game1.eventUp || Game1.isWarping || Game1.fadeToBlack))
+        //
+        // Jobs that run during menus (clicking/closing them - shops, chests, level-ups, ...) must
+        // keep running while the screen fade is black: the end-of-night menus (shipping summary,
+        // level-ups) appear during the sleep fade, and a co-op day can't roll over until they're
+        // dismissed. A click/close on a visible menu is safe while fading; moving/acting jobs still
+        // wait for the transition to finish.
+        bool menuJob = Current.RunDuringMenus;
+        if (!Current.RunThroughEvents
+            && ((Game1.activeClickableMenu != null && !menuJob)
+                || Game1.eventUp
+                || Game1.isWarping
+                || (Game1.fadeToBlack && !menuJob)))
             return;
 
         if (waitTicks > 0)

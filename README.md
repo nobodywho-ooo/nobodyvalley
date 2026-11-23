@@ -112,9 +112,11 @@ Environment variables let a launcher skip the title screen and place the window:
 `NOBODYVALLEY_HOST=<save>` (host in co-op), `NOBODYVALLEY_JOIN=<farmhand name>`,
 `NOBODYVALLEY_LOAD=<save>` (single-player), `NOBODYVALLEY_WINDOW=x,y,w,h` (screen points) and
 `NOBODYVALLEY_PORT=<port>` (pin the agent port). Only un-attendable screens are auto-dismissed (the overnight
-shipping summary - the co-op dawn can't continue without it - and festivals, after `MenuDisplaySeconds` so
-spectators see them). Interactive menus - shops, chests, dialogues, letters, level-ups - stay up for the agents
-to read and click, and **cutscenes play**: each spoken line is relayed to the agent, who answers any question
+shipping summary - the co-op dawn can't continue without it - **level-ups** - they appear during the sleep fade
+on the player who levelled, and every other machine waits on that player in the co-op dawn handshake - and
+festivals, all after `MenuDisplaySeconds` so spectators see them; a level 5/10 screen's profession choice is
+automatically picked). Interactive menus - shops, chests, dialogues, letters - stay up for the agents to read
+and click, and **cutscenes play**: each spoken line is relayed to the agent, who answers any question
 with `answer n`. (An older version skipped cutscenes; saves it ran may lack the Junimo-scroll mail, which the
 mod repairs at load by granting it.)
 

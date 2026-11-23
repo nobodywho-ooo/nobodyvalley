@@ -8,11 +8,14 @@ namespace NobodyValley;
 /// Dismisses only the screens that can't wait for an agent turn:
 /// - the overnight shipping summary (without a click, the co-op day-end stalls forever - the
 ///   agents are asleep and take no turns until morning);
+/// - level-ups: they appear during the sleep fade on the player who levelled; every other
+///   machine waits on that player in the co-op day-end handshake, so leaving the screen to the
+///   agent to click deadlocks the whole co-op;
 /// - festivals, which trap every agent on the festival map for the whole day (ending one is the
 ///   same as a player leaving it).
 /// Cutscenes PLAY: the agent watches them through the event dialogue that ScreenMessages relays,
-/// and answers any question with `answer n`. Shops, chests, dialogues, letters and level-ups are
-/// the agent's own clicks. Each dismissed screen stays up a few seconds first, so spectators see it.
+/// and answers any question with `answer n`. Shops, chests, dialogues and letters are still the
+/// agent's own clicks. Each dismissed screen stays up a few seconds first, so spectators see it.
 /// </summary>
 internal sealed class MenuJanitor
 {
@@ -54,10 +57,11 @@ internal sealed class MenuJanitor
         {
             Event { isFestival: true } festival => EndFestival(festival),
             ShippingMenu shipping => DismissShipping(shipping),
+            LevelUpMenu level => DismissLevelUp(level),
             ReadyCheckDialog { checkName: "sleep" } => LeaveDayEndReadyCheck(),
             ReadyCheckDialog ready => Confirm(ready),
-            // Everything else - cutscenes, shops, chests, dialogues, letters, level-ups - is either
-            // for the agent to watch/click or plays on its own.
+            // Everything else - cutscenes, shops, chests, dialogues, letters - is either for the
+            // agent to watch/click or plays on its own.
             _ => false,
         };
         if (acted)
@@ -100,5 +104,42 @@ internal sealed class MenuJanitor
         monitor.Log("Dismissing the shipping summary.", LogLevel.Debug);
         helper.Reflection.GetMethod(shipping, "okClicked").Invoke();
         return true;
+    }
+
+    private bool DismissLevelUp(LevelUpMenu level)
+    {
+        // The menu polls the mouse and doesn't accept clicks during its intro; wait until the
+        // OK button / profession split is live (LevelUpMenu.CanReceiveInput). A level 5/10 screen
+        // asks the player to pick a profession - pick one (the left option) so the day-end isn't
+        // held up; a plain level-up just needs its OK clicked.
+        if (!level.CanReceiveInput())
+            return false;
+        if (level.isProfessionChooser)
+        {
+            // First profession of the current skill (left side): e.g. Miner for Mining before
+            // Geologist. Duplicating LevelUpMenu's own pick-left code path.
+            var choices = helper.Reflection.GetField<List<int>>(level, "professionsToChoose").GetValue();
+            if (choices == null || choices.Count == 0)
+                return false;
+            var choice = choices[0];
+            monitor.Log($"Picking the {PlayerProfessionName(choice)} profession automatically.", LogLevel.Debug);
+            Game1.player.professions.Add(choice);
+            level.getImmediateProfessionPerk(choice);
+        }
+        level.okButtonClicked();
+        return true;
+    }
+
+    private static string PlayerProfessionName(int profession)
+    {
+        return Game1.content.LoadString("Strings\\UI:LevelUp_ProfessionName_" + profession switch
+        {
+            0 => "Rancher", 1 => "Tiller", 2 => "Coopmaster", 3 => "Shepherd", 4 => "Artisan", 5 => "Agriculturist",
+            6 => "Fisher", 7 => "Trapper", 8 => "Angler", 9 => "Pirate", 10 => "Mariner", 11 => "Luremaster",
+            12 => "Forester", 13 => "Gatherer", 14 => "Lumberjack", 15 => "Tapper", 16 => "Botanist", 17 => "Tracker",
+            18 => "Miner", 19 => "Geologist", 20 => "Blacksmith", 21 => "Prospector", 22 => "Excavator",
+            23 => "Gemologist", 24 => "Fighter", 25 => "Scout", 26 => "Brute", 27 => "Defender", 28 => "Acrobat",
+            _ => "?"
+        });
     }
 }
