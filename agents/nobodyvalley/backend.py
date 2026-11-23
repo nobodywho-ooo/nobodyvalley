@@ -18,11 +18,16 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from nobodywho import ChatAsync, ContextShiftOptions, Model, SamplerPresets
-from openai import AsyncOpenAI
+from openai import APIConnectionError, APITimeoutError, AsyncOpenAI
 
 # The vLLM deployment serves the model under this name
 # (--served-model-name=default; LibreChat uses the same).
 REMOTE_MODEL_NAME = "default"
+
+# Transport-level failures worth retrying (a stale pooled connection, or the server pausing for
+# a moment). Auth/validation/invalid-model errors are deliberately NOT here - retrying those is
+# pointless and would stack delays on top of a real misconfiguration.
+RETRYABLE_REMOTE_ERRORS = (APIConnectionError, APITimeoutError, asyncio.TimeoutError)
 
 
 def _estimate_tokens(text: str) -> int:
@@ -133,9 +138,9 @@ class RemoteChat:
 
     KEEP_TURNS = 4
 
-    def __init__(self, client: AsyncOpenAI, model: str, system_prompt: str, n_ctx: int,
+    def __init__(self, backend: RemoteBackend, model: str, system_prompt: str, n_ctx: int,
                  schema: dict[str, Any]):
-        self._client = client
+        self._backend = backend
         self._model = model
         self._n_ctx = n_ctx
         # This vLLM server ships an llguidance-flavoured guided-decoding API: the schema goes in
@@ -150,25 +155,38 @@ class RemoteChat:
         self._messages: list[dict[str, str]] = [{"role": "system", "content": system_prompt}]
         self._est_tokens = _estimate_tokens(system_prompt)
 
+    MAX_ATTEMPTS = 3
+
     async def ask(self, prompt: str) -> "_RemoteStream":
+        # Connection-level failures on a long-lived pooled client can persist for a farmer while
+        # the server is fine - its pooled keep-alive went stale. Rebuild the client (a fresh pool,
+        # shared by every farmer on the remote model) and retry a couple of times before giving up
+        # on this turn (the agent's outer loop retries the turn anyway).
         self._messages.append({"role": "user", "content": prompt})
-        try:
-            stream = await self._client.chat.completions.create(
-                model=self._model,
-                messages=self._messages,
-                stream=True,
-                max_tokens=1024,  # the schema keeps decisions short; this is just a ceiling
-                temperature=0.8,  # close to the local sampler's default
-                # Same JSON-schema-constrained decision as the local chat.
-                response_format=self._response_format,
-                # vLLM defaults to thinking at medium effort; a decision turn isn't
-                # a reasoning showpiece, so turn it off (the local chat sets the same flag).
-                extra_body={"chat_template_kwargs": {"enable_thinking": False}},
-            )
-        except Exception:
-            self._messages.pop()  # don't leave a user message without a reply
-            raise
-        return _RemoteStream(stream, self)
+        last: BaseException | None = None
+        for attempt in range(self.MAX_ATTEMPTS):
+            try:
+                stream = await self._backend.client.chat.completions.create(
+                    model=self._model,
+                    messages=self._messages,
+                    stream=True,
+                    max_tokens=1024,  # the schema keeps decisions short; this is just a ceiling
+                    temperature=0.8,  # close to the local sampler's default
+                    # Same JSON-schema-constrained decision as the local chat.
+                    response_format=self._response_format,
+                    # vLLM defaults to thinking at medium effort; a decision turn isn't
+                    # a reasoning showpiece, so turn it off (the local chat sets the same flag).
+                    extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+                )
+                return _RemoteStream(stream, self)
+            except RETRYABLE_REMOTE_ERRORS as e:
+                self._backend.renew()
+                last = e
+                if attempt < self.MAX_ATTEMPTS - 1:
+                    await asyncio.sleep(0.5 * (attempt + 1))
+        self._messages.pop()  # don't leave a user message without a reply
+        assert last is not None
+        raise last
 
     def _record_reply(self, text: str) -> None:
         self._messages.append({"role": "assistant", "content": text})
@@ -235,14 +253,25 @@ class RemoteBackend:
 
     def __init__(self, url: str, api_key: str, schema: dict[str, Any]):
         self.url = url
+        self.api_key = api_key
         self.schema = schema
         self.label = f"qwen3.8-flash-next over vLLM ({url})"
-        # No retries: a down vLLM server fails a turn fast (the agent loop skips the turn) instead
-        # of stacking up to 3 x timeout per ask.
-        self._client = AsyncOpenAI(base_url=url, api_key=api_key, timeout=60.0, max_retries=0)
+        self._client = self._new_client()
+
+    def _new_client(self) -> AsyncOpenAI:
+        return AsyncOpenAI(base_url=self.url, api_key=self.api_key, timeout=60.0, max_retries=0)
+
+    @property
+    def client(self) -> AsyncOpenAI:
+        """The shared client. renew() swaps in a fresh one after a connection failure, so a
+        stale pooled connection can't wedge every farmer on the remote model indefinitely."""
+        return self._client
+
+    def renew(self) -> None:
+        self._client = self._new_client()
 
     async def create_chat(self, system_prompt: str, n_ctx: int) -> RemoteChat:
-        return RemoteChat(self._client, REMOTE_MODEL_NAME, system_prompt, n_ctx, self.schema)
+        return RemoteChat(self, REMOTE_MODEL_NAME, system_prompt, n_ctx, self.schema)
 
     async def check(self) -> None:
         """Fail fast (before the games start): proves the URL, the API key and the model name."""
