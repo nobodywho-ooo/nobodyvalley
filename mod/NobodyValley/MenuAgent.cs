@@ -171,6 +171,12 @@ internal static class MenuAgent
         // them down the buy route (where "close" would be treated as an item to buy and miss).
         if (q.Equals("close", StringComparison.OrdinalIgnoreCase)
             || q.Equals("leave", StringComparison.OrdinalIgnoreCase)
+            || q.Equals("continue", StringComparison.OrdinalIgnoreCase)
+            || q.Equals("dismiss", StringComparison.OrdinalIgnoreCase)
+            || q.Equals("exit", StringComparison.OrdinalIgnoreCase)
+            || q.Equals("back", StringComparison.OrdinalIgnoreCase)
+            || q.Equals("done", StringComparison.OrdinalIgnoreCase)
+            || q.Equals("ok", StringComparison.OrdinalIgnoreCase)
             || q.Equals("next", StringComparison.OrdinalIgnoreCase)
             || q.Equals("prev", StringComparison.OrdinalIgnoreCase)
             || q.StartsWith("tab ", StringComparison.OrdinalIgnoreCase))
@@ -326,7 +332,16 @@ internal static class MenuAgent
     private static string ShopClick(ShopMenu shop, string element, int n)
     {
         string q = element.Trim();
-        if (q.Equals("close", StringComparison.OrdinalIgnoreCase) || q.Equals("leave", StringComparison.OrdinalIgnoreCase))
+        // The agent's generic "get past this" clicks (continue/ok/done/...), like 'close', mean
+        // "get this shop out of my way" - never send them down the buy route.
+        if (q.Equals("close", StringComparison.OrdinalIgnoreCase)
+            || q.Equals("leave", StringComparison.OrdinalIgnoreCase)
+            || q.Equals("continue", StringComparison.OrdinalIgnoreCase)
+            || q.Equals("dismiss", StringComparison.OrdinalIgnoreCase)
+            || q.Equals("exit", StringComparison.OrdinalIgnoreCase)
+            || q.Equals("back", StringComparison.OrdinalIgnoreCase)
+            || q.Equals("done", StringComparison.OrdinalIgnoreCase)
+            || q.Equals("ok", StringComparison.OrdinalIgnoreCase))
             return Close();
         if (q.Equals("next", StringComparison.OrdinalIgnoreCase))
         {

@@ -180,24 +180,47 @@ async def amain(args: argparse.Namespace) -> None:
     running: dict[int, asyncio.Task[None]] = {}
     agents: dict[int, Agent] = {}
 
-    def persona_for(hello: dict) -> Persona:
+    def persona_for(hello: dict) -> Persona | None:
+        """The persona for a client's hello, or None when it can't be attributed yet - the game
+        isn't in a world (title screen / still loading, no farmer to key on) or the farmer has
+        no persona. The callers decide how hard to fail: at startup a missing persona table is a
+        config error worth dying on; mid-run (monitor restart, new instance) it's a log line -
+        a title-screen game answering hello with no farmer must never kill the whole process."""
         farmer = hello.get("farmer") or ""
-        persona = personas.get(farmer.lower())
-        if persona is None:
-            sys.exit(f"No persona for farmer {farmer!r}: add a [personas.{farmer}] table to {personas_path} "
-                     f"(or pass --personas), then restart.")
-        return persona
+        if not farmer or not hello.get("world_ready"):
+            return None
+        return personas.get(farmer.lower())
 
-    async def start_agent(conn: GameConnection) -> None:
+    async def start_agent(conn: GameConnection, fatal: bool = False) -> None:
         hello = await conn.request("hello")
         persona = persona_for(hello)
-        farmer = hello.get("farmer") or f"port {conn.port}"
+        farmer = hello.get("farmer") or ""
+        if persona is None:
+            if not farmer or not hello.get("world_ready"):
+                printer("main", "info", f"port {conn.port}: game not in a world yet - will retry it")
+            elif fatal:
+                sys.exit(f"No persona for farmer {farmer!r}: add a [personas.{farmer}] table to {personas_path} "
+                         f"(or pass --personas), then restart.")
+            else:
+                printer("main", "warn", f"port {conn.port}: no persona for farmer {farmer!r} - skipping it "
+                                         f"(see --personas / {personas_path})")
+            await conn.close()
+            return
+        farmer = farmer or f"port {conn.port}"
         # Reserve the dashboard panel now, in discovery order, so the panels don't reorder
         # themselves as the farmhands connect at staggered times (host is discovered first).
         if dashboard:
             dashboard.reserve(farmer)
         # The farmer's own model if their persona sets one, else the --model / NV_MODEL default.
-        backend = await resolve_backend(persona.model or args.model, farmer)
+        try:
+            backend = await resolve_backend(persona.model or args.model, farmer)
+        except SystemExit:
+            if fatal:
+                raise
+            printer("main", "warn", f"port {conn.port}: can't start {farmer}'s agent (model config?): "
+                                     "skipping it until it's fixed")
+            await conn.close()
+            return
         index = conn.port - args.base_port
         agent = Agent(conn, backend, persona.text, args.n_ctx, printer, start_delay=min(index, 4) * 4.0,
                       dashboard=dashboard, model=persona.model or args.model)
@@ -206,7 +229,7 @@ async def amain(args: argparse.Namespace) -> None:
         running[conn.port] = asyncio.create_task(agent.run())
 
     for conn in conns:
-        await start_agent(conn)
+        await start_agent(conn, fatal=True)
 
     # ---------------------------------------------------------------- watchdog
     # A game instance that hard-freezes (or a socket we lose) would otherwise leave its agent
@@ -330,7 +353,12 @@ async def amain(args: argparse.Namespace) -> None:
         await asyncio.sleep(10)
         for conn in await discover(args.base_port, args.max_instances, skip=set(running) | set(agents)):
             printer("main", "info", f"new game instance on port {conn.port}")
-            await start_agent(conn)
+            try:
+                await start_agent(conn)
+            except (OSError, asyncio.TimeoutError, GameError) as e:
+                # The instance can vanish between discovery and its hello (e.g. it was just being
+                # torn down); never let that take down the whole process.
+                printer("main", "warn", f"port {conn.port}: couldn't start its agent: {e!r}")
 
 
 def main() -> None:
