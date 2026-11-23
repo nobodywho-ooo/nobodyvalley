@@ -167,6 +167,14 @@ internal static class MenuAgent
             return false;
         if (q.StartsWith("buy ", StringComparison.OrdinalIgnoreCase))
             return true;
+        // Navigation/shop-exit commands are handled by ShopClick on the slow path; don't send
+        // them down the buy route (where "close" would be treated as an item to buy and miss).
+        if (q.Equals("close", StringComparison.OrdinalIgnoreCase)
+            || q.Equals("leave", StringComparison.OrdinalIgnoreCase)
+            || q.Equals("next", StringComparison.OrdinalIgnoreCase)
+            || q.Equals("prev", StringComparison.OrdinalIgnoreCase)
+            || q.StartsWith("tab ", StringComparison.OrdinalIgnoreCase))
+            return false;
         return FindShopItemExact(shop, q) >= 0 || FindCarriedExact(q) < 0;
     }
 
