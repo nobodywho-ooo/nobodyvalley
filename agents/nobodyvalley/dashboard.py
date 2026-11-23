@@ -39,6 +39,7 @@ PAGE = """<!doctype html>
            font-family: ui-monospace, SFMono-Regular, Menlo, monospace; white-space: nowrap; }
   .status { color: #f6c86b; font-size: 11px; white-space: nowrap; }
   .status.waiting { color: #a5a0c9; }
+  .status.error { color: #ff6688; font-weight: 600; }
   /* Line 2: current action. */
   .doing { color: #ddd; }
   .thought { margin-top: 3px; color: #cfcfe8; font-style: italic; }
@@ -63,12 +64,13 @@ async function refresh() {
   const color = n => colors[names.indexOf(n) % colors.length];
   document.getElementById("agents").innerHTML = names.map(n => {
     const a = s.agents[n];
-    // Always have something in the status slot: thinking/waiting while the model runs, otherwise
-    // "performing actions" so the right side of the header never looks empty.
-    let statusText;
-    if (a.llm) statusText = `${a.llm === "waiting" ? "waiting for the model" : "thinking"} ${Math.max(0, Math.floor(s.now - a.llm_since))}s`;
+    // Always have something in the status slot: a model error, thinking/waiting while the model
+    // runs, otherwise "performing actions" so the right side of the header never looks empty.
+    let statusText, statusCls = "";
+    if (a.llm_error) { statusText = "model error"; statusCls = "error"; }
+    else if (a.llm) { statusText = `${a.llm === "waiting" ? "waiting for the model" : "thinking"} ${Math.max(0, Math.floor(s.now - a.llm_since))}s`; statusCls = a.llm || ""; }
     else statusText = (a.doing && a.doing !== "idle") ? "performing actions" : "idle";
-    const status = `<span class="status ${a.llm || ""}">${esc(statusText)}</span>`;
+    const status = `<span class="status ${statusCls}"${a.llm_error ? ` title="${esc(a.llm_error)}"` : ""}>${esc(statusText)}</span>`;
     return `<div class="agent" style="--c:${color(n)}">
       <div class="head"><span class="who"><span class="name">${esc(n)}</span>${a.model ? `<span class="model" title="model">${esc(a.model)}</span>` : ""}</span>${status}</div>
       <div class="doing clamp2">${esc(a.doing || "idle")}</div>

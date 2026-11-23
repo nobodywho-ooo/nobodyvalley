@@ -683,7 +683,7 @@ class Agent:
         # so the agents' requests proceed concurrently; "waiting" is the prefill phase (re-reading the
         # retained history and the new prompt, plus GPU contention with the others) until the first
         # token arrives, after which it flips to "thinking".
-        self._dash(llm="waiting", llm_since=time.time())
+        self._dash(llm="waiting", llm_since=time.time(), llm_error="")
         if DEBUG_TIMING:
             # KV-cache position before this ask: the retained history that has to be re-prefilled
             # if set_chat_history / reset has already invalidated the cache.
@@ -706,6 +706,12 @@ class Agent:
             if DEBUG_TIMING:
                 self._report_timing(t0, arrivals, ctx_before, prompt_tokens, parts)
             return "".join(parts)
+        except Exception as e:
+            # Keep the failure visible on the dashboard after the spinner clears, so a wedged/
+            # unreachable model reads as "model error" instead of a passive "idle". It lingers and is
+            # cleared automatically at the start of the next ask, once the model responds again.
+            self._dash(llm_error=f"{type(e).__name__}: {e}")
+            raise
         finally:
             self._dash(llm=None, llm_since=None)
 
