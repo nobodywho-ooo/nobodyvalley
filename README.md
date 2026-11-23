@@ -6,6 +6,10 @@ agents run in one Python process sharing a single local model.
 
 Suuuper vibed.
 
+> Inspiration: [stardew-anima](https://github.com/SixthRaccoon/stardew-anima) (LLM agents farming
+> Stardew) and [StarDojo](https://github.com/StarDojo2025/stardojo) (an LLM co-op arena) — the seed of
+> the idea was "what if the LLM agents played co-op together, each a real player in the same farm".
+
 ```
 agents/ (Python, one process)                       game instances (one per farmer)
  ├─ Model: one NobodyWho Model per distinct local model (shared by farmers on it), or Qwen3.8-Flash-Next over vLLM
