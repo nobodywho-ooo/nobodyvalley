@@ -1,5 +1,5 @@
 """Chat backends: a local NobodyWho model (qwen3.5-9b, gemma4-e2b, gemma4-12b), or a remote
-OpenAI-compatible endpoint (qwen3.8-flash-next on the ASCENT cluster, see ../on-prem).
+OpenAI-compatible vLLM endpoint (qwen3.8-flash-next).
 
 Both implement the small surface agent.py uses (ask / reset / stats / tokenize), so the agent
 loop itself doesn't care where the tokens come from. The local backend loads each **distinct**
@@ -20,7 +20,7 @@ from typing import Any, Protocol
 from nobodywho import ChatAsync, ContextShiftOptions, Model, SamplerPresets
 from openai import AsyncOpenAI
 
-# The vLLM deployment on the ASCENTs serves the model under this name
+# The vLLM deployment serves the model under this name
 # (--served-model-name=default; LibreChat uses the same).
 REMOTE_MODEL_NAME = "default"
 
@@ -138,7 +138,7 @@ class RemoteChat:
         self._client = client
         self._model = model
         self._n_ctx = n_ctx
-        # The ASCENTs' vLLM ships an llguidance-flavoured guided-decoding API: the schema goes in
+        # This vLLM server ships an llguidance-flavoured guided-decoding API: the schema goes in
         # a {"name", "schema"} wrapper (the openai-standard bare json_schema is rejected). The
         # schema itself keeps "x-guidance" (whitespace_flexible: false): it is honoured when the
         # server uses llguidance, and harmlessly ignored (spaced JSON) when a request carries
@@ -161,7 +161,7 @@ class RemoteChat:
                 temperature=0.8,  # close to the local sampler's default
                 # Same JSON-schema-constrained decision as the local chat.
                 response_format=self._response_format,
-                # The ASCENTs' vLLM defaults to thinking at medium effort; a decision turn isn't
+                # vLLM defaults to thinking at medium effort; a decision turn isn't
                 # a reasoning showpiece, so turn it off (the local chat sets the same flag).
                 extra_body={"chat_template_kwargs": {"enable_thinking": False}},
             )
@@ -226,7 +226,7 @@ class _RemoteStream:
 
 
 class RemoteBackend:
-    """Qwen3.8-Flash-Next on the ASCENT cluster (../on-prem), over the OpenAI-compatible API.
+    """Qwen3.8-Flash-Next served over the OpenAI-compatible vLLM API.
     One backend (one client) is shared by every farmer on the remote model: the "model" lives
     on the server, so there is nothing to load per agent."""
 
@@ -236,8 +236,8 @@ class RemoteBackend:
     def __init__(self, url: str, api_key: str, schema: dict[str, Any]):
         self.url = url
         self.schema = schema
-        self.label = f"qwen3.8-flash-next on the ASCENTs ({url})"
-        # No retries: a down ASCENT box fails a turn fast (the agent loop skips the turn) instead
+        self.label = f"qwen3.8-flash-next over vLLM ({url})"
+        # No retries: a down vLLM server fails a turn fast (the agent loop skips the turn) instead
         # of stacking up to 3 x timeout per ask.
         self._client = AsyncOpenAI(base_url=url, api_key=api_key, timeout=60.0, max_retries=0)
 
@@ -250,5 +250,5 @@ class RemoteBackend:
         names = [m.id for m in models.data]
         if REMOTE_MODEL_NAME not in names:
             raise RuntimeError(
-                f"served model {REMOTE_MODEL_NAME!r} not found (the ASCENTs serve: "
+                f"served model {REMOTE_MODEL_NAME!r} not found (vLLM serves: "
                 f"{', '.join(names) or 'nothing'})")

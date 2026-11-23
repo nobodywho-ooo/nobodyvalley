@@ -3,7 +3,7 @@
 A farmer's model comes from the `model` key in their persona (see personas.toml), falling back
 to --model / NV_MODEL. Local models are loaded once per *distinct* model (one NobodyWho Model
 instance, shared by all farmers on that model — the sizes of the different models in use add up
-in RAM). qwen3.8-flash-next has no local weights: the agents share one client to the ASCENTs' vLLM.
+in RAM). qwen3.8-flash-next has no local weights: the agents share one client to a vLLM server.
 """
 
 from __future__ import annotations
@@ -33,14 +33,13 @@ MODEL_PRESETS = {
     "gemma4-12b": "huggingface:unsloth/gemma-4-12b-it-GGUF/gemma-4-12b-it-Q4_K_M.gguf",
     "qwen3.5-9b": DEFAULT_MODEL,
 }
-# Runs on the ASCENT cluster (../on-prem), reached through the OpenAI-compatible API; the
-# agents don't load any local model for it.
+# Served over the OpenAI-compatible vLLM API; the agents don't load any local model for it.
 REMOTE_MODEL = "qwen3.8-flash-next"
-DEFAULT_VLLM_URL = "http://ascent1.local:8000/v1"
+
 
 
 def resolve_model(model_arg: str) -> tuple[str, str | None]:
-    """(kind, ref): kind is 'local' (a GGUF on this Mac) or 'remote' (the ASCENTs' vLLM)."""
+    """(kind, ref): kind is 'local' (a GGUF on this Mac) or 'remote' (a vLLM server)."""
     if model_arg == REMOTE_MODEL:
         return "remote", None
     return "local", MODEL_PRESETS.get(model_arg, model_arg)
@@ -133,13 +132,13 @@ async def amain(args: argparse.Namespace) -> None:
                  "Is the NobodyValley mod installed and the game running?")
     printer("main", "info", f"found {len(conns)} game instance(s) on ports {', '.join(str(c.port) for c in conns)}")
 
-    # One backend per *distinct* model: remote = the shared ASCENTs client; local = one
+    # One backend per *distinct* model: remote = the shared vLLM client; local = one
     # LocalBackend per ref, whose NobodyWho Model is loaded once and shared by all farmers on it.
     remote_backend: RemoteBackend | None = None
     local_backends: dict[str, LocalBackend] = {}
 
     async def resolve_backend(model_arg: str, who: str) -> Backend:
-        """The backend for one farmer: remote = the shared ASCENTs client; local = the cached
+        """The backend for one farmer: remote = the shared vLLM client; local = the cached
         backend for that ref (a new model is only loaded when the ref hasn't been seen yet)."""
         if (model_arg not in MODEL_PRESETS and model_arg != REMOTE_MODEL
                 and "/" not in model_arg and not model_arg.lower().endswith(".gguf")):
@@ -154,14 +153,12 @@ async def amain(args: argparse.Namespace) -> None:
             return backend
         nonlocal remote_backend
         if remote_backend is None:
-            url = os.environ.get("NV_VLLM_URL", DEFAULT_VLLM_URL)
+            url = os.environ.get("NV_VLLM_URL", "")
             api_key = os.environ.get("NV_VLLM_API_KEY", "")
-            if not api_key:
-                sys.exit("qwen3.8-flash-next runs on the ASCENTs and needs the VLLM API key: set "
-                         "NV_VLLM_API_KEY in scripts/local.env ("
-                         "sops k3s/ascent-secrets.sops.yaml in ../on-prem, or kubectl --context ascent1 "
-                         "-n chat get secret shared-secrets -o jsonpath='{.data.VLLM_API_KEY}' | base64 -d).")
-            printer("main", "info", f"connecting to Qwen3.8-Flash-Next on the ASCENTs at {url}")
+            if not url or not api_key:
+                sys.exit("qwen3.8-flash-next is served over vLLM and needs the endpoint and key: "
+                         "set NV_VLLM_URL and NV_VLLM_API_KEY in scripts/local.env.")
+            printer("main", "info", f"connecting to Qwen3.8-Flash-Next over vLLM at {url}")
             remote_backend = RemoteBackend(url, api_key, DECISION_SCHEMA)
             try:
                 await remote_backend.check()

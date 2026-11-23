@@ -5,7 +5,7 @@ description = "LLM farmers for Stardew Valley co-op, powered by NobodyWho"
 requires-python = ">=3.13"
 dependencies = [
     "nobodywho>=5.0.0",
-    "openai>=1.0.0",  # remote backend: Qwen3.8-Flash-Next on the ASCENTs (../on-prem)
+    "openai>=1.0.0",  # remote backend: Qwen3.8-Flash-Next served over vLLM
     "pywebview>=6.2.1",
 ]
 

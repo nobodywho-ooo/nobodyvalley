@@ -8,7 +8,7 @@ Suuuper vibed.
 
 ```
 agents/ (Python, one process)                       game instances (one per farmer)
- ├─ Model: one NobodyWho Model per distinct local model (shared by farmers on it), or Qwen3.8-Flash-Next on the ASCENTs
+ ├─ Model: one NobodyWho Model per distinct local model (shared by farmers on it), or Qwen3.8-Flash-Next over vLLM
  ├─ Agent "Alice"   (ChatAsync) ── TCP :8765 ──── SMAPI + NobodyValley mod (host)
  ├─ Agent "Bob"     (ChatAsync) ── TCP :8766 ──── SMAPI + NobodyValley mod (farmhand)
  ├─ Agent "Charlie" (ChatAsync) ── TCP :8767 ──── SMAPI + NobodyValley mod (farmhand)
@@ -34,9 +34,9 @@ one file per farmer with their full system prompt, turns and replies (e.g. `logs
 
 Configure it with `NV_SAVE`, `NV_FARMHANDS` and `NV_DISPLAY` (see the top of the script; put your
 own values in `scripts/local.env`, gitignored — see `scripts/local.env.example`). `NV_MODEL` picks the
-agents' model: `gemma4-e2b`, `gemma4-12b`, `qwen3.5-9b` (default), or `qwen3.8-flash-next`, which runs on
-the ASCENTs (`../on-prem`) and is reached over the OpenAI-compatible API — set `NV_VLLM_URL` (default
-`http://ascent1.local:8000/v1`) and `NV_VLLM_API_KEY` (the ASCENTs' vLLM key) for it.
+agents' model: `gemma4-e2b`, `gemma4-12b`, `qwen3.5-9b` (default), or `qwen3.8-flash-next`, which is
+served over vLLM and reached through an OpenAI-compatible endpoint — set `NV_VLLM_URL` and
+`NV_VLLM_API_KEY` for it.
 `swift scripts/screen-bounds.swift list` lists the displays. The script also takes subcommands:
 `scripts/demo.sh build` only builds and deploys the mod, `scripts/demo.sh start`
 starts the instances and agents without rebuilding, and `scripts/demo.sh stop` kills them
@@ -127,10 +127,9 @@ mod repairs at load by granting it.)
   (the default), `gemma4-e2b`, `gemma4-12b` — each **distinct** local model is loaded once as one
   `nobodywho.Model` and shared by the farmers on it (only the sizes of _different_ models in use
   add up in RAM: ~3.1/5.7/7.1 GB each; the demo machine has 24 GB) — and `qwen3.8-flash-next`,
-  which runs **remotely on the ASCENTs** (`../on-prem`): farmers on it share one client to the
-  vLLM OpenAI-compatible endpoint (`NV_VLLM_URL`, default `http://ascent1.local:8000/v1`, with
-  `NV_VLLM_API_KEY`) and get the same JSON-schema-constrained decisions via vLLM's guided
-  decoding. The committed `personas.toml` demos all four at once (Alice=Gemma4-E2B,
+  which runs **over vLLM**: farmers on it share one client to an OpenAI-compatible endpoint
+  (`NV_VLLM_URL` with `NV_VLLM_API_KEY`) and get the same JSON-schema-constrained decisions via
+  vLLM's guided decoding. The committed `personas.toml` demos all four at once (Alice=Gemma4-E2B,
   Bob=Gemma4-12B, Charlie=Qwen3.5-9B, David=Flash-Next).
 - **Hybrid actions:** most work verbs take either a map tile (`{"do":"chop","x":63,"y":13}`, picked
   from the map view) or a count for bulk work (`{"do":"water","n":5}`, or no `n` = all).

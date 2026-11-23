@@ -16,8 +16,8 @@
 #   NV_DASHBOARD_DISPLAY  display for the agent dashboard window (default: a column on NV_DISPLAY)
 #   NV_DASHBOARD_WIDTH    width of that column, in points (default: 360)
 #   NV_MODEL                agents' model: gemma4-e2b | gemma4-12b | qwen3.5-9b | qwen3.8-flash-next
-#                           (default: qwen3.5-9b; qwen3.8-flash-next runs on the ASCENTs, see ../on-prem)
-#   NV_VLLM_URL / NV_VLLM_API_KEY   endpoint + key for the remote model (default http://ascent1.local:8000/v1)
+#                           (default: qwen3.5-9b; qwen3.8-flash-next is served over vLLM)
+#   NV_VLLM_URL / NV_VLLM_API_KEY   endpoint + key for the remote model (vLLM)
 #   NV_GAME_DIR    folder containing StardewModdingAPI     (default: Steam install)
 set -euo pipefail
 
