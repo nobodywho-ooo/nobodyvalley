@@ -50,11 +50,21 @@ internal static class MenuAgent
             yield return null;
     }
 
+    /// <summary>True for the interactive menus the agent clicks (shops, chests, level-ups, ...).
+    /// Dialogues, letters and ready-checks are handled elsewhere and are not "interactive menus"
+    /// in the mod's sense - and must never be closed for the agent (they're real messages).</summary>
+    public static bool IsInteractiveMenu(IClickableMenu? m) => m switch
+    {
+        ShopMenu or PurchaseAnimalsMenu or CarpenterMenu or ItemGrabMenu or LevelUpMenu
+            or JunimoNoteMenu or GameMenu or CraftingPage => true,
+        _ => false,
+    };
+
     /// <summary>Describe the current menu as the agent should see it, or null when none is open.</summary>
     public static string? Describe()
     {
         var m = Game1.activeClickableMenu;
-        return m switch
+        return !IsInteractiveMenu(m) ? null : m switch
         {
             ShopMenu shop => Shop(shop),
             PurchaseAnimalsMenu animals => Animals(animals),

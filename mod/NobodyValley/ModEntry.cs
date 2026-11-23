@@ -136,6 +136,19 @@ internal sealed class ModEntry : Mod
         // Day-end screens (ready check, shipping summary, festivals) are dismissed so a co-op day
         // never hangs; interactive menus (shops, chests, dialogs) are left for the agent.
         janitor.Tick(leaveDialoguesAlone: true);
+        // A cutscene must never play with a player's interactive menu left up: vanilla closes the
+        // player's menus when an event starts, and one left open (e.g. the agent opened crafting a
+        // tick before a mine event triggered, or a CraftingPage lingered) deadlocks the event's
+        // script forever - it can't advance or finish while a menu is up. Close it like a player would.
+        if (Game1.CurrentEvent != null
+            && Game1.activeClickableMenu is { } menu
+            && MenuAgent.IsInteractiveMenu(menu))
+        {
+            menu.exitThisMenu();
+            if (Game1.activeClickableMenu == menu)
+                Game1.activeClickableMenu = null;
+            Monitor.Log($"Closed {menu.GetType().Name} left open over cutscene {Game1.CurrentEvent.id}.", LogLevel.Info);
+        }
         // A cutscene/festival takes over the character: the current job can't finish during it,
         // so cancel it - the agent sees the failure next to the dialogue (screen messages relay
         // every line) and plans again once the cutscene is over, like a player who was interrupted.
