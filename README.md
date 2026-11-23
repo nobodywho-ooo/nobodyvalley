@@ -21,8 +21,18 @@ agents/ (Python, one process)                       game instances (one per farm
 
 ## Running the demo
 
-Prerequisites: Stardew Valley 1.6 + [SMAPI](https://smapi.io) 4.x, a co-op save with a cabin per
-farmhand, the .NET SDK (`brew install dotnet`) and [uv](https://github.com/astral-sh/uv).
+Prerequisites: Stardew Valley 1.6 + [SMAPI](https://smapi.io) 4.x, the .NET SDK
+(`brew install dotnet`) and [uv](https://github.com/astral-sh/uv).
+
+**Set up the co-op save.** You need a **4-player co-op game**: one host (the person who created the
+save, in a farmhouse) plus **three farmhands**, each in a cabin the host placed — one player per
+farmer. Start with 4 players in the co-op lobby (not split-screen) and add a cabin for each of the
+other three. Give the host and each farmhand a real character, and name them to match the farmers
+`NV_FARMHANDS` expects — the default is `Alice` (host), `Bob`, `Charlie` and `David`. The mod hosts
+one game instance per farmer and each farmhand auto-joins `localhost` as its named character.
+
+`NV_FARMHANDS` lists the farmhand names (default `Bob Charlie David`); keep it in sync with the
+save's cabins and the character names. `NV_SAVE` names the save folder to host.
 
 ```sh
 scripts/demo.sh
