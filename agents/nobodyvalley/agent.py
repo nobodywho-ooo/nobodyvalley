@@ -62,6 +62,7 @@ ACTIONS: dict[str, Spec] = {
     "close": Spec("close"),
     "type": Spec("type", item="text", needs=("item",)),
     "check_community_center": Spec("check_community_center"),
+    "map": Spec("map"),
     "crafting": Spec("crafting"),
     "eat": Spec("eat", item="item"),
     "fish": Spec("fish", target="target", n=True),
@@ -69,7 +70,7 @@ ACTIONS: dict[str, Spec] = {
     "sleep": Spec("sleep"),
     "stop": Spec("stop"),
 }
-INFO_ACTIONS = {"check_community_center"}
+INFO_ACTIONS = {"check_community_center", "map"}
 
 MAX_ACTIONS_PER_TURN = 5
 # "say" and "emote" are actions like the rest ({"do":"say","text":"..."}); this limits the text.
@@ -171,6 +172,9 @@ class Agent:
         self.waiting_day_end = False  # a day-end ready check is up; no turns until the new day
         self._in_turn = False  # an LLM turn is in flight (guards against overlapping turns)
         self.inbox: list[str] = []  # things that happened since the last turn
+        self.tool_results: list[str] = []  # answers to the model's info/map tool calls
+        self._last_obs: dict[str, Any] | None = None  # prior observation, for delta formatting
+        self._state_shown = False  # whether the full morning state has been shown in this context
         self.wake = asyncio.Event()
         self.last_turn = 0.0
         self.last_failure: str | None = None
@@ -398,6 +402,9 @@ class Agent:
         self.inbox = [f"Good morning! It's {date}. Plan your day."]
         self.screen_message = None
         self.report_turn = False
+        self.tool_results = []
+        self._last_obs = None
+        self._state_shown = False
         self.wake.set()
 
     # ------------------------------------------------------------------ turns
@@ -495,12 +502,19 @@ class Agent:
         busy = bool(self.busy or self.queue)
         running = self.busy  # the job running when the prompt was made
         # No "Working on" note: the model is only asked when its plan is done or failed (or someone
-        # addressed it mid-job), so the events and the observation's "Currently: ..." carry that context.
+        # addressed it mid-job), so the events carry that context.
         status = "" if may_speak else "No 'say' action this turn."
         screen_for_prompt = live_dialog or (self.screen_message if has_screen else None)
+        # Only the first prompt shows the full morning state (+ the map once); later turns carry
+        # just the deltas vs the previous observation. The map is a tool the model asks for.
+        initial = not self._state_shown
         observation = prompts.format_observation(
-            obs, events, status, screen_for_prompt
+            obs, events, status, screen_for_prompt,
+            initial=initial, prev=self._last_obs, tool_results=list(self.tool_results),
         )
+        self._state_shown = True
+        self._last_obs = obs
+        self.tool_results.clear()
         prompt = f"{observation}\n\nWhat do you do?"
 
         t0 = time.monotonic()
@@ -521,7 +535,7 @@ class Agent:
         # "answer" is now a paced job like click/close; it queues with the rest of the plan.
         info_actions = [a for a in raw_actions if a.get("do") in INFO_ACTIONS]
         for info in info_actions:
-            await self._query(info.get("do", ""), target=_blank_if_none(info.get("target")))
+            await self._query_tool(info.get("do", ""), target=_blank_if_none(info.get("target")))
         # Instant actions that answer right away (no job to wait for): equip (pick up an item),
         # crafting (open the menu) and type (into the open text box, e.g. naming an animal.
         # Menu interactions (answer/click/close) are paced jobs now.
@@ -673,6 +687,20 @@ class Agent:
             self.print(self.name, "info", f"{cmd}: {summary}")
         except GameError as e:
             self.inbox.append(f"{cmd} failed: {e}")
+        except (asyncio.TimeoutError, ConnectionError):
+            self.print(self.name, "warn", f"{cmd}: no reply - game not responding")
+
+    async def _query_tool(self, cmd: str, **args: Any) -> None:
+        """A tool the model explicitly called (check_community_center, map): its answer is shown
+        back next turn as a Tool result, like a tool-call response, instead of in the What-happened
+        list."""
+        try:
+            data = await self.conn.request(cmd, **args)
+            summary = str(data.get("summary") or "")
+            self.tool_results.append(f"Tool result ({cmd}): {summary}")
+            self.print(self.name, "info", f"{cmd}: {summary}")
+        except GameError as e:
+            self.tool_results.append(f"Tool result ({cmd}) failed: {e}")
         except (asyncio.TimeoutError, ConnectionError):
             self.print(self.name, "warn", f"{cmd}: no reply - game not responding")
 

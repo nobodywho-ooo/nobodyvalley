@@ -626,6 +626,22 @@ internal sealed class ModEntry : Mod
                 return new JObject { ["summary"] = string.Join(". ", parts) };
             }
 
+            case "map":
+            {
+                // The agent asks for the map when it needs tiles; observers otherwise only send
+                // deltas, so the map is a tool call, not part of every turn.
+                var m = MapView.Render(Game1.player);
+                var parts = new List<string>
+                {
+                    $"Map around you at current location (you're @ at {m["you"]}):",
+                    (string)m["grid"]!,
+                };
+                if (m["nearby"] is JObject nearby && nearby.Count > 0)
+                    parts.Add("Points of interest on the map: "
+                        + string.Join("; ", nearby.Properties().Select(p => $"{p.Name}: {p.Value}")));
+                return new JObject { ["summary"] = string.Join("\n", parts) };
+            }
+
             case "fish":
             {
                 var where = Str("target");

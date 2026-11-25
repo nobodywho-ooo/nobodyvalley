@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 SYSTEM_PROMPT = """\
@@ -14,7 +15,9 @@ You are given the game screen, a mouse and a keyboard: you act exactly like a pl
 The mod only moves your farmer and clicks what you tell it to - it never plays for you. Crops, shops,
 chests, bundles and machines all work like the real game, including the menus and their buttons.
 
-Each turn you see: the map around you (absolute coordinates), your inventory, and any open menu.
+Each turn you see only What happened since your last turn (plus a full morning state once a day).
+The map is a tool, not part of every turn: ask for it with the map action whenever you need tile
+coordinates or want to see what's around you.
 Map legend: {legend}
 
 Reply each turn with minimal JSON: {{"thought":"a few words","actions":[...]}}.
@@ -39,6 +42,8 @@ x and y are map coordinates from 0 to 200; n is 1-25; at most 5 actions per turn
   axe x,y | pickaxe x,y | hoe x,y | watering_can x,y | scythe x,y (swing that tool once at that tile, like a player clicking)
   sword x,y (fight: swing your weapon at that tile - the game decides hits and damage)
   check_community_center (read the bundle progress; free)
+  map (re-draw the map around you - the legend grid plus exact-coordinate points of interest; free -
+       use it to pick tiles, especially after you've moved)
   crafting (open the backpack's crafting page; click recipes to craft)
   eat item (eat that food; restores energy)
   fish target (place; none = here) n
@@ -129,86 +134,152 @@ MAP_LEGEND = (
 USEFUL_RECIPES = {"Scarecrow", "Chest", "Basic Fertilizer", "Speed-Gro", "Sprinkler", "Quality Sprinkler", "Bee House", "Furnace", "Tapper", "Preserves Jar", "Keg", "Cheese Press", "Mayonnaise Machine", "Loom", "Oil Maker"}
 
 
+def _inv_line(me: dict[str, Any]) -> str:
+    inventory = ", ".join(me["inventory"]) or "empty"
+    return f"Inventory: {len(me['inventory'])}/{me.get('inventory_size', '?')}: {inventory}."
+
+
+def _map_block(m: dict[str, Any]) -> list[str]:
+    """The ASCII map grid plus the points-of-interest list, ready to print."""
+    lines = [f"Map around you at current location (you're @ at {m['you']}):", m["grid"]]
+    if nearby := m.get("nearby", {}):
+        lines.append("Points of interest on the map: " + "; ".join(f"{k}: {v}" for k, v in nearby.items()) + ".")
+    return lines
+
+
+def _around_lines(obs: dict[str, Any]) -> list[str]:
+    """Blockers and listed facts about the area, for the full morning state."""
+    lines: list[str] = []
+    if ev := obs.get("event"):
+        lines.append(f"({ev} is playing - read its dialogue as it scrolls; answer questions with answer n; nothing else works until it's over)")
+    if menu := obs.get("menu"):
+        lines.append(f"A menu is open - you can only click it: click=\"...\", answer n, or close. Menu: {menu}")
+    if obs.get("farm", {}).get("animals"):
+        lines.append(f"Animals: {', '.join(obs['farm']['animals'])}.")
+    if ft := obs.get("farm", {}).get("fruit_trees"):
+        lines.append(f"Fruit trees: {ft}.")
+    if machines := obs.get("machines"):
+        lines.append(f"Machines: {'; '.join(machines)}.")
+    if ml := obs.get("mine_level"):
+        lines.append(f"You're on mine level {ml}. Rocks hide the ladder down (L); monsters (!) attack.")
+    return lines
+
+
+def _initial_state(obs: dict[str, Any]) -> list[str]:
+    """The full starting state, shown once on the first turn of the day (and once at startup)."""
+    me, world = obs["me"], obs["world"]
+    lines = [
+        f"Time: {world['time']}. {world['date']}, {world['weather']}."
+        + (" Festival today!" if world.get("festival_today") else ""),
+        _inv_line(me),
+        f"Energy {me['energy']}/{me['max_energy']}. Money {me['money']}g."
+        + (f" Currently: {me['busy']}." if me.get("busy") else " You're not doing anything."),
+        f"Location: {me['location']}.",
+    ]
+    if me.get("holding"):
+        lines.append(f"Holding: {me['holding']}.")
+    lines += _around_lines(obs)
+    if m := obs.get("map"):
+        lines += [""] + _map_block(m)
+    return lines
+
+
+def _changed_lines(obs: dict[str, Any], prev: dict[str, Any]) -> list[str]:
+    """Only what actually changed since the previous turn, as human bullets."""
+    me, world = obs["me"], obs["world"]
+    pme, pworld = prev["me"], prev["world"]
+    lines: list[str] = []
+
+    t = world["time"]
+    lines.append(f"Time: {t}." + (f" (was {pworld['time']})" if pworld["time"] != t else ""))
+    if pworld["date"] != world["date"] or pworld["weather"] != world["weather"]:
+        lines.append(f"{world['date']}, {world['weather']}." + (" Festival today!" if world.get("festival_today") else ""))
+
+    if me["energy"] != pme["energy"]:
+        d = me["energy"] - pme["energy"]
+        lines.append(f"Energy: {me['energy']}/{me['max_energy']} ({'+' if d >= 0 else ''}{d}).")
+    if me["money"] != pme["money"]:
+        d = me["money"] - pme["money"]
+        lines.append(f"Money: {me['money']}g ({'+' if d > 0 else ''}{d}g).")
+    if me["inventory"] != pme["inventory"]:
+        lines.append(_inv_line(me))
+    if me["location"] != pme["location"]:
+        lines.append(f"Location: {me['location']} (from {pme['location']}).")
+    if me.get("holding") != pme.get("holding"):
+        lines.append(f"Holding: {me.get('holding') or 'nothing'}.")
+
+    ml, pml = obs.get("mine_level"), prev.get("mine_level")
+    if ml != pml:
+        lines.append(f"Now on mine level {ml} - rocks hide the ladder down (L); monsters (!) attack." if ml is not None
+                     else "You've left the mines.")
+    if obs.get("machines") != prev.get("machines"):
+        if machines := obs.get("machines"):
+            lines.append(f"Machines: {'; '.join(machines)}.")
+    if menu := obs.get("menu"):
+        lines.append(f"A menu is open - only click/answer/close it. Menu: {menu}")
+    if ev := obs.get("event"):
+        if pml is None or prev.get("event") != ev:
+            lines.append(f"({ev} is playing - read its dialogue; answer questions with answer n; nothing else works until it's over)")
+    return lines
+
+
 def format_observation(
     obs: dict[str, Any],
     events: str = "",
     status: str = "",
     screen_message: dict[str, Any] | None = None,
+    initial: bool = False,
+    prev: dict[str, Any] | None = None,
+    tool_results: list[str] | None = None,
 ) -> str:
-    """The turn prompt: what happened, then a [Status] block with the current state.
+    """The turn prompt: What happened (only what changed), then the on-screen dialog/tool results.
 
-    The whole thing is a normal user message in the chat history, so the KV cache stays warm across
-    turns and the model can remember what it saw. Nobodywho's context shift trims old turns when a
-    day runs long, and the chat is reset each morning. When a message is on screen, show that
-    instead of the map/other current state.
+    Shows the full starting state once (initial=True, first turn of the day), then only deltas so
+    the context stays short for small models. The whole thing is a normal user message in the chat
+    history, so the KV cache stays warm and the model can remember the earlier states itself.
     """
-    me, world = obs["me"], obs["world"]
-    if screen_message and events:
-        # The current on-screen message is shown in the Status block below; don't repeat it here.
-        events = "\n".join(line for line in events.splitlines() if not line.startswith("- On screen"))
     lines: list[str] = []
-    if events:
-        lines += ["What happened:", events, ""]
+    # events arrive already bulleted ("- ..."). Drop the ones that just repeat what we show
+    # separately: an "On screen ..." relay (the dialog block below is authoritative) and the
+    # "It's HH:MM" clock that duplicates the Time delta line.
+    event_lines = [e for e in re.sub(r"(?m)^- (?:On screen|It's \d).*\s*$", "", events).splitlines() if e.strip()]
 
-    header = f"[Status {world['date']}, {world['time']}, {world['weather']}]" + (
-        " Festival today!" if world.get("festival_today") else ""
-    )
-    status_lines: list[str] = [header]
-    energy = (
-        f"Energy {me['energy']}/{me['max_energy']}. Money {me['money']}g."
-        + (f" Currently: {me['busy']}." if me.get("busy") else " You're not doing anything.")
-    )
-    inventory = ", ".join(me["inventory"]) or "empty"
-    inventory_line = f"Inventory: {len(me['inventory'])}/{me.get('inventory_size', '?')}: {inventory}."
-    location = f"Location: {me['location']}."
+    if initial:
+        lines.append("Initial state:")
+        lines += _initial_state(obs)
+        if event_lines:
+            lines.append("")
+            lines.append("Then:")
+            lines += event_lines
+    else:
+        changed = _changed_lines(obs, prev) if prev else []
+        if changed or event_lines:
+            lines.append("What happened:")
+            lines += changed + event_lines
+        else:
+            lines.append("What happened: nothing much changed.")
 
     if screen_message:
-        # A dialogue/question is blocking the game; keep the essentials but hide the map.
-        status_lines += [energy, inventory_line, location]
+        # A dialogue/question/letter is blocking the game; show it loud and clear.
+        lines.append("")
         text = str(screen_message.get("text", "")).strip()
         kind = screen_message.get("kind", "message")
         speaker = screen_message.get("speaker")
-        status_lines.append(f"On screen ({kind}" + (f" from {speaker}" if speaker else "") + f'): "{text}"')
+        lines.append(f"On screen ({kind}" + (f" from {speaker}" if speaker else "") + f'): "{text}"')
         options = [str(o) for o in (screen_message.get("options") or []) if str(o).strip()]
         if options:
-            status_lines.append("Options: " + "; ".join(f"{i + 1}) {o}" for i, o in enumerate(options)))
-            status_lines.append("Click through it: answer n picks an option.")
+            lines.append("Options: " + "; ".join(f"{i + 1}) {o}" for i, o in enumerate(options)))
+            lines.append("Click through it: answer n picks an option.")
         else:
-            status_lines.append("Click through it: answer (no n) continues/closes the message.")
-        if status:
-            status_lines.append(status)
-        lines += status_lines
-        return "\n".join(lines)
+            lines.append("Click through it: answer (no n) continues/closes the message.")
 
-    status_lines.append(energy)
-    status_lines.append(inventory_line)
-    if ev := obs.get("event"):
-        # A cutscene or festival is playing: the game blocks everything else until it ends.
-        status_lines.append(f"({ev} is playing - read its dialogue as it scrolls; answer questions with answer n; nothing else works until it's over)")
-    if menu := obs.get("menu"):
-        # A real menu is up (shop/chest/shipping bin/level-up): the screen is the menu, click it.
-        status_lines.append("A menu is open - you can only click it: click=\"...\", answer n, or close.")
-        status_lines.append("Menu: " + menu)
-        if status:
-            status_lines.append(status)
-        lines += status_lines
-        return "\n".join(lines)
-    if obs.get("farm", {}).get("animals"):
-        status_lines.append(f"Animals: {', '.join(obs['farm']['animals'])}.")
-    if fruit_trees := obs.get("farm", {}).get("fruit_trees"):
-        status_lines.append(f"Fruit trees: {fruit_trees}.")
-    if machines := obs.get("machines"):
-        status_lines.append(f"Machines: {'; '.join(machines)}.")
-    if obs.get("mine_level"):
-        status_lines.append(f"You're on mine level {obs['mine_level']}. Rocks hide the ladder down (L); monsters (!) attack.")
-    status_lines.append(location)
-    if m := obs.get("map"):
-        status_lines.append(f"Map around you at current location (you're @ at {m['you']}):\n{m['grid']}")
-        if nearby := m.get("nearby", {}):
-            status_lines.append("Points of interest on the map: " + "; ".join(f"{k}: {v}" for k, v in nearby.items()) + ".")
+    for tr in (tool_results or []):
+        lines.append("")
+        lines.append(tr)
+
     if status:
-        status_lines.append(status)
-    lines += status_lines
+        lines.append("")
+        lines.append(status)
     return "\n".join(lines)
 
 
