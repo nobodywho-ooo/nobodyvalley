@@ -139,14 +139,6 @@ def _inv_line(me: dict[str, Any]) -> str:
     return f"Inventory: {len(me['inventory'])}/{me.get('inventory_size', '?')}: {inventory}."
 
 
-def _map_block(m: dict[str, Any]) -> list[str]:
-    """The ASCII map grid plus the points-of-interest list, ready to print."""
-    lines = [f"Map around you at current location (you're @ at {m['you']}):", m["grid"]]
-    if nearby := m.get("nearby", {}):
-        lines.append("Points of interest on the map: " + "; ".join(f"{k}: {v}" for k, v in nearby.items()) + ".")
-    return lines
-
-
 def _around_lines(obs: dict[str, Any]) -> list[str]:
     """Blockers and listed facts about the area, for the full morning state."""
     lines: list[str] = []
@@ -179,8 +171,6 @@ def _initial_state(obs: dict[str, Any]) -> list[str]:
     if me.get("holding"):
         lines.append(f"Holding: {me['holding']}.")
     lines += _around_lines(obs)
-    if m := obs.get("map"):
-        lines += [""] + _map_block(m)
     return lines
 
 
