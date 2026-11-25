@@ -208,7 +208,8 @@ def _changed_lines(obs: dict[str, Any], prev: dict[str, Any]) -> list[str]:
     if menu := obs.get("menu"):
         lines.append(f"A menu is open - only click/answer/close it. Menu: {menu}")
     if ev := obs.get("event"):
-        if pml is None or prev.get("event") != ev:
+        # Only note a cutscene/festival that just started; the game blocks everything but answer.
+        if prev.get("event") != ev:
             lines.append(f"({ev} is playing - read its dialogue; answer questions with answer n; nothing else works until it's over)")
     return lines
 
@@ -230,9 +231,10 @@ def format_observation(
     """
     lines: list[str] = []
     # events arrive already bulleted ("- ..."). Drop the ones that just repeat what we show
-    # separately: an "On screen ..." relay (the dialog block below is authoritative) and the
-    # "It's HH:MM" clock that duplicates the Time delta line.
-    event_lines = [e for e in re.sub(r"(?m)^- (?:On screen|It's \d).*\s*$", "", events).splitlines() if e.strip()]
+    # separately: an "On screen ..." relay (the dialog block below is authoritative) and a bare
+    # "It's HH:MM." clock that duplicates the Time delta line. Keep anything longer (e.g. the
+    # "It's HH:MM - late! Go to bed" warning), which is an action item, not just a clock tick.
+    event_lines = [e for e in re.sub(r"(?m)^- (?:On screen|It's (?:[\d:]+ [AP]M|\d{4})\.)\s*$", "", events).splitlines() if e.strip()]
 
     if initial:
         lines.append("Initial state:")

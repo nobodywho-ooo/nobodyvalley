@@ -505,8 +505,9 @@ class Agent:
         # addressed it mid-job), so the events carry that context.
         status = "" if may_speak else "No 'say' action this turn."
         screen_for_prompt = live_dialog or (self.screen_message if has_screen else None)
-        # Only the first prompt shows the full morning state (+ the map once); later turns carry
-        # just the deltas vs the previous observation. The map is a tool the model asks for.
+        # Only the first prompt shows the full morning state; later turns carry just the deltas vs
+        # the previous observation. The map isn't part of either - the model asks for it via the
+        # map tool action when it needs tiles.
         initial = not self._state_shown
         observation = prompts.format_observation(
             obs, events, status, screen_for_prompt,
